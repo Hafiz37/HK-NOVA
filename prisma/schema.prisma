@@ -1,0 +1,241 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum DeviceType {
+  ROUTER
+  SWITCH
+  OLT
+  ONT
+  FIREWALL
+  SERVER
+  OTHER
+}
+
+enum DeviceStatus {
+  UP
+  DOWN
+  UNKNOWN
+  MAINTENANCE
+}
+
+enum AlertStatus {
+  ACTIVE
+  RESOLVED
+  ACKNOWLEDGED
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertType {
+  DEVICE_DOWN
+  HIGH_UTILIZATION
+  ANOMALY_DETECTED
+  BACKUP_FAILED
+  PROVISIONING_FAILED
+}
+
+enum AnomalySeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ProvisioningAction {
+  CREATE
+  SUSPEND
+  REACTIVATE
+  TERMINATE
+  STATUS_CHECK
+}
+
+enum ProvisioningStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+enum BackupStatus {
+  SUCCESS
+  FAILED
+  IN_PROGRESS
+}
+
+model Device {
+  id          String       @id @default(cuid())
+  name        String
+  ip          String       @unique
+  type        DeviceType
+  vendor      String?
+  model       String?
+  location    String?
+  status      DeviceStatus @default(UNKNOWN)
+  description String?      @db.Text
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  credentials Credential?
+  metrics     Metric[]
+  backups     Backup[]
+  provisioning ProvisioningLog[]
+  anomalies   Anomaly[]
+  alerts      Alert[]
+
+  @@index([status])
+  @@index([type])
+  @@index([deletedAt])
+}
+
+model Credential {
+  id           String   @id @default(cuid())
+  deviceId     String   @unique
+  device       Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  
+  snmpVersion  String?
+  snmpCommunity String? @db.Text
+  snmpUser     String?
+  snmpAuthPass String?  @db.Text
+  snmpPrivPass String?  @db.Text
+  
+  sshUsername  String?
+  sshPassword  String?  @db.Text
+  sshPort      Int?     @default(22)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Metric {
+  id         String   @id @default(cuid())
+  deviceId   String
+  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  
+  timestamp  DateTime @default(now())
+  metricType String
+  
+  latency    Float?
+  packetLoss Float?
+  
+  cpuUtil    Float?
+  memUtil    Float?
+  
+  interfaceData Json?
+  
+  @@index([deviceId, timestamp])
+  @@index([metricType, timestamp])
+}
+
+model Backup {
+  id            String       @id @default(cuid())
+  deviceId      String
+  device        Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  
+  timestamp     DateTime     @default(now())
+  configHash    String
+  configContent String       @db.LongText
+  changeDetected Boolean     @default(true)
+  status        BackupStatus
+  errorMessage  String?      @db.Text
+  
+  @@index([deviceId, timestamp])
+}
+
+model ProvisioningLog {
+  id          String              @id @default(cuid())
+  deviceId    String
+  device      Device              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  
+  action      ProvisioningAction
+  ontSerial   String?
+  ponPort     String?
+  vlan        Int?
+  serviceProfile String?
+  
+  command     String              @db.Text
+  response    String?             @db.Text
+  status      ProvisioningStatus
+  errorMessage String?            @db.Text
+  
+  executedAt  DateTime            @default(now())
+  executedBy  String?
+  
+  @@index([deviceId, executedAt])
+  @@index([ontSerial])
+}
+
+model Anomaly {
+  id           String           @id @default(cuid())
+  deviceId     String
+  device       Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  
+  metricType   String
+  timestamp    DateTime         @default(now())
+  anomalyScore Float
+  severity     AnomalySeverity
+  
+  autoResolved Boolean          @default(false)
+  resolvedAt   DateTime?
+  
+  @@index([deviceId, timestamp])
+  @@index([severity])
+}
+
+model Alert {
+  id          String        @id @default(cuid())
+  type        AlertType
+  deviceId    String?
+  device      Device?       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  
+  message     String        @db.Text
+  severity    AlertSeverity
+  status      AlertStatus   @default(ACTIVE)
+  
+  createdAt   DateTime      @default(now())
+  acknowledgedAt DateTime?
+  resolvedAt  DateTime?
+  
+  @@index([status, severity])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  entity    String
+  entityId  String?
+  userId    String?
+  details   Json?
+  ipAddress String?
+  
+  createdAt DateTime @default(now())
+  
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  email        String?   @unique
+  fullName     String?
+  
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastLoginAt  DateTime?
+}

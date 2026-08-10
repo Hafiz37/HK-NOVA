@@ -1,0 +1,70 @@
+module.exports = {
+  apps: [
+    {
+      name: 'hk-nova-web',
+      script: 'pnpm',
+      args: 'start',
+      cwd: './',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3000,
+      },
+    },
+    {
+      name: 'hk-nova-icmp-worker',
+      script: 'tsx',
+      args: 'src/workers/icmp-poller.ts',
+      cwd: './',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
+    {
+      name: 'hk-nova-snmp-worker',
+      script: 'tsx',
+      args: 'src/workers/snmp-poller.ts',
+      cwd: './',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
+    {
+      name: 'hk-nova-backup-worker',
+      script: 'tsx',
+      args: 'src/workers/backup-scheduler.ts',
+      cwd: './',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
+    {
+      name: 'hk-nova-anomaly-worker',
+      script: 'tsx',
+      args: 'src/workers/anomaly-detector.ts',
+      cwd: './',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
+  ],
+};

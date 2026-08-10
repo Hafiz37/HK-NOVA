@@ -1,0 +1,49 @@
+{
+  "create_service": {
+    "description": "Create new service for customer",
+    "commands": [
+      "configure terminal",
+      "interface gpon-olt_{ponPort}",
+      "onu {ontSlot} type {ontType} sn {ontSerial}",
+      "exit",
+      "interface gpon-onu_{ponPort}:{ontSlot}",
+      "tcont 1 profile {tcontProfile}",
+      "gemport 1 tcont 1",
+      "switchport mode hybrid vlan {vlan} tag",
+      "exit"
+    ]
+  },
+  "suspend_service": {
+    "description": "Suspend customer service",
+    "commands": [
+      "configure terminal",
+      "interface gpon-onu_{ponPort}:{ontSlot}",
+      "shutdown",
+      "exit"
+    ]
+  },
+  "reactivate_service": {
+    "description": "Reactivate customer service",
+    "commands": [
+      "configure terminal",
+      "interface gpon-onu_{ponPort}:{ontSlot}",
+      "no shutdown",
+      "exit"
+    ]
+  },
+  "terminate_service": {
+    "description": "Terminate customer service",
+    "commands": [
+      "configure terminal",
+      "interface gpon-olt_{ponPort}",
+      "no onu {ontSlot}",
+      "exit"
+    ]
+  },
+  "check_status": {
+    "description": "Check ONT status",
+    "commands": [
+      "show gpon onu state gpon-onu_{ponPort}:{ontSlot}"
+    ]
+  }
+}

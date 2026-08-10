@@ -1,0 +1,43 @@
+{
+  "create_service": {
+    "description": "Create new service for customer",
+    "commands": [
+      "interface gpon 0/{ponPort}",
+      "ont add {ontSlot} sn-auth {ontSerial} omci ont-lineprofile-id {lineProfile} ont-srvprofile-id {serviceProfile}",
+      "ont port native-vlan {ontSlot} eth 1 vlan-id {vlan}",
+      "service-port {servicePort} vlan {vlan} gpon 0/{ponPort} ont {ontSlot} gemport 1 multi-service user-vlan {vlan}",
+      "quit"
+    ]
+  },
+  "suspend_service": {
+    "description": "Suspend customer service",
+    "commands": [
+      "interface gpon 0/{ponPort}",
+      "ont modify {ontSlot} state block",
+      "quit"
+    ]
+  },
+  "reactivate_service": {
+    "description": "Reactivate customer service",
+    "commands": [
+      "interface gpon 0/{ponPort}",
+      "ont modify {ontSlot} state active",
+      "quit"
+    ]
+  },
+  "terminate_service": {
+    "description": "Terminate customer service",
+    "commands": [
+      "undo service-port {servicePort}",
+      "interface gpon 0/{ponPort}",
+      "ont delete {ontSlot}",
+      "quit"
+    ]
+  },
+  "check_status": {
+    "description": "Check ONT status",
+    "commands": [
+      "display ont info {ontSlot} 0/{ponPort} {ontSlot}"
+    ]
+  }
+}

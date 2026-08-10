@@ -1,0 +1,49 @@
+{
+  "create_service": {
+    "description": "Create new service for customer (Generic)",
+    "commands": [
+      "config",
+      "interface pon {ponPort}",
+      "add ont {ontSlot} serial {ontSerial}",
+      "vlan {vlan}",
+      "commit",
+      "exit"
+    ]
+  },
+  "suspend_service": {
+    "description": "Suspend customer service",
+    "commands": [
+      "config",
+      "interface pon {ponPort}",
+      "ont {ontSlot} disable",
+      "commit",
+      "exit"
+    ]
+  },
+  "reactivate_service": {
+    "description": "Reactivate customer service",
+    "commands": [
+      "config",
+      "interface pon {ponPort}",
+      "ont {ontSlot} enable",
+      "commit",
+      "exit"
+    ]
+  },
+  "terminate_service": {
+    "description": "Terminate customer service",
+    "commands": [
+      "config",
+      "interface pon {ponPort}",
+      "remove ont {ontSlot}",
+      "commit",
+      "exit"
+    ]
+  },
+  "check_status": {
+    "description": "Check ONT status",
+    "commands": [
+      "show ont status {ponPort} {ontSlot}"
+    ]
+  }
+}
