@@ -35,12 +35,18 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="pt-8">
+        <div className="pt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
           <a
-            href="/dashboard"
+            href="/login"
             className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
           >
-            Masuk ke Dashboard
+            Login Operator
+          </a>
+          <a
+            href="/dashboard"
+            className="inline-flex items-center px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg border border-slate-700 transition-colors"
+          >
+            Dashboard
           </a>
         </div>
 

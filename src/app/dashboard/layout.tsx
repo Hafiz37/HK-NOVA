@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [currentTime, setCurrentTime] = useState("");
+  const [user, setUser] = useState<{ fullName?: string; username?: string } | null>(null);
   const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
     const updateTime = () => setCurrentTime(new Date().toLocaleString("id-ID"));
@@ -14,6 +16,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (json?.authenticated) setUser(json.data);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.replace('/login');
+    router.refresh();
+  };
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -103,6 +120,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <h1 className="text-lg font-semibold text-white">Dashboard</h1>
               <div className="flex items-center gap-4">
                 <div className="text-sm text-slate-400">{currentTime || "Loading..."}</div>
+                {user && (
+                  <span className="text-xs text-slate-500 hidden sm:inline">
+                    {user.fullName || user.username}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                >
+                  Logout
+                </button>
               </div>
             </div>
           </header>

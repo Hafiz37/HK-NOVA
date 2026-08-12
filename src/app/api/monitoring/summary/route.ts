@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
 /**
  * GET /api/monitoring/summary
  * Returns a summary: total devices, up/down count, active alerts, avg latency.
  */
-export async function GET(_request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     const [
       totalDevices,

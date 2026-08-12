@@ -77,6 +77,23 @@ async function runPhase1Tests() {
     });
     assert(activeAlertsCount >= 0, 'Alert Table Accessible', `Active Alerts: ${activeAlertsCount}`);
 
+    // Test 5: Credential encryption round-trip
+    console.log('\n--- Test 5: Encryption Utility ---');
+    const { encrypt, decrypt, safeDecrypt } = await import('../src/lib/encryption');
+    const sample = 'snmp-public-test';
+    const enc = encrypt(sample);
+    const dec = decrypt(enc);
+    assert(enc.includes(':') && enc !== sample, 'encrypt() produces ciphertext');
+    assert(dec === sample, 'decrypt() restores plaintext');
+    assert(safeDecrypt(enc) === sample, 'safeDecrypt() handles ciphertext');
+    assert(safeDecrypt('legacy-plain') === 'legacy-plain', 'safeDecrypt() keeps legacy plaintext');
+
+    // Test 6: Operator user exists for login
+    console.log('\n--- Test 6: Operator Auth Seed ---');
+    const admin = await prisma.user.findUnique({ where: { username: 'admin' } });
+    assert(!!admin, 'Admin user exists for login');
+    assert(!!admin?.passwordHash && admin.passwordHash.length > 20, 'Admin password is hashed');
+
     // Summary
     console.log('\n========================================');
     console.log(`📊 TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);

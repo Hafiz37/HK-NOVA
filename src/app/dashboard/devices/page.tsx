@@ -74,6 +74,8 @@ export default function DevicesPage() {
   const [deleteId, setDeleteId]           = useState<string | null>(null);
   const [viewDevice, setViewDevice]       = useState<Device | null>(null);
   const [submitting, setSubmitting]       = useState(false);
+  const [testLoading, setTestLoading]     = useState<"icmp" | "snmp" | "ssh" | null>(null);
+  const [testResult, setTestResult]       = useState<{ type: string; ok: boolean; message: string } | null>(null);
 
   const [form, setForm] = useState(EMPTY_FORM);
   const setField = (k: keyof typeof EMPTY_FORM) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -109,7 +111,41 @@ export default function DevicesPage() {
       model: d.model ?? "", location: d.location ?? "", description: d.description ?? "",
       snmpCommunity: "public", sshPort: "22", sshUsername: "", sshPassword: "" });
   };
-  const closeAll = () => { setIsAddOpen(false); setEditDevice(null); setDeleteId(null); setViewDevice(null); };
+  const closeAll = () => {
+    setIsAddOpen(false);
+    setEditDevice(null);
+    setDeleteId(null);
+    setViewDevice(null);
+    setTestResult(null);
+    setTestLoading(null);
+  };
+
+  const runConnectionTest = async (deviceId: string, type: "icmp" | "snmp" | "ssh") => {
+    setTestLoading(type);
+    setTestResult(null);
+    try {
+      const res = await fetch(`/api/devices/${deviceId}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Test gagal");
+      setTestResult({
+        type,
+        ok: Boolean(json.data?.success),
+        message: json.data?.message ?? "Selesai",
+      });
+    } catch (err) {
+      setTestResult({
+        type,
+        ok: false,
+        message: err instanceof Error ? err.message : "Test gagal",
+      });
+    } finally {
+      setTestLoading(null);
+    }
+  };
 
   // ── Save (add / edit) ────────────────────────────────────────────────────────
   const handleSave = async (e: React.FormEvent) => {
@@ -259,7 +295,7 @@ export default function DevicesPage() {
                   <td className="px-5 py-4 text-slate-400">{d.location ?? "—"}</td>
                   <td className="px-5 py-4 text-right">
                     <div className="inline-flex gap-1.5">
-                      <button onClick={() => setViewDevice(d)}
+                      <button onClick={() => { setTestResult(null); setViewDevice(d); }}
                         className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg transition-colors">
                         Detail
                       </button>
@@ -435,6 +471,31 @@ export default function DevicesPage() {
                     ))}
                   </div>
                 </div>
+              )}
+            </div>
+            <div className="px-6 py-3 border-t border-slate-800 space-y-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Test Koneksi</p>
+              <div className="flex flex-wrap gap-2">
+                {(["icmp", "snmp", "ssh"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={testLoading === t}
+                    onClick={() => void runConnectionTest(viewDevice.id, t)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 disabled:opacity-50 uppercase"
+                  >
+                    {testLoading === t ? "…" : t}
+                  </button>
+                ))}
+              </div>
+              {testResult && (
+                <p className={`text-xs rounded-lg px-3 py-2 border ${
+                  testResult.ok
+                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+                    : "bg-rose-500/10 border-rose-500/20 text-rose-300"
+                }`}>
+                  [{testResult.type.toUpperCase()}] {testResult.message}
+                </p>
               )}
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-800">
