@@ -1,16 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState("");
   const pathname = usePathname();
 
   useEffect(() => {
-    setMounted(true);
     const updateTime = () => setCurrentTime(new Date().toLocaleString("id-ID"));
     updateTime();
     const interval = setInterval(updateTime, 1000);

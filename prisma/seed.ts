@@ -21,65 +21,85 @@ async function main() {
 
   console.log('✅ User created:', user.username);
 
-  const devices = await prisma.device.createMany({
-    data: [
-      {
-        name: 'Core Router Jakarta',
-        ip: '10.10.1.1',
-        type: 'ROUTER',
-        vendor: 'Cisco',
-        model: 'ASR1000',
-        location: 'DC Jakarta',
-        status: 'UNKNOWN',
-        description: 'Core router untuk backbone Jakarta',
-      },
-      {
-        name: 'Distribution Switch Bandung',
-        ip: '10.10.2.1',
-        type: 'SWITCH',
-        vendor: 'Juniper',
-        model: 'EX4300',
-        location: 'DC Bandung',
-        status: 'UNKNOWN',
-        description: 'Distribution switch DC Bandung',
-      },
-      {
-        name: 'OLT Surabaya 1',
-        ip: '10.10.3.1',
-        type: 'OLT',
-        vendor: 'ZTE',
-        model: 'C320',
-        location: 'POP Surabaya',
-        status: 'UNKNOWN',
-        description: 'OLT untuk area Surabaya Timur',
-      },
-      {
-        name: 'OLT Yogyakarta 1',
-        ip: '10.10.4.1',
-        type: 'OLT',
-        vendor: 'Huawei',
-        model: 'MA5608T',
-        location: 'POP Yogyakarta',
-        status: 'UNKNOWN',
-        description: 'OLT untuk area Yogyakarta Kota',
-      },
-      {
-        name: 'Firewall Edge Jakarta',
-        ip: '10.10.5.1',
-        type: 'FIREWALL',
-        vendor: 'Fortinet',
-        model: 'FortiGate 600E',
-        location: 'DC Jakarta',
-        status: 'UNKNOWN',
-        description: 'Firewall edge untuk DC Jakarta',
-      },
-    ],
-    skipDuplicates: true,
-  });
+  const initialDevices = [
+    {
+      name: 'Google Public DNS (Reachable)',
+      ip: '8.8.8.8',
+      type: 'ROUTER' as const,
+      vendor: 'Google',
+      model: 'DNS Core',
+      location: 'Global Anycast',
+      status: 'UNKNOWN' as const,
+      description: 'Public DNS reachable untuk pengujian ICMP ping live',
+    },
+    {
+      name: 'Cloudflare Public DNS (Reachable)',
+      ip: '1.1.1.1',
+      type: 'SERVER' as const,
+      vendor: 'Cloudflare',
+      model: '1.1.1.1 Service',
+      location: 'Global Anycast',
+      status: 'UNKNOWN' as const,
+      description: 'Cloudflare DNS reachable untuk demo status UP',
+    },
+    {
+      name: 'Localhost Node (Reachable)',
+      ip: '127.0.0.1',
+      type: 'SERVER' as const,
+      vendor: 'Local',
+      model: 'Loopback',
+      location: 'Local Datacenter',
+      status: 'UNKNOWN' as const,
+      description: 'Local loopback interface untuk verifikasi latency minimal',
+    },
+    {
+      name: 'Core Router Jakarta (Fiktif Demo)',
+      ip: '10.10.1.1',
+      type: 'ROUTER' as const,
+      vendor: 'Cisco',
+      model: 'ASR1000',
+      location: 'DC Jakarta',
+      status: 'UNKNOWN' as const,
+      description: 'Core router demo (IP private tidak reachable -> status DOWN)',
+    },
+    {
+      name: 'Distribution Switch Bandung (Fiktif Demo)',
+      ip: '10.10.2.1',
+      type: 'SWITCH' as const,
+      vendor: 'Juniper',
+      model: 'EX4300',
+      location: 'DC Bandung',
+      status: 'UNKNOWN' as const,
+      description: 'Distribution switch demo (IP private tidak reachable)',
+    },
+    {
+      name: 'OLT Surabaya 1 (Fiktif Demo)',
+      ip: '10.10.3.1',
+      type: 'OLT' as const,
+      vendor: 'ZTE',
+      model: 'C320',
+      location: 'POP Surabaya',
+      status: 'UNKNOWN' as const,
+      description: 'OLT demo (IP private tidak reachable)',
+    },
+  ];
 
-  console.log('✅ Devices created:', devices.count);
+  for (const d of initialDevices) {
+    await prisma.device.upsert({
+      where: { ip: d.ip },
+      update: {
+        name: d.name,
+        type: d.type,
+        vendor: d.vendor,
+        model: d.model,
+        location: d.location,
+        description: d.description,
+      },
+      create: d,
+    });
+  }
 
-  console.log('✅ Seeding completed!');
+  console.log('✅ Devices seeded successfully!');
   console.log('');
   console.log('📝 Login credentials:');
   console.log('   Username: admin');

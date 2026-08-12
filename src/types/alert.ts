@@ -12,6 +12,7 @@ export interface Alert {
 
 export type AlertType =
   | 'DEVICE_DOWN'
+  | 'DEVICE_UP'
   | 'HIGH_UTILIZATION'
   | 'ANOMALY_DETECTED'
   | 'BACKUP_FAILED'
