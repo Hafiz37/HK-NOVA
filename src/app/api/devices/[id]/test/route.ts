@@ -42,14 +42,15 @@ async function testIcmp(ip: string): Promise<{ ok: boolean; latencyMs: number | 
 
 async function testSnmp(
   ip: string,
-  communityEncrypted: string | null
+  communityEncrypted: string | null,
+  port?: number | null
 ): Promise<{ ok: boolean; message: string; sysName?: string }> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const snmp = require('net-snmp') as {
     createSession: (
       target: string,
       community: string,
-      options: { timeout: number; retries: number; version: number }
+      options: { port?: number; timeout: number; retries: number; version: number }
     ) => {
       get: (
         oids: string[],
@@ -65,6 +66,7 @@ async function testSnmp(
 
   return new Promise((resolve) => {
     const session = snmp.createSession(ip, community, {
+      port: port ?? 161,
       timeout: DEFAULT_SNMP_TIMEOUT,
       retries: 1,
       version: snmp.Version2c,
@@ -174,7 +176,11 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
       const r = await testIcmp(device.ip);
       result = { ok: r.ok, message: r.message, latencyMs: r.latencyMs };
     } else if (type === 'snmp') {
-      const r = await testSnmp(device.ip, device.credentials?.snmpCommunity ?? null);
+      const r = await testSnmp(
+        device.ip,
+        device.credentials?.snmpCommunity ?? null,
+        device.credentials?.snmpPort ?? 161
+      );
       result = { ok: r.ok, message: r.message, sysName: r.sysName };
     } else {
       const r = await testSsh(

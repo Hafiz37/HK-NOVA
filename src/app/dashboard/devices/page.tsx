@@ -12,6 +12,7 @@ interface Device {
   location: string | null;
   status: "UP" | "DOWN" | "UNKNOWN" | "MAINTENANCE";
   description: string | null;
+  isDemo: boolean;
   latestLatency: number | null;
   latestPacketLoss: number | null;
   lastCheck: string | null;
@@ -23,7 +24,7 @@ const DEVICE_STATUSES = ["UP", "DOWN", "UNKNOWN", "MAINTENANCE"];
 
 const EMPTY_FORM = {
   name: "", ip: "", type: "ROUTER", vendor: "", model: "",
-  location: "", description: "", snmpCommunity: "public",
+  location: "", description: "", snmpCommunity: "public", snmpPort: "161",
   sshPort: "22", sshUsername: "", sshPassword: "",
 };
 
@@ -66,6 +67,9 @@ export default function DevicesPage() {
   const [search, setSearch]           = useState("");
   const [filterType, setFilterType]   = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [showDemo, setShowDemo]       = useState(true);
+  const [generatorEnabled, setGeneratorEnabled] = useState(true);
+  const [generatorLoading, setGeneratorLoading] = useState(false);
   const [toast, setToast]             = useState<{ ok: boolean; msg: string } | null>(null);
 
   // Modal states
@@ -86,6 +90,50 @@ export default function DevicesPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
+  // Load showDemo from sessionStorage
+  useEffect(() => {
+    const stored = sessionStorage.getItem('hk-nova-show-demo');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (stored !== null) setShowDemo(stored === 'true');
+  }, []);
+
+  // Load generator enabled state from API
+  useEffect(() => {
+    async function loadGeneratorState() {
+      try {
+        const res = await fetch('/api/settings/demo-mode');
+        if (res.ok) {
+          const json = await res.json();
+          setGeneratorEnabled(json.data?.generatorEnabled ?? true);
+        }
+      } catch { /* silent */ }
+    }
+    loadGeneratorState();
+  }, []);
+
+  const toggleGenerator = async (enabled: boolean) => {
+    setGeneratorLoading(true);
+    try {
+      const res = await fetch('/api/settings/demo-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Gagal mengubah status generator');
+      }
+      setGeneratorEnabled(enabled);
+      showToast(true, `Demo generator ${enabled ? 'diaktifkan' : 'dinonaktifkan'}`);
+    } catch (err) {
+      // Revert on error
+      setGeneratorEnabled(!enabled);
+      showToast(false, err instanceof Error ? err.message : 'Gagal mengubah status generator');
+    } finally {
+      setGeneratorLoading(false);
+    }
+  };
+
   const fetchDevices = useCallback(async () => {
     setLoading(true);
     try {
@@ -93,10 +141,11 @@ export default function DevicesPage() {
       if (search)       p.append("search", search);
       if (filterType)   p.append("type", filterType);
       if (filterStatus) p.append("status", filterStatus);
+      p.append("showDemo", showDemo.toString());
       const res = await fetch(`/api/devices?${p}`);
       if (res.ok) setDevices((await res.json()).data ?? []);
     } catch { /* silent */ } finally { setLoading(false); }
-  }, [search, filterType, filterStatus]);
+  }, [search, filterType, filterStatus, showDemo]);
 
   useEffect(() => {
     const t = setTimeout(() => void fetchDevices(), 300);
@@ -109,7 +158,7 @@ export default function DevicesPage() {
     setEditDevice(d);
     setForm({ name: d.name, ip: d.ip, type: d.type, vendor: d.vendor ?? "",
       model: d.model ?? "", location: d.location ?? "", description: d.description ?? "",
-      snmpCommunity: "public", sshPort: "22", sshUsername: "", sshPassword: "" });
+      snmpCommunity: "public", snmpPort: "161", sshPort: "22", sshUsername: "", sshPassword: "" });
   };
   const closeAll = () => {
     setIsAddOpen(false);
@@ -163,6 +212,7 @@ export default function DevicesPage() {
           location: form.location || null, description: form.description || null,
           credentials: form.snmpCommunity ? {
             snmpCommunity: form.snmpCommunity,
+            snmpPort: Number(form.snmpPort) || 161,
             sshPort: Number(form.sshPort) || 22,
             sshUsername: form.sshUsername || null,
             sshPassword: form.sshPassword || null,
@@ -217,27 +267,66 @@ export default function DevicesPage() {
       )}
 
       {/* Filter Bar */}
-      <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4 flex flex-col md:flex-row gap-3">
-        <div className="flex-1 relative">
-          <span className="absolute left-3 top-2.5 text-slate-500 text-sm">🔍</span>
-          <input type="text" placeholder="Cari nama, IP, vendor, atau lokasi…"
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" />
+      <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4 space-y-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="flex-1 relative">
+            <span className="absolute left-3 top-2.5 text-slate-500 text-sm">🔍</span>
+            <input type="text" placeholder="Cari nama, IP, vendor, atau lokasi…"
+              value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" />
+          </div>
+          <select value={filterType} onChange={e => setFilterType(e.target.value)}
+            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-blue-500">
+            <option value="">Semua Tipe</option>
+            {DEVICE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-blue-500">
+            <option value="">Semua Status</option>
+            {DEVICE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button onClick={() => void fetchDevices()} title="Refresh"
+            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-sm transition-colors">
+            🔄
+          </button>
         </div>
-        <select value={filterType} onChange={e => setFilterType(e.target.value)}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-blue-500">
-          <option value="">Semua Tipe</option>
-          {DEVICE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-blue-500">
-          <option value="">Semua Status</option>
-          {DEVICE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <button onClick={() => void fetchDevices()} title="Refresh"
-          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-sm transition-colors">
-          🔄
-        </button>
+
+        {/* Demo Mode Toggles */}
+        <div className="flex flex-col gap-3 pt-3 border-t border-slate-800">
+          {/* Show/Hide Demo Devices */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-400">🎭 Mode Demo</span>
+              <span className="text-xs text-slate-500">({devices.filter(d => d.isDemo).length} device demo)</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" checked={showDemo} onChange={e => {
+                const val = e.target.checked;
+                setShowDemo(val);
+                sessionStorage.setItem('hk-nova-show-demo', val.toString());
+              }} className="sr-only peer" />
+              <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <span className="ml-3 text-sm font-medium text-slate-300">{showDemo ? 'Tampil' : 'Sembunyikan'}</span>
+            </label>
+          </div>
+
+          {/* Demo Generator Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-400">⚡ Demo Generator</span>
+              <span className="text-xs text-slate-500">(metric sintetis untuk device demo)</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" checked={generatorEnabled} onChange={e => {
+                const val = e.target.checked;
+                setGeneratorEnabled(val);
+                toggleGenerator(val);
+              }} className="sr-only peer" disabled={generatorLoading} />
+              <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed"></div>
+              <span className="ml-3 text-sm font-medium text-slate-300">{generatorLoading ? 'Memuat...' : generatorEnabled ? 'Aktif' : 'Nonaktif'}</span>
+            </label>
+          </div>
+        </div>
       </div>
 
       {/* Table */}
@@ -277,7 +366,14 @@ export default function DevicesPage() {
               ) : devices.map(d => (
                 <tr key={d.id} className="hover:bg-slate-800/40 transition-colors">
                   <td className="px-5 py-4">
-                    <p className="font-semibold text-white">{d.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-white">{d.name}</p>
+                      {d.isDemo && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                          DEMO
+                        </span>
+                      )}
+                    </div>
                     {d.latestLatency !== null && (
                       <p className="text-[11px] text-slate-400 mt-0.5">
                         <span className="text-emerald-400 font-mono">{d.latestLatency}ms</span>
@@ -385,6 +481,12 @@ export default function DevicesPage() {
                   <label className="block text-xs font-medium text-slate-400 mb-1">SNMP Community</label>
                   <input placeholder="public"
                     value={form.snmpCommunity} onChange={setField("snmpCommunity")}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">SNMP Port</label>
+                  <input type="number" placeholder="161"
+                    value={form.snmpPort} onChange={setField("snmpPort")}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500" />
                 </div>
               </div>

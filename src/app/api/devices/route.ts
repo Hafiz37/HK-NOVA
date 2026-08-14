@@ -4,7 +4,7 @@ import { DeviceType, DeviceStatus, Prisma } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
 
 /**
- * GET /api/devices?search=...&type=...&status=...
+ * GET /api/devices?search=...&type=...&status=...&showDemo=true
  * Returns active devices with real-time status, latest latency, and packet loss.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -13,8 +13,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const search = searchParams.get('search')?.trim();
     const typeParam = searchParams.get('type');
     const statusParam = searchParams.get('status');
+    const showDemo = searchParams.get('showDemo') === 'true';
 
     const where: Prisma.DeviceWhereInput = { deletedAt: null };
+
+    // Filter demo devices based on showDemo parameter
+    if (!showDemo) {
+      where.isDemo = false;
+    }
 
     if (search) {
       where.OR = [
@@ -46,6 +52,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         location: true,
         status: true,
         description: true,
+        isDemo: true,
         createdAt: true,
         updatedAt: true,
         metrics: {
@@ -84,6 +91,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       location: device.location,
       status: device.status,
       description: device.description,
+      isDemo: device.isDemo,
       createdAt: device.createdAt,
       updatedAt: device.updatedAt,
       latestLatency: device.metrics[0]?.latency ?? null,
@@ -159,6 +167,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                 create: {
                   snmpVersion: credentials.snmpVersion || 'v2c',
                   snmpCommunity: credentials.snmpCommunity ? encrypt(credentials.snmpCommunity) : null,
+                  snmpPort: credentials.snmpPort ? Number(credentials.snmpPort) : 161,
                   snmpUser: credentials.snmpUser || null,
                   snmpAuthPass: credentials.snmpAuthPass ? encrypt(credentials.snmpAuthPass) : null,
                   snmpPrivPass: credentials.snmpPrivPass ? encrypt(credentials.snmpPrivPass) : null,

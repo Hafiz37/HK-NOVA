@@ -75,6 +75,25 @@ enum BackupStatus {
   IN_PROGRESS
 }
 
+enum UserRole {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum MetricSource {
+  REAL
+  DEMO
+  GENERATOR
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
 model Device {
   id          String       @id @default(cuid())
   name        String
@@ -85,6 +104,7 @@ model Device {
   location    String?
   status      DeviceStatus @default(UNKNOWN)
   description String?      @db.Text
+  isDemo      Boolean      @default(false)
   
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -100,6 +120,7 @@ model Device {
   @@index([status])
   @@index([type])
   @@index([deletedAt])
+  @@index([isDemo])
 }
 
 model Credential {
@@ -112,6 +133,7 @@ model Credential {
   snmpUser     String?
   snmpAuthPass String?  @db.Text
   snmpPrivPass String?  @db.Text
+  snmpPort     Int?     @default(161)
   
   sshUsername  String?
   sshPassword  String?  @db.Text
@@ -122,12 +144,13 @@ model Credential {
 }
 
 model Metric {
-  id         String   @id @default(cuid())
+  id         String      @id @default(cuid())
   deviceId   String
-  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  device     Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   
-  timestamp  DateTime @default(now())
+  timestamp  DateTime    @default(now())
   metricType String
+  source     MetricSource @default(REAL)
   
   latency    Float?
   packetLoss Float?
@@ -139,6 +162,7 @@ model Metric {
   
   @@index([deviceId, timestamp])
   @@index([metricType, timestamp])
+  @@index([source])
 }
 
 model Backup {
@@ -235,6 +259,7 @@ model User {
   passwordHash String
   email        String?   @unique
   fullName     String?
+  role         UserRole  @default(OPERATOR)
   
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

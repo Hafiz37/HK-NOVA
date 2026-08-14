@@ -58,6 +58,7 @@ const notificationCooldown = new Map<string, number>();
 interface SnmpCredential {
   snmpVersion: string;
   snmpCommunity: string;
+  snmpPort: number;
   snmpUser?: string | null;
   snmpAuthPass?: string | null;
   snmpPrivPass?: string | null;
@@ -103,7 +104,7 @@ function createSnmpSession(ip: string, cred: SnmpCredential): any | null {
     const community = cred.snmpCommunity ?? 'public';
 
     return snmp.createSession(ip, community, {
-      port: 161,
+      port: cred.snmpPort ?? 161,
       retries: 1,
       timeout: DEFAULT_SNMP_TIMEOUT,
       version,
@@ -479,6 +480,7 @@ async function runPollCycle(): Promise<void> {
           select: {
             snmpVersion: true,
             snmpCommunity: true,
+            snmpPort: true,
             snmpUser: true,
             snmpAuthPass: true,
             snmpPrivPass: true,
@@ -501,6 +503,7 @@ async function runPollCycle(): Promise<void> {
         ? {
             snmpVersion:   d.credentials.snmpVersion   ?? 'v2c',
             snmpCommunity: d.credentials.snmpCommunity ?? 'public',
+            snmpPort:      d.credentials.snmpPort      ?? 161,
             snmpUser:      d.credentials.snmpUser,
             snmpAuthPass:  d.credentials.snmpAuthPass,
             snmpPrivPass:  d.credentials.snmpPrivPass,
