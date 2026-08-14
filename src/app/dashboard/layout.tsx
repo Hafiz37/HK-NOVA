@@ -54,12 +54,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               href="/dashboard/monitoring"
               className={`block px-3 py-2 text-sm rounded-md transition-colors ${
-                pathname.startsWith("/dashboard/monitoring")
-                  ? "bg-slate-800 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                pathname === '/dashboard/monitoring'
+                  ? 'bg-slate-800 text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              📡 Monitoring
+              📡 ICMP Monitoring
+            </Link>
+            <Link
+              href="/dashboard/snmp"
+              className={`block px-3 py-2 text-sm rounded-md transition-colors ${
+                pathname.startsWith('/dashboard/snmp')
+                  ? 'bg-slate-800 text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              📊 SNMP Monitoring
             </Link>
             <Link
               href="/dashboard/devices"

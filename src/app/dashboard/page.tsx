@@ -325,7 +325,7 @@ export default function DashboardPage() {
         <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
           🚀 Quick Actions
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <Link
             href="/dashboard/devices"
             className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-blue-500/30 rounded-xl transition-all group"
@@ -348,13 +348,28 @@ export default function DashboardPage() {
             className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-emerald-500/30 rounded-xl transition-all group"
           >
             <span className="text-xl p-2 bg-emerald-500/10 rounded-lg group-hover:scale-110 transition-transform">
-              📊
+              📡
             </span>
             <div>
               <p className="text-sm font-semibold text-white group-hover:text-emerald-400 transition-colors">
-                Monitoring
+                ICMP Monitoring
               </p>
               <p className="text-xs text-slate-400">Latency &amp; Packet Loss</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/dashboard/snmp"
+            className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-cyan-500/30 rounded-xl transition-all group"
+          >
+            <span className="text-xl p-2 bg-cyan-500/10 rounded-lg group-hover:scale-110 transition-transform">
+              📊
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-white group-hover:text-cyan-400 transition-colors">
+                SNMP Monitoring
+              </p>
+              <p className="text-xs text-slate-400">CPU · Memory · Interfaces</p>
             </div>
           </Link>
 

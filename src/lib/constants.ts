@@ -34,3 +34,10 @@ export const ICMP_BATCH_SIZE = Number(process.env.ICMP_BATCH_SIZE ?? '10');
 export const ICMP_POLL_INTERVAL = process.env.ICMP_POLL_INTERVAL ?? '*/1 * * * *';
 export const ICMP_PING_RETRIES = 2;
 export const ICMP_ALERT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
+// SNMP Worker constants
+export const SNMP_BATCH_SIZE = Number(process.env.SNMP_BATCH_SIZE ?? '5');
+export const SNMP_POLL_INTERVAL = process.env.SNMP_POLL_INTERVAL ?? '*/5 * * * *';
+export const SNMP_ALERT_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+export const SNMP_HIGH_CPU_THRESHOLD = Number(process.env.SNMP_HIGH_CPU_THRESHOLD ?? '85');
+export const SNMP_HIGH_MEM_THRESHOLD = Number(process.env.SNMP_HIGH_MEM_THRESHOLD ?? '90');

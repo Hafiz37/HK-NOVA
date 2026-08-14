@@ -13,11 +13,12 @@ export const dynamic = 'force-dynamic';
 export async function GET(): Promise<NextResponse> {
   try {
     const now = Date.now();
-    const ICMP_THRESHOLD_MS  = 2 * 60 * 1000;  // 2 menit
-    const BACKUP_THRESHOLD_MS = 25 * 60 * 60 * 1000; // 25 jam
+    const ICMP_THRESHOLD_MS   = 2  * 60 * 1000;        // 2 menit
+    const SNMP_THRESHOLD_MS   = 10 * 60 * 1000;        // 10 menit
+    const BACKUP_THRESHOLD_MS = 25 * 60 * 60 * 1000;   // 25 jam
 
     // ── ICMP Worker ───────────────────────────────────────────────────────────
-    const [latestIcmp, earliestIcmp] = await Promise.all([
+    const [latestIcmp, earliestIcmp, latestSnmp, earliestSnmp] = await Promise.all([
       prisma.metric.findFirst({
         where: { metricType: 'ICMP' },
         orderBy: { timestamp: 'desc' },
@@ -28,13 +29,31 @@ export async function GET(): Promise<NextResponse> {
         orderBy: { timestamp: 'asc' },
         select: { timestamp: true },
       }),
+      // ── SNMP Worker ─────────────────────────────────────────────────────────
+      prisma.metric.findFirst({
+        where: { metricType: 'SNMP' },
+        orderBy: { timestamp: 'desc' },
+        select: { timestamp: true },
+      }),
+      prisma.metric.findFirst({
+        where: { metricType: 'SNMP' },
+        orderBy: { timestamp: 'asc' },
+        select: { timestamp: true },
+      }),
     ]);
 
-    const lastIcmpMs   = latestIcmp  ? new Date(latestIcmp.timestamp).getTime()  : 0;
-    const firstIcmpMs  = earliestIcmp ? new Date(earliestIcmp.timestamp).getTime() : 0;
-    const isIcmpActive = lastIcmpMs > 0 && now - lastIcmpMs <= ICMP_THRESHOLD_MS;
+    const lastIcmpMs    = latestIcmp   ? new Date(latestIcmp.timestamp).getTime()   : 0;
+    const firstIcmpMs   = earliestIcmp ? new Date(earliestIcmp.timestamp).getTime() : 0;
+    const isIcmpActive  = lastIcmpMs  > 0 && now - lastIcmpMs  <= ICMP_THRESHOLD_MS;
     const icmpUptimeSec = isIcmpActive && firstIcmpMs > 0
       ? Math.floor((now - firstIcmpMs) / 1000)
+      : null;
+
+    const lastSnmpMs    = latestSnmp   ? new Date(latestSnmp.timestamp).getTime()   : 0;
+    const firstSnmpMs   = earliestSnmp ? new Date(earliestSnmp.timestamp).getTime() : 0;
+    const isSnmpActive  = lastSnmpMs  > 0 && now - lastSnmpMs  <= SNMP_THRESHOLD_MS;
+    const snmpUptimeSec = isSnmpActive && firstSnmpMs > 0
+      ? Math.floor((now - firstSnmpMs) / 1000)
       : null;
 
     // ── Backup Worker ─────────────────────────────────────────────────────────
@@ -42,8 +61,8 @@ export async function GET(): Promise<NextResponse> {
       orderBy: { timestamp: 'desc' },
       select: { timestamp: true },
     });
-    const lastBackupMs    = latestBackup ? new Date(latestBackup.timestamp).getTime() : 0;
-    const isBackupActive  = lastBackupMs > 0 && now - lastBackupMs <= BACKUP_THRESHOLD_MS;
+    const lastBackupMs   = latestBackup ? new Date(latestBackup.timestamp).getTime() : 0;
+    const isBackupActive = lastBackupMs > 0 && now - lastBackupMs <= BACKUP_THRESHOLD_MS;
 
     // ── Anomaly Detector ──────────────────────────────────────────────────────
     const latestAnomaly = await prisma.anomaly.findFirst({
@@ -75,10 +94,14 @@ export async function GET(): Promise<NextResponse> {
         name: 'SNMP Metrics Worker',
         type: 'SNMP',
         phase: 2,
-        status: 'STOPPED',
-        lastHeartbeat: null,
-        uptimeSeconds: null,
-        detail: 'Phase 2 — belum diimplementasi',
+        status: isSnmpActive ? 'RUNNING' : 'STOPPED',
+        lastHeartbeat: latestSnmp?.timestamp ?? null,
+        uptimeSeconds: snmpUptimeSec,
+        detail: isSnmpActive
+          ? `Active — polling CPU/memory/interfaces (last: ${Math.round((now - lastSnmpMs) / 1000)}s ago)`
+          : lastSnmpMs > 0
+          ? `Stopped — last metric ${Math.round((now - lastSnmpMs) / 60000)}m ago. Run: pnpm worker:snmp`
+          : 'Not started — Run: pnpm worker:snmp',
         command: 'pnpm worker:snmp',
       },
       {

@@ -85,7 +85,7 @@ async function main() {
   ];
 
   for (const d of initialDevices) {
-    await prisma.device.upsert({
+    const device = await prisma.device.upsert({
       where: { ip: d.ip },
       update: {
         name: d.name,
@@ -97,9 +97,49 @@ async function main() {
       },
       create: d,
     });
+
+    // Create default SNMP credential for device
+    await prisma.credential.upsert({
+      where: { deviceId: device.id },
+      update: {},
+      create: {
+        deviceId: device.id,
+        snmpVersion: 'v2c',
+        snmpCommunity: 'public',
+      },
+    });
+
+    // Seed sample SNMP metric history for realistic UI testing
+    const count = await prisma.metric.count({
+      where: { deviceId: device.id, metricType: 'SNMP' },
+    });
+
+    if (count === 0) {
+      const now = Date.now();
+      const mockMetrics = Array.from({ length: 12 }, (_, i) => {
+        const ts = new Date(now - (11 - i) * 5 * 60 * 1000);
+        const baseCpu = d.type === 'ROUTER' ? 45 : d.type === 'SWITCH' ? 30 : 60;
+        const baseMem = d.type === 'ROUTER' ? 55 : d.type === 'SWITCH' ? 40 : 70;
+        return {
+          deviceId: device.id,
+          metricType: 'SNMP',
+          timestamp: ts,
+          cpuUtil: Math.min(100, Math.max(5, baseCpu + (Math.random() * 20 - 10))),
+          memUtil: Math.min(100, Math.max(5, baseMem + (Math.random() * 10 - 5))),
+          interfaceData: [
+            { index: 1, name: 'eth0', operStatus: 1, speed: 1000000000, inOctets: 1542000 + i * 50000, outOctets: 3241000 + i * 120000, inErrors: 0, outErrors: 0 },
+            { index: 2, name: 'eth1', operStatus: 1, speed: 1000000000, inOctets: 890000 + i * 30000, outOctets: 1200000 + i * 40000, inErrors: 0, outErrors: 0 },
+          ],
+        };
+      });
+
+      await prisma.metric.createMany({
+        data: mockMetrics,
+      });
+    }
   }
 
-  console.log('✅ Devices seeded successfully!');
+  console.log('✅ Devices, Credentials, and SNMP Metrics seeded successfully!');
   console.log('');
   console.log('📝 Login credentials:');
   console.log('   Username: admin');

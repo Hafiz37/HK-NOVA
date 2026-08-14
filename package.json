@@ -22,7 +22,8 @@
     "pm2:restart": "pm2 restart ecosystem.config.js",
     "pm2:logs": "pm2 logs",
     "pm2:status": "pm2 status",
-    "test:phase1": "tsx scripts/test-phase1.ts"
+    "test:phase1": "tsx scripts/test-phase1.ts",
+    "test:phase2": "tsx scripts/test-phase2-snmp.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
