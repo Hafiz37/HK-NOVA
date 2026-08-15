@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { DEFAULT_PING_TIMEOUT, DEFAULT_SNMP_TIMEOUT, DEFAULT_SSH_TIMEOUT } from '@/lib/constants';
+import { requireSession } from '@/lib/auth';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -151,6 +152,9 @@ async function testSsh(
  * Body: { type: "icmp" | "snmp" | "ssh" }
  */
 export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));

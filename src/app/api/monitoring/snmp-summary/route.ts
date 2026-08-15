@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,9 @@ export const dynamic = 'force-dynamic';
  * HIGH_UTILIZATION alert counts, and worker heartbeat detection.
  */
 export async function GET(): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const SNMP_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes window
     const now = Date.now();

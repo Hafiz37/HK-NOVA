@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,9 @@ export const dynamic = 'force-dynamic';
  * Tidak membutuhkan proses worker menulis file PID atau heartbeat terpisah.
  */
 export async function GET(): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const now = Date.now();
     const ICMP_THRESHOLD_MS   = 2  * 60 * 1000;        // 2 menit

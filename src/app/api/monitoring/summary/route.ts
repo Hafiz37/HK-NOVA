@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireSession } from '@/lib/auth';
 
 /**
  * GET /api/monitoring/summary
  * Returns a summary: total devices, up/down count, active alerts, avg latency.
  */
 export async function GET(): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const [
       totalDevices,

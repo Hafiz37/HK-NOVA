@@ -3,6 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 const COOKIE_NAME = 'hk_nova_session';
 
 async function getSecretKey(): Promise<CryptoKey> {
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !process.env.JWT_SECRET &&
+    !process.env.ENCRYPTION_KEY
+  ) {
+    throw new Error('JWT_SECRET must be set in production');
+  }
   const secret = process.env.JWT_SECRET || process.env.ENCRYPTION_KEY || 'dev-insecure-secret';
   const enc = new TextEncoder();
   return crypto.subtle.importKey(

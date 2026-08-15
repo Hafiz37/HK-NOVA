@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireSession } from '@/lib/auth';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -10,6 +11,9 @@ interface RouteParams {
  * Returns time-series SNMP metric history (CPU, memory, interfaces) for a device.
  */
 export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;

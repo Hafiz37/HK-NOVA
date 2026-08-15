@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getSession } from '@/lib/auth';
+import { UserRole } from '@prisma/client';
+import { requireSession, requireRole } from '@/lib/auth';
 
 const SETTING_KEY = 'demo:generator:enabled';
 
@@ -9,12 +10,10 @@ const SETTING_KEY = 'demo:generator:enabled';
  * Returns current demo mode settings (enabled status, demo device count)
  */
 export async function GET(): Promise<NextResponse> {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
+  try {
     const setting = await prisma.setting.findUnique({
       where: { key: SETTING_KEY },
     });
@@ -49,22 +48,10 @@ export async function GET(): Promise<NextResponse> {
  * Toggles demo generator on/off (requires ADMIN role)
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireRole([UserRole.ADMIN]);
+  if (!auth.ok) return auth.response;
+
   try {
-    // Check authentication and admin role
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { username: session.username },
-      select: { role: true },
-    });
-
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden: Admin role required' }, { status: 403 });
-    }
-
     const body = await request.json().catch(() => ({}));
     const enabled = body?.enabled;
 

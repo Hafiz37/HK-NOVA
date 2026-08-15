@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { DeviceType, DeviceStatus, Prisma } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
+import { requireSession } from '@/lib/auth';
 
 /**
  * GET /api/devices?search=...&type=...&status=...&showDemo=true
  * Returns active devices with real-time status, latest latency, and packet loss.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search')?.trim();
@@ -115,6 +119,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * Creates a new network device.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { name, ip, type, vendor, model, location, description, credentials } = body;

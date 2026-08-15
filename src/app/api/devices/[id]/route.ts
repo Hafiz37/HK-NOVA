@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { DeviceType, DeviceStatus } from '@prisma/client';
+import { DeviceType, DeviceStatus, UserRole } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
+import { requireSession, requireRole } from '@/lib/auth';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -12,6 +13,9 @@ interface Params {
  * Fetch a single device with details, credentials (masked), recent metrics, and alerts.
  */
 export async function GET(_request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
 
@@ -65,10 +69,14 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
  * Update device details or status.
  */
 export async function PUT(request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
   return updateDevice(request, params);
 }
 
 export async function PATCH(request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
   return updateDevice(request, params);
 }
 
@@ -164,9 +172,12 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
 
 /**
  * DELETE /api/devices/[id]
- * Soft delete a device.
+ * Soft delete a device. Requires ADMIN role.
  */
 export async function DELETE(_request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const auth = await requireRole([UserRole.ADMIN]);
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
 

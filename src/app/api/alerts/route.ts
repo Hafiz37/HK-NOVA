@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { AlertStatus, AlertSeverity } from '@prisma/client';
+import { requireSession } from '@/lib/auth';
 
 /**
  * GET /api/alerts?status=ACTIVE&severity=HIGH
  * Returns filtered list of alerts.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const statusParam = searchParams.get('status');

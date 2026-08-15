@@ -1,11 +1,67 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { UserRole } from '@prisma/client';
 
 const COOKIE_NAME = 'hk_nova_session';
 const MAX_AGE_SEC = 60 * 60 * 12; // 12 hours
 
 function getSecret(): string {
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !process.env.JWT_SECRET &&
+    !process.env.ENCRYPTION_KEY
+  ) {
+    throw new Error('JWT_SECRET must be set in production');
+  }
   return process.env.JWT_SECRET || process.env.ENCRYPTION_KEY || 'dev-insecure-secret';
+}
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  role: UserRole;
+}
+
+export type AuthResult =
+  | { ok: false; response: NextResponse }
+  | { ok: true; user: AuthUser };
+
+/**
+ * Validates the session and (optionally) a role requirement.
+ * Returns the authenticated user on success, or a NextResponse (401/403) to return.
+ */
+export async function requireAuth(roles?: UserRole[]): Promise<AuthResult> {
+  const session = await getSession();
+  if (!session) {
+    return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { username: session.username },
+    select: { id: true, username: true, role: true },
+  });
+
+  if (!user) {
+    return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+
+  if (roles && roles.length > 0 && !roles.includes(user.role)) {
+    return { ok: false, response: NextResponse.json({ error: 'Forbidden: insufficient permissions' }, { status: 403 }) };
+  }
+
+  return { ok: true, user };
+}
+
+/** Requires any authenticated session. */
+export function requireSession(): Promise<AuthResult> {
+  return requireAuth();
+}
+
+/** Requires an authenticated session with one of the given roles. */
+export function requireRole(roles: UserRole[]): Promise<AuthResult> {
+  return requireAuth(roles);
 }
 
 function sign(payload: string): string {
