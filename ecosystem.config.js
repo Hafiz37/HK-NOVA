@@ -80,5 +80,18 @@ module.exports = {
         APP_MODE: 'development',
       },
     },
+    {
+      name: 'hk-nova-retention-worker',
+      script: 'tsx',
+      args: 'src/workers/retention-worker.ts',
+      cwd: './',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
   ],
 };
