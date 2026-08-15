@@ -4,12 +4,14 @@ Platform web fullstack untuk Network Operations Center (NOC) ISP yang mengintegr
 
 ## 🚀 Fitur Utama
 
-- **Monitoring ICMP & SNMP** - Real-time monitoring status perangkat dan utilisasi bandwidth
-- **Autobackup Config** - Backup otomatis konfigurasi perangkat dengan version control
-- **OLT Provisioning** - Otomasi provisioning layanan pelanggan (Huawei/ZTE/Generic)
-- **ML Anomaly Detection** - Deteksi anomali jaringan menggunakan Isolation Forest
-- **Alert & Notification** - Notifikasi terpusat via Telegram
-- **Dashboard Real-time** - Visualisasi status jaringan dengan dark theme
+| Fitur | Status | Keterangan |
+|-------|--------|------------|
+| **Monitoring ICMP & SNMP** | ✅ Selesai | Real-time polling UP/DOWN, latency, CPU/Mem, interface |
+| **Alert & Notification** | ✅ Selesai | Lifecycle ACTIVE/ACK/RESOLVE + Telegram (opsional) |
+| **Dashboard Real-time** | ✅ Selesai | Dark theme, grafik, worker status live |
+| **Autobackup Config** | 🚧 Planned | Schema DB & template siap; worker & UI belum dibangun |
+| **OLT Provisioning** | 🚧 Planned | Template Huawei/ZTE/Generic siap; service & UI belum |
+| **ML Anomaly Detection** | 🚧 Planned | Isolation Forest library & schema siap; worker belum |
 
 ## 🛠️ Tech Stack
 
@@ -48,8 +50,8 @@ exit;
 cp .env.example .env
 nano .env
 
-# Push schema ke database
-pnpm db:push
+# Run migrations ke database
+pnpm db:migrate
 
 # Generate Prisma Client
 pnpm generate
@@ -115,6 +117,13 @@ pnpm worker:anomaly
 pnpm build
 ```
 
+### Database Migration (Production)
+
+```bash
+# Apply pending migrations
+pnpm db:migrate:prod
+```
+
 ### Jalankan dengan PM2
 
 ```bash
@@ -140,8 +149,17 @@ pnpm pm2:stop
 # Open Prisma Studio (GUI)
 pnpm db:studio
 
-# Reset database & seed ulang
+# Reset database & seed ulang (development)
 pnpm db:reset
+
+# Create a new migration (development)
+pnpm db:migrate
+
+# Apply pending migrations (production)
+pnpm db:migrate:prod
+
+# View migration status
+pnpm prisma migrate status
 ```
 
 ## 🗂️ Struktur Project
@@ -152,8 +170,7 @@ hk-nova/
 │   ├── app/                  # Next.js pages & API routes
 │   ├── components/           # React components
 │   ├── lib/                  # Utilities (prisma, encryption, telegram)
-│   ├── services/             # Business logic
-│   ├── workers/              # Background workers
+│   ├── workers/              # Background workers (ICMP, SNMP, Retention)
 │   ├── types/                # TypeScript types
 │   └── config/               # Configuration files (OLT templates, SNMP OIDs)
 ├── prisma/
@@ -177,9 +194,11 @@ Password: admin123
 
 ## 📖 Dokumentasi Lengkap
 
-- [API Documentation](docs/API.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
+- [Architecture](docs/ARCHITECTURE.md) — Arsitektur sistem & data flow
+- [Quickstart](docs/QUICKSTART.md) — Panduan cepat menjalankan project
+- [Demo Mode](docs/DEMO_MODE.md) — Menjalankan tanpa perangkat fisik
+- [Known Issues](docs/KNOWN_ISSUES_AND_LIMITATIONS.md) — Batasan & workaround
+- [Testing Guide Phase 1](docs/TESTING_GUIDE_PHASE1.md) — Pengujian monitoring
 
 ## 🛡️ Security Notes
 

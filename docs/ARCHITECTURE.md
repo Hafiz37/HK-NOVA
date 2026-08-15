@@ -9,16 +9,19 @@ HK-NOVA adalah platform NOC (Network Operations Center) yang terdiri dari 3 komp
 - **Backend**: Next.js API Routes untuk REST API
 - **Database**: Prisma ORM → MySQL
 
-### 2. Background Workers (Node.js)
-- **ICMP Poller**: Monitoring ping status devices
-- **SNMP Poller**: Monitoring traffic & interface statistics
-- **Backup Scheduler**: Automated config backup via SSH
-- **Anomaly Detector**: ML-based anomaly detection
+### 2. Background Workers (Node.js) — **Implemented**
+- **ICMP Poller**: Monitoring ping status devices (✅ running)
+- **SNMP Poller**: Monitoring traffic & interface statistics (✅ running)
+- **Retention Worker**: Cleanup metric data >30 hari (✅ running)
 
-### 3. External Integrations
-- **Telegram Bot**: Alert notifications
+### 3. Background Workers (Node.js) — **Planned / Not Yet Implemented**
+- **Backup Scheduler**: Automated config backup via SSH
+- **Anomaly Detector**: ML-based anomaly detection (Isolation Forest)
+
+### 4. External Integrations
+- **Telegram Bot**: Alert notifications (✅ implemented, optional)
 - **Network Devices**: SSH, SNMP connections
-- **OLT Equipment**: Provisioning via SSH (Huawei/ZTE/Generic)
+- **OLT Equipment**: Provisioning via SSH (Huawei/ZTE/Generic) — *template only, execution planned*
 
 ## Architecture Diagram
 
@@ -57,17 +60,19 @@ HK-NOVA adalah platform NOC (Network Operations Center) yang terdiri dari 3 komp
 │                    Background Workers                        │
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ ICMP Poller  │  │ SNMP Poller  │  │   Backup     │      │
-│  │  (1 min)     │  │  (5 min)     │  │  Scheduler   │      │
+│  │ ICMP Poller  │  │ SNMP Poller  │  │  Retention   │      │
+│  │  (1 min)     │  │  (5 min)     │  │  (daily)     │      │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
 │         │                  │                  │              │
 │         └──────────────────┴──────────────────┘              │
 │                            │                                 │
-│                            ▼                                 │
-│                   ┌──────────────────┐                       │
-│                   │  Anomaly         │                       │
-│                   │  Detector (ML)   │                       │
-│                   └──────────────────┘                       │
+│         ┌──────────────────┴──────────────────┐              │
+│         ▼                                     ▼              │
+│  ┌──────────────────┐               ┌──────────────────┐    │
+│  │  Backup          │               │  Anomaly         │    │
+│  │  Scheduler       │               │  Detector (ML)   │    │
+│  │  (planned)       │               │  (planned)       │    │
+│  └──────────────────┘               └──────────────────┘    │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -85,43 +90,58 @@ HK-NOVA adalah platform NOC (Network Operations Center) yang terdiri dari 3 komp
 
 ## Data Flow
 
-### 1. Monitoring Flow
+### 1. Monitoring Flow (Implemented)
 ```
 Device → Worker (ping/SNMP) → Database → API → UI
                 ↓
-        Anomaly Detector (ML)
-                ↓
-           Alert System → Telegram
+        Alert System → Telegram
 ```
 
-### 2. Provisioning Flow (Dual Mode)
+### 2. Provisioning Flow (Planned — Dual Mode)
 ```
 UI Form → API → Provisioning Service
-                     ↓
-            ┌────────┴────────┐
-            ▼                 ▼
-      Dry-Run Mode      Execution Mode
-    (Preview Only)      (Real SSH)
-            ↓                 ↓
-       Show Commands    Execute on OLT
-            ↓                 ↓
-         Log DB          Log DB + Device
+                      ↓
+             ┌────────┴────────┐
+             ▼                 ▼
+       Dry-Run Mode      Execution Mode
+     (Preview Only)      (Real SSH)
+             ↓                 ↓
+        Show Commands    Execute on OLT
+             ↓                 ↓
+          Log DB          Log DB + Device
 ```
 
-### 3. Backup Flow
+### 3. Backup Flow (Planned)
 ```
 Scheduler (cron) → SSH Connection → Device
-                        ↓
-                   Get Config
-                        ↓
-                 Hash Comparison
-                        ↓
-           ┌────────────┴────────────┐
-           ▼                         ▼
-    Changed: Save to DB       Unchanged: Skip
-           ↓
-    Store with timestamp
-    (version control)
+                         ↓
+                    Get Config
+                         ↓
+                  Hash Comparison
+                         ↓
+            ┌────────────┴────────────┐
+            ▼                         ▼
+     Changed: Save to DB       Unchanged: Skip
+            ↓
+     Store with timestamp
+     (version control)
+```
+
+### 4. Anomaly Detection Flow (Planned)
+```
+Historical Metrics (30 days)
+         ↓
+Feature Engineering
+(latency, loss, utilization, errors)
+         ↓
+Train Isolation Forest Model
+         ↓
+Score New Metrics (0-1)
+         ↓
+Threshold Classification
+(0.7=Low, 0.8=Medium, 0.9=High)
+         ↓
+Store Anomaly + Alert → Telegram
 ```
 
 ## Security Architecture
@@ -173,14 +193,16 @@ Request → Template Selection → Command Generation
 
 ## Worker Architecture
 
-### Process Management (PM2)
+### Process Management (PM2) — Actual
 ```
 pm2 ecosystem.config.js
 ├── hk-nova-web (Next.js)
 ├── hk-nova-icmp-worker
 ├── hk-nova-snmp-worker
-├── hk-nova-backup-worker
-└── hk-nova-anomaly-worker
+├── hk-nova-retention-worker
+├── hk-nova-backup-worker      # planned (not implemented)
+├── hk-nova-anomaly-worker     # planned (not implemented)
+└── hk-nova-demo-generator     # dev only
 ```
 
 ### Worker Pattern
@@ -228,7 +250,8 @@ Store Anomaly + Alert
 └─────────────────────────────────────┘
 ┌─────────────────────────────────────┐
 │          Business Logic             │
-│  Services, Workers, ML Engine       │
+│  Workers (ICMP, SNMP, Retention),   │
+│  ML Engine (planned)                │
 └─────────────────────────────────────┘
 ┌─────────────────────────────────────┐
 │          Data Access Layer          │
@@ -292,8 +315,9 @@ pm2 start ecosystem.config.js  # Start all services
 
 ### Database Migrations
 ```
-prisma db push       # Development
-prisma migrate       # Production (future)
+pnpm db:migrate      # Development — create & apply migration
+pnpm db:migrate:prod # Production — apply pending migrations
+prisma migrate status # Check status
 ```
 
 ## Configuration Management
