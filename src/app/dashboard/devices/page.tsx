@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@/lib/auth-context";
 
 interface Device {
   id: string;
@@ -62,6 +63,8 @@ function TypeBadge({ type }: { type: string }) {
 }
 
 export default function DevicesPage() {
+  const { isAdmin } = useAuth();
+
   const [devices, setDevices]         = useState<Device[]>([]);
   const [loading, setLoading]         = useState(true);
   const [search, setSearch]           = useState("");
@@ -109,6 +112,10 @@ export default function DevicesPage() {
       } catch { /* silent */ }
     }
     loadGeneratorState();
+
+    // Poll for state changes (demo generator worker polls every 10s)
+    const interval = setInterval(loadGeneratorState, 10_000);
+    return () => clearInterval(interval);
   }, []);
 
   const toggleGenerator = async (enabled: boolean) => {
@@ -311,21 +318,23 @@ export default function DevicesPage() {
           </div>
 
           {/* Demo Generator Toggle */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-400">⚡ Demo Generator</span>
-              <span className="text-xs text-slate-500">(metric sintetis untuk device demo)</span>
+          {isAdmin && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-400">⚡ Demo Generator</span>
+                <span className="text-xs text-slate-500">(metric sintetis untuk device demo)</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked={generatorEnabled} onChange={e => {
+                  const val = e.target.checked;
+                  setGeneratorEnabled(val);
+                  toggleGenerator(val);
+                }} className="sr-only peer" disabled={generatorLoading} />
+                <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed"></div>
+                <span className="ml-3 text-sm font-medium text-slate-300">{generatorLoading ? 'Memuat...' : generatorEnabled ? 'Aktif' : 'Nonaktif'}</span>
+              </label>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" checked={generatorEnabled} onChange={e => {
-                const val = e.target.checked;
-                setGeneratorEnabled(val);
-                toggleGenerator(val);
-              }} className="sr-only peer" disabled={generatorLoading} />
-              <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed"></div>
-              <span className="ml-3 text-sm font-medium text-slate-300">{generatorLoading ? 'Memuat...' : generatorEnabled ? 'Aktif' : 'Nonaktif'}</span>
-            </label>
-          </div>
+          )}
         </div>
       </div>
 

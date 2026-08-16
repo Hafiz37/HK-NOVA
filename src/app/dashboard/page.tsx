@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth-context";
 
 interface WorkerStatus {
   id: string;
@@ -32,12 +33,13 @@ const WORKER_ICONS: Record<string, string> = {
 };
 
 export default function DashboardPage() {
+  const { isAdmin } = useAuth();
+
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [workers, setWorkers] = useState<WorkerStatus[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingWorkers, setLoadingWorkers] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
 
   const fetchSummary = async () => {
     try {
@@ -86,17 +88,6 @@ export default function DashboardPage() {
     const interval = setInterval(() => { void run(); }, 10_000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.authenticated && json.data) {
-          setIsAdmin(json.data.role === "ADMIN");
-        }
-      })
-      .catch(() => null);
   }, []);
 
   const upPct =

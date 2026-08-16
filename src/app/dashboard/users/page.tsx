@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@/lib/auth-context";
 
 interface UserItem {
   id: string;
@@ -25,8 +26,9 @@ const ROLE_BADGES: Record<string, string> = {
 };
 
 export default function UsersPage() {
+  const { user, isAdmin, loading: authLoading } = useAuth();
+
   const [users, setUsers] = useState<UserItem[]>([]);
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,18 +47,6 @@ export default function UsersPage() {
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  // Fetch Current Logged-in User
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (json?.data) {
-          setCurrentUser(json.data);
-        }
-      })
-      .catch(() => null);
-  }, []);
 
   // Fetch All Users
   const fetchUsers = useCallback(async () => {
@@ -229,8 +219,8 @@ export default function UsersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50 text-sm">
-                {users.map((u) => {
-                  const isSelf = currentUser?.id === u.id;
+{users.map((u) => {
+                    const isSelf = user?.id === u.id;
                   return (
                     <tr key={u.id} className="hover:bg-slate-800/30 transition-colors">
                       <td className="px-4 py-3 font-mono font-medium text-white">

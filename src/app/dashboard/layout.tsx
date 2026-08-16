@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { AuthProvider, useAuth } from "@/lib/auth-context";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const [currentTime, setCurrentTime] = useState("");
-  const [user, setUser] = useState<{ fullName?: string; username?: string } | null>(null);
+  const { user, loading, refresh } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -17,20 +18,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (json?.authenticated) setUser(json.data);
-      })
-      .catch(() => {});
-  }, []);
-
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.replace('/login');
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/login");
     router.refresh();
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-400">
+          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <span>Memuat sesi...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -54,9 +57,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               href="/dashboard/monitoring"
               className={`block px-3 py-2 text-sm rounded-md transition-colors ${
-                pathname === '/dashboard/monitoring'
-                  ? 'bg-slate-800 text-white'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                pathname === "/dashboard/monitoring"
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
               }`}
             >
               📡 ICMP Monitoring
@@ -64,9 +67,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               href="/dashboard/snmp"
               className={`block px-3 py-2 text-sm rounded-md transition-colors ${
-                pathname.startsWith('/dashboard/snmp')
-                  ? 'bg-slate-800 text-white'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                pathname.startsWith("/dashboard/snmp")
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
               }`}
             >
               📊 SNMP Monitoring
@@ -121,6 +124,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               🔔 Alerts
             </Link>
+            {user?.role === "ADMIN" && (
+              <Link
+                href="/dashboard/users"
+                className={`block px-3 py-2 text-sm rounded-md transition-colors ${
+                  pathname.startsWith("/dashboard/users")
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                }`}
+              >
+                👤 Users
+              </Link>
+            )}
+            {user?.role === "ADMIN" && (
+              <Link
+                href="/dashboard/audit-logs"
+                className={`block px-3 py-2 text-sm rounded-md transition-colors ${
+                  pathname.startsWith("/dashboard/audit-logs")
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                }`}
+              >
+                📋 Audit Logs
+              </Link>
+            )}
           </nav>
         </aside>
 
@@ -132,7 +159,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div className="text-sm text-slate-400">{currentTime || "Loading..."}</div>
                 {user && (
                   <span className="text-xs text-slate-500 hidden sm:inline">
-                    {user.fullName || user.username}
+                    {user.fullName || user.username} {user.role === "ADMIN" && (
+                      <span className="ml-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">ADMIN</span>
+                    )}
                   </span>
                 )}
                 <button
@@ -151,4 +180,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
     </div>
   );
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return <AuthProvider>{<DashboardLayoutInner>{children}</DashboardLayoutInner>}</AuthProvider>;
 }

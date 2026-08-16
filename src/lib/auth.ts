@@ -107,6 +107,18 @@ export async function getSession(): Promise<{ username: string } | null> {
   return verifySessionToken(jar.get(COOKIE_NAME)?.value);
 }
 
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  const session = await getSession();
+  if (!session) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { username: session.username },
+    select: { id: true, username: true, role: true },
+  });
+
+  return user;
+}
+
 export function sessionCookieOptions(token: string) {
   return {
     name: COOKIE_NAME,
