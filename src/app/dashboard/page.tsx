@@ -37,6 +37,7 @@ export default function DashboardPage() {
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingWorkers, setLoadingWorkers] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const fetchSummary = async () => {
     try {
@@ -85,6 +86,17 @@ export default function DashboardPage() {
     const interval = setInterval(() => { void run(); }, 10_000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.authenticated && json.data) {
+          setIsAdmin(json.data.role === "ADMIN");
+        }
+      })
+      .catch(() => null);
   }, []);
 
   const upPct =
@@ -325,7 +337,7 @@ export default function DashboardPage() {
         <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
           🚀 Quick Actions
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Link
             href="/dashboard/devices"
             className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-blue-500/30 rounded-xl transition-all group"
@@ -373,7 +385,7 @@ export default function DashboardPage() {
             </div>
           </Link>
 
-          <Link
+<Link
             href="/dashboard/alerts"
             className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-rose-500/30 rounded-xl transition-all group"
           >
@@ -385,10 +397,42 @@ export default function DashboardPage() {
                 Pusat Alert
               </p>
               <p className="text-xs text-slate-400">
-                Acknowledge &amp; Resolve
+                Acknowledge & Resolve
               </p>
             </div>
           </Link>
+
+          <Link
+            href="/dashboard/audit-logs"
+            className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-purple-500/30 rounded-xl transition-all group"
+          >
+            <span className="text-xl p-2 bg-purple-500/10 rounded-lg group-hover:scale-110 transition-transform">
+              📋
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-white group-hover:text-purple-400 transition-colors">
+                Audit Logs
+              </p>
+              <p className="text-xs text-slate-400">Riwayat Aktivitas User</p>
+            </div>
+          </Link>
+
+          {isAdmin && (
+            <Link
+              href="/dashboard/users"
+              className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-indigo-500/30 rounded-xl transition-all group"
+            >
+              <span className="text-xl p-2 bg-indigo-500/10 rounded-lg group-hover:scale-110 transition-transform">
+                👤
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-white group-hover:text-indigo-400 transition-colors">
+                  Kelola User
+                </p>
+                <p className="text-xs text-slate-400">Tambah & Kelola Operator</p>
+              </div>
+            </Link>
+          )}
         </div>
       </div>
 

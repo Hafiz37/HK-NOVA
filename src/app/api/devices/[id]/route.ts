@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { DeviceType, DeviceStatus, UserRole } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
 import { requireSession, requireRole } from '@/lib/auth';
+import { logAudit, getClientIp } from '@/lib/audit';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -71,16 +72,16 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
 export async function PUT(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
-  return updateDevice(request, params);
+  return updateDevice(request, params, auth);
 }
 
 export async function PATCH(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
-  return updateDevice(request, params);
+  return updateDevice(request, params, auth);
 }
 
-async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: string }>): Promise<NextResponse> {
+async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: string }>, auth: { ok: true; user: { id: string } }): Promise<NextResponse> {
   try {
     const { id } = await paramsPromise;
     const body = await request.json();
@@ -93,6 +94,18 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
     if (!existing) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 });
     }
+
+    // Capture before state for audit log
+    const before = {
+      name: existing.name,
+      ip: existing.ip,
+      type: existing.type,
+      vendor: existing.vendor,
+      model: existing.model,
+      location: existing.location,
+      status: existing.status,
+      description: existing.description,
+    };
 
     if (ip && ip !== existing.ip) {
       const ipCheck = await prisma.device.findFirst({
@@ -163,6 +176,27 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
       updatedAt: updated.updatedAt,
     };
 
+    // Determine fields changed
+    const fieldsChanged: string[] = [];
+    (Object.keys(before) as Array<keyof typeof before>).forEach((key) => {
+      if (before[key] !== sanitizedUpdated[key]) {
+        fieldsChanged.push(key);
+      }
+    });
+
+    await logAudit({
+      action: 'UPDATE',
+      entity: 'Device',
+      entityId: id,
+      userId: auth.user.id,
+      details: {
+        before,
+        after: sanitizedUpdated,
+        fieldsChanged,
+      },
+      ipAddress: getClientIp(request),
+    });
+
     return NextResponse.json({ data: sanitizedUpdated, message: 'Device updated successfully' });
   } catch (error) {
     console.error('[API /api/devices/[id] PUT/PATCH] Error:', error);
@@ -174,7 +208,7 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
  * DELETE /api/devices/[id]
  * Soft delete a device. Requires ADMIN role.
  */
-export async function DELETE(_request: NextRequest, { params }: Params): Promise<NextResponse> {
+export async function DELETE(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const auth = await requireRole([UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 
@@ -189,9 +223,32 @@ export async function DELETE(_request: NextRequest, { params }: Params): Promise
       return NextResponse.json({ error: 'Device not found' }, { status: 404 });
     }
 
+    const before = {
+      id: existing.id,
+      name: existing.name,
+      ip: existing.ip,
+      type: existing.type,
+      vendor: existing.vendor,
+      model: existing.model,
+      location: existing.location,
+      status: existing.status,
+      description: existing.description,
+    };
+
     await prisma.device.update({
       where: { id },
       data: { deletedAt: new Date() },
+    });
+
+    await logAudit({
+      action: 'DELETE',
+      entity: 'Device',
+      entityId: id,
+      userId: auth.user.id,
+      details: {
+        before,
+      },
+      ipAddress: getClientIp(request),
     });
 
     return NextResponse.json({ message: `Device ${existing.name} deleted successfully` });

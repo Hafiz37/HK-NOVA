@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { UserRole } from '@prisma/client';
 import { requireSession, requireRole } from '@/lib/auth';
+import { logAudit, getClientIp } from '@/lib/audit';
 
 const SETTING_KEY = 'demo:generator:enabled';
 
@@ -59,6 +60,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'enabled must be a boolean' }, { status: 400 });
     }
 
+    // Get current value for audit log
+    const currentSetting = await prisma.setting.findUnique({
+      where: { key: SETTING_KEY },
+    });
+    const beforeEnabled = (currentSetting?.value as { enabled?: boolean } | null)?.enabled ?? true;
+
     // Store status in Setting model
     await prisma.setting.upsert({
       where: { key: SETTING_KEY },
@@ -67,6 +74,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         key: SETTING_KEY,
         value: { enabled },
       },
+    });
+
+    await logAudit({
+      action: 'UPDATE',
+      entity: 'Setting',
+      entityId: SETTING_KEY,
+      userId: auth.user.id,
+      details: {
+        before: { enabled: beforeEnabled },
+        after: { enabled },
+        fieldsChanged: ['enabled'],
+      },
+      ipAddress: getClientIp(request),
     });
 
     return NextResponse.json({

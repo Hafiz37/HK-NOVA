@@ -16,6 +16,7 @@ export async function GET(): Promise<NextResponse> {
         username: true,
         fullName: true,
         email: true,
+        role: true,
         lastLoginAt: true,
       },
     });

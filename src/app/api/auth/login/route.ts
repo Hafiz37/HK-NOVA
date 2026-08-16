@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
 import { createSessionToken, sessionCookieOptions } from '@/lib/auth';
+import { logAudit, getClientIp } from '@/lib/audit';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -37,6 +38,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       message: 'Login berhasil',
     });
     response.cookies.set(sessionCookieOptions(token));
+
+    await logAudit({
+      action: 'LOGIN',
+      entity: 'User',
+      entityId: user.id,
+      userId: user.id,
+      details: {
+        after: { username: user.username, role: user.role },
+      },
+      ipAddress: getClientIp(request),
+    });
+
     return response;
   } catch (error) {
     console.error('[API /api/auth/login] Error:', error);

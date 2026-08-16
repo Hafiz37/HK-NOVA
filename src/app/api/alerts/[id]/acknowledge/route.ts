@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
+import { logAudit, getClientIp } from '@/lib/audit';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -10,7 +11,7 @@ interface RouteParams {
  * POST /api/alerts/[id]/acknowledge
  * Updates alert status to ACKNOWLEDGED.
  */
-export async function POST(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+export async function POST(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
@@ -30,6 +31,11 @@ export async function POST(_request: NextRequest, { params }: RouteParams): Prom
       );
     }
 
+    const before = {
+      status: alert.status,
+      acknowledgedAt: alert.acknowledgedAt,
+    };
+
     const updated = await prisma.alert.update({
       where: { id },
       data: {
@@ -41,6 +47,22 @@ export async function POST(_request: NextRequest, { params }: RouteParams): Prom
           select: { id: true, name: true, ip: true },
         },
       },
+    });
+
+    await logAudit({
+      action: 'ACKNOWLEDGE',
+      entity: 'Alert',
+      entityId: id,
+      userId: auth.user.id,
+      details: {
+        before,
+        after: {
+          status: updated.status,
+          acknowledgedAt: updated.acknowledgedAt,
+        },
+        fieldsChanged: ['status', 'acknowledgedAt'],
+      },
+      ipAddress: getClientIp(request),
     });
 
     return NextResponse.json({ data: updated });

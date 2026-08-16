@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { DeviceType, DeviceStatus, Prisma } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
 import { requireSession } from '@/lib/auth';
+import { logAudit, getClientIp } from '@/lib/audit';
 
 /**
  * GET /api/devices?search=...&type=...&status=...&showDemo=true
@@ -205,6 +206,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       createdAt: newDevice.createdAt,
       updatedAt: newDevice.updatedAt,
     };
+
+    await logAudit({
+      action: 'CREATE',
+      entity: 'Device',
+      entityId: newDevice.id,
+      userId: auth.user.id,
+      details: {
+        after: sanitizedDevice,
+      },
+      ipAddress: getClientIp(request),
+    });
 
     return NextResponse.json({ data: sanitizedDevice, message: 'Device created successfully' }, { status: 201 });
   } catch (error) {
