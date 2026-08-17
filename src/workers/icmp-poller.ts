@@ -16,6 +16,14 @@ import {
 } from '../lib/constants';
 import { sendTelegramNotification, formatAlertMessage } from '../lib/telegram';
 import { randomUUID } from 'crypto';
+import { isDeviceInMaintenance } from '../lib/maintenance';
+import {
+  processDeviceDownAlert,
+  resolveDeviceDownAlert,
+  createAlertIfNotDuplicate,
+  dedupKeyUp,
+  correlationKeyFor,
+} from '../lib/alert-engine';
 
 // ─── Prisma singleton for worker process ────────────────────────────────────
 const prisma = new PrismaClient();
@@ -83,19 +91,6 @@ async function pingHostSystem(ip: string, timeoutMs: number): Promise<{ latency:
 // ─── In-memory cooldown tracker ──────────────────────────────────────────────
 /** Map<deviceId, lastNotifiedTimestamp> */
 const notificationCooldown = new Map<string, number>();
-
-// ─── Cycle health tracking ────────────────────────────────────────────────────
-interface CycleRecord {
-  cycleId: string;
-  startedAt: number;
-  durationMs: number;
-}
-
-const cycleHistory: CycleRecord[] = []; // rolling window of last 20 cycles
-
-export function getCycleHistory(): CycleRecord[] {
-  return cycleHistory;
-}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface PingResult {
@@ -207,52 +202,44 @@ async function handleAlertTransition(
 ): Promise<void> {
   const previousStatus = device.status;
 
-  // UP → DOWN: create DEVICE_DOWN alert
-  if (previousStatus !== 'DOWN' && newStatus === 'DOWN') {
-    await prisma.alert.create({
-      data: {
-        type: 'DEVICE_DOWN',
-        deviceId: device.id,
-        message: `Device ${device.name} (${device.ip}) is unreachable. ICMP ping failed after ${ICMP_PING_RETRIES + 1} attempts.`,
-        severity: 'HIGH',
-        status: 'ACTIVE',
-      },
-    });
-
-    log('WARN', `Alert DEVICE_DOWN created for ${device.name} (${device.ip})`);
-
-    // Send Telegram notification with cooldown
-    await sendNotificationWithCooldown(device.id, device.name, 'DEVICE_DOWN', 'HIGH',
-      `${device.name} (${device.ip}) tidak dapat dijangkau. Semua percobaan ping gagal.`);
+  // Suppress alerts while device is under maintenance window
+  if (await isDeviceInMaintenance(device.id)) {
+    log('INFO', `[MAINTENANCE] Alerts suppressed for ${device.name} (${device.ip})`);
+    return;
   }
 
-  // DOWN → UP: create DEVICE_UP alert, auto-resolve previous DEVICE_DOWN alerts
+  // UP → DOWN: create DEVICE_DOWN alert (dedupe + korelasi)
+  if (previousStatus !== 'DOWN' && newStatus === 'DOWN') {
+    const baseMessage = `Device ${device.name} (${device.ip}) is unreachable. ICMP ping failed after ${ICMP_PING_RETRIES + 1} attempts.`;
+
+    const result = await processDeviceDownAlert(prisma, device, baseMessage);
+
+    if (result.created) {
+      log('WARN', `Alert DEVICE_DOWN created for ${device.name} (${device.ip}) severity=${result.alert.severity}`);
+
+      await sendNotificationWithCooldown(device.id, device.name, 'DEVICE_DOWN', result.alert.severity,
+        `${device.name} (${device.ip}) tidak dapat dijangkau. Semua percobaan ping gagal.`);
+    } else {
+      log('INFO', `Alert DEVICE_DOWN sudah aktif (dedupe) untuk ${device.name} (${device.ip})`);
+    }
+  }
+
+  // DOWN → UP: create DEVICE_UP alert, auto-resolve previous DEVICE_DOWN + children
   if (previousStatus === 'DOWN' && newStatus === 'UP') {
-    // Auto-resolve existing DEVICE_DOWN alerts for this device
-    await prisma.alert.updateMany({
-      where: {
-        deviceId: device.id,
-        type: 'DEVICE_DOWN',
-        status: 'ACTIVE',
-      },
-      data: {
-        status: 'RESOLVED',
-        resolvedAt: new Date(),
-      },
+    const { downResolved, childrenResolved } = await resolveDeviceDownAlert(prisma, device.id);
+
+    await createAlertIfNotDuplicate(prisma, {
+      type: 'DEVICE_UP',
+      deviceId: device.id,
+      message: `Device ${device.name} (${device.ip}) has recovered and is now reachable.`,
+      severity: 'MEDIUM',
+      status: 'RESOLVED',
+      resolvedAt: new Date(),
+      dedupKey: dedupKeyUp(device.id),
+      correlationKey: correlationKeyFor(device.id),
     });
 
-    await prisma.alert.create({
-      data: {
-        type: 'DEVICE_UP',
-        deviceId: device.id,
-        message: `Device ${device.name} (${device.ip}) has recovered and is now reachable.`,
-        severity: 'MEDIUM',
-        status: 'RESOLVED',
-        resolvedAt: new Date(),
-      },
-    });
-
-    log('INFO', `Device recovered: ${device.name} (${device.ip})`);
+    log('INFO', `Device recovered: ${device.name} (${device.ip}) (${downResolved} DEVICE_DOWN resolved, ${childrenResolved} children resolved)`);
 
     await sendNotificationWithCooldown(device.id, device.name, 'DEVICE_UP', 'MEDIUM',
       `${device.name} (${device.ip}) kembali online dan dapat dijangkau.`);
@@ -428,10 +415,6 @@ async function runPollCycle(): Promise<void> {
 
     const elapsed = Date.now() - cycleStart;
     log('INFO', `Poll cycle [${cycleId}] completed in ${elapsed}ms`);
-
-    // Record cycle for health tracking (keep last 20)
-    cycleHistory.push({ cycleId, startedAt: cycleStart, durationMs: elapsed });
-    if (cycleHistory.length > 20) cycleHistory.shift();
   } catch (err) {
     log('ERROR', 'Poll cycle failed', err instanceof Error ? err.message : err);
   } finally {

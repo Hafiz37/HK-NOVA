@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, Fragment } from "react";
 import { useRealtimeMonitoring } from "@/hooks/useSSE";
 
 interface AlertItem {
@@ -12,6 +12,10 @@ interface AlertItem {
   createdAt: string;
   acknowledgedAt: string | null;
   resolvedAt: string | null;
+  dedupKey?: string | null;
+  correlationKey?: string | null;
+  parentId?: string | null;
+  childAlerts?: AlertItem[];
   device: {
     id: string; name: string; ip: string; type: string; location: string | null;
   } | null;
@@ -217,9 +221,19 @@ export default function AlertsPage() {
                   </td>
                 </tr>
               ) : filtered.map(alert => (
-                <tr key={alert.id} className="hover:bg-slate-800/40 transition-colors">
+                <Fragment key={alert.id}>
+                <tr className="hover:bg-slate-800/40 transition-colors">
                   <td className="px-5 py-4"><SevBadge severity={alert.severity} /></td>
-                  <td className="px-5 py-4 font-semibold text-slate-200 whitespace-nowrap">{alert.type}</td>
+                  <td className="px-5 py-4 font-semibold text-slate-200 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-2">
+                      {alert.type}
+                      {(alert.childAlerts && alert.childAlerts.length > 0) && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+                          ⊞ Induk · {alert.childAlerts.length}
+                        </span>
+                      )}
+                    </span>
+                  </td>
                   <td className="px-5 py-4">
                     {alert.device ? (
                       <div>
@@ -258,6 +272,39 @@ export default function AlertsPage() {
                     </div>
                   </td>
                 </tr>
+                {(alert.childAlerts ?? []).map(child => (
+                  <tr key={child.id} className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                    <td className="px-5 py-3 pl-10">
+                      <span className="text-slate-600 mr-2">└─</span>
+                      <SevBadge severity={child.severity} />
+                    </td>
+                    <td className="px-5 py-3 text-xs text-slate-400 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-2">
+                        {child.type}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+                          ⛓ Terkait
+                        </span>
+                      </span>
+                    </td>
+                    <td className="px-5 py-3">
+                      {child.device ? (
+                        <div>
+                          <p className="font-medium text-slate-300">{child.device.name}</p>
+                          <p className="text-xs font-mono text-slate-500">{child.device.ip}</p>
+                        </div>
+                      ) : <span className="text-slate-500 text-xs">System</span>}
+                    </td>
+                    <td className="px-5 py-3 text-slate-400 max-w-xs">
+                      <p className="truncate text-xs" title={child.message}>{child.message}</p>
+                    </td>
+                    <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
+                      {new Date(child.createdAt).toLocaleString("id-ID")}
+                    </td>
+                    <td className="px-5 py-3"><StatusBadge status={child.status} /></td>
+                    <td className="px-5 py-3" />
+                  </tr>
+                ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -332,6 +379,29 @@ export default function AlertsPage() {
                   </div>
                 )}
               </div>
+
+              {/* Korelasi / Child alerts */}
+              {detail.childAlerts && detail.childAlerts.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-indigo-400 uppercase mb-2">
+                    ⛓ Terkait ({detail.childAlerts.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {detail.childAlerts.map(child => (
+                      <div key={child.id} className="flex items-start gap-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                        <SevBadge severity={child.severity} />
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-200">{child.type}</p>
+                          <p className="text-xs text-slate-400 leading-relaxed mt-0.5">{child.message}</p>
+                          <p className="text-[10px] text-slate-600 mt-0.5">
+                            {new Date(child.createdAt).toLocaleString("id-ID")} · {child.status}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-800">

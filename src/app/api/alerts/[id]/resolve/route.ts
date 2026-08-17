@@ -49,6 +49,18 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
       },
     });
 
+    // Resolve child alerts (korelasi) bila induk di-resolve manual
+    const childrenResolved = await prisma.alert.updateMany({
+      where: {
+        parentId: id,
+        status: { in: ['ACTIVE', 'ACKNOWLEDGED'] },
+      },
+      data: {
+        status: 'RESOLVED',
+        resolvedAt: new Date(),
+      },
+    });
+
     await logAudit({
       action: 'RESOLVE',
       entity: 'Alert',
@@ -59,6 +71,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
         after: {
           status: updated.status,
           resolvedAt: updated.resolvedAt,
+          childrenResolved: childrenResolved.count,
         },
         fieldsChanged: ['status', 'resolvedAt'],
       },

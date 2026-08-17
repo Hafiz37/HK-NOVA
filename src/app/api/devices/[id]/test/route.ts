@@ -23,7 +23,15 @@ async function testIcmp(ip: string): Promise<{ ok: boolean; latencyMs: number | 
   };
 
   return new Promise((resolve) => {
-    const session = ping.createSession({ timeout: DEFAULT_PING_TIMEOUT, retries: 1 });
+    let session: ReturnType<typeof ping.createSession>;
+    try {
+      session = ping.createSession({ timeout: DEFAULT_PING_TIMEOUT, retries: 1 });
+    } catch (err) {
+      // Raw ICMP memerlukan CAP_NET_RAW / root; fallback tidak gagalkan endpoint
+      const msg = err instanceof Error ? err.message : 'Gagal membuat ICMP session';
+      resolve({ ok: false, latencyMs: null, message: msg });
+      return;
+    }
     const sentAt = Date.now();
     session.pingHost(ip, (err, _target, _sent, rcvd) => {
       try {

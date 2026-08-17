@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from "@/lib/auth-context";
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const [currentTime, setCurrentTime] = useState("");
-  const { user, loading, refresh } = useAuth();
+  const { user, loading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -85,34 +85,14 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               🖥️ Devices
             </Link>
             <Link
-              href="/dashboard/provisioning"
+              href="/dashboard/baseline"
               className={`block px-3 py-2 text-sm rounded-md transition-colors ${
-                pathname.startsWith("/dashboard/provisioning")
+                pathname.startsWith("/dashboard/baseline")
                   ? "bg-slate-800 text-white"
                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
               }`}
             >
-              ⚙️ Provisioning
-            </Link>
-            <Link
-              href="/dashboard/backups"
-              className={`block px-3 py-2 text-sm rounded-md transition-colors ${
-                pathname.startsWith("/dashboard/backups")
-                  ? "bg-slate-800 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`}
-            >
-              💾 Backups
-            </Link>
-            <Link
-              href="/dashboard/anomalies"
-              className={`block px-3 py-2 text-sm rounded-md transition-colors ${
-                pathname.startsWith("/dashboard/anomalies")
-                  ? "bg-slate-800 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`}
-            >
-              🔍 Anomalies
+              📊 Baseline
             </Link>
             <Link
               href="/dashboard/alerts"
@@ -123,6 +103,16 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               }`}
             >
               🔔 Alerts
+            </Link>
+            <Link
+              href="/dashboard/maintenance"
+              className={`block px-3 py-2 text-sm rounded-md transition-colors ${
+                pathname.startsWith("/dashboard/maintenance")
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              🛠️ Maintenance
             </Link>
             {user?.role === "ADMIN" && (
               <Link

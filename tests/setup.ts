@@ -19,6 +19,9 @@ afterAll(async () => {
 // Helper to clean test data
 export async function cleanTestData() {
   // Delete in order of foreign key dependencies
+  await prisma.maintenanceWindow.deleteMany({
+    where: { OR: [{ deviceId: { startsWith: 'test-' } }, { deviceId: null }] },
+  });
   await prisma.metric.deleteMany({ where: { deviceId: { startsWith: 'test-' } } });
   await prisma.alert.deleteMany({ where: { deviceId: { startsWith: 'test-' } } });
   await prisma.backup.deleteMany({ where: { deviceId: { startsWith: 'test-' } } });
@@ -26,10 +29,20 @@ export async function cleanTestData() {
   await prisma.anomaly.deleteMany({ where: { deviceId: { startsWith: 'test-' } } });
   await prisma.credential.deleteMany({ where: { deviceId: { startsWith: 'test-' } } });
   await prisma.device.deleteMany({ where: { id: { startsWith: 'test-' } } });
+  // Safety net: hapus leftover non-demo di rentang IP test (10.200.x.y) dari run yang terputus
+  await prisma.device.deleteMany({ where: { isDemo: false, ip: { startsWith: '10.200.' } } });
+}
+
+// Helper to generate unique test IP (10.200.x.y) to avoid conflicts with demo devices
+let deviceIpGlobalCounter = 0;
+export function uniqueTestIp(): string {
+  deviceIpGlobalCounter++;
+  const octet3 = Math.floor(deviceIpGlobalCounter / 255) % 255;
+  const octet4 = deviceIpGlobalCounter % 255;
+  return `10.200.${octet3}.${octet4}`;
 }
 
 // Helper to create test device with unique IP to avoid conflicts
-let deviceIpGlobalCounter = 0;
 export async function createTestDevice(overrides: Partial<{
   name: string;
   ip: string;
@@ -39,17 +52,14 @@ export async function createTestDevice(overrides: Partial<{
 }> = {}) {
   // Retry logic for unique constraint errors
   for (let attempt = 0; attempt < 5; attempt++) {
-    deviceIpGlobalCounter++;
-    const uniqueId = `${Date.now()}-${deviceIpGlobalCounter}-${Math.random().toString(36).slice(2, 8)}`;
-    // Use 10.200.x.x range to avoid conflicts with demo devices (10.10.x.x)
-    const octet3 = Math.floor(deviceIpGlobalCounter / 255) % 255;
-    const octet4 = deviceIpGlobalCounter % 255;
+    const ip = overrides.ip ?? uniqueTestIp();
+    const uniqueId = `${Date.now()}-${deviceIpGlobalCounter}-${attempt}-${Math.random().toString(36).slice(2, 8)}`;
     try {
       const device = await prisma.device.create({
         data: {
           id: `test-${uniqueId}`,
           name: overrides.name ?? `Test Device ${uniqueId}`,
-          ip: overrides.ip ?? `10.200.${octet3}.${octet4}`,
+          ip,
           type: overrides.type ?? 'ROUTER',
           vendor: overrides.vendor ?? 'TestVendor',
           location: overrides.location ?? 'TestLocation',
@@ -60,7 +70,10 @@ export async function createTestDevice(overrides: Partial<{
     } catch (error: unknown) {
       const prismaError = error as { code?: string; meta?: { target?: string } };
       if (prismaError.code === 'P2002' && prismaError.meta?.target === 'Device_ip_key') {
-        // IP collision, retry with next counter value
+        // IP collision, retry with next counter value (unless user explicitly overrode the IP)
+        if (overrides.ip) {
+          throw error;
+        }
         continue;
       }
       throw error;

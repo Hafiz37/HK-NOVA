@@ -18,6 +18,10 @@ interface Device {
   latestPacketLoss: number | null;
   lastCheck: string | null;
   activeAlerts: Array<{ id: string; type: string; severity: string; message: string }>;
+  cpuThresholdOverride?: number | null;
+  memThresholdOverride?: number | null;
+  cpuResolveThresholdOverride?: number | null;
+  memResolveThresholdOverride?: number | null;
 }
 
 const DEVICE_TYPES = ["ROUTER", "SWITCH", "OLT", "ONT", "FIREWALL", "SERVER", "OTHER"];
@@ -27,6 +31,7 @@ const EMPTY_FORM = {
   name: "", ip: "", type: "ROUTER", vendor: "", model: "",
   location: "", description: "", snmpCommunity: "public", snmpPort: "161",
   sshPort: "22", sshUsername: "", sshPassword: "",
+  cpuThreshold: "", memThreshold: "", cpuResolveThreshold: "", memResolveThreshold: "",
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -165,7 +170,12 @@ export default function DevicesPage() {
     setEditDevice(d);
     setForm({ name: d.name, ip: d.ip, type: d.type, vendor: d.vendor ?? "",
       model: d.model ?? "", location: d.location ?? "", description: d.description ?? "",
-      snmpCommunity: "public", snmpPort: "161", sshPort: "22", sshUsername: "", sshPassword: "" });
+      snmpCommunity: "public", snmpPort: "161", sshPort: "22", sshUsername: "", sshPassword: "",
+      cpuThreshold: d.cpuThresholdOverride != null ? String(d.cpuThresholdOverride) : "",
+      memThreshold: d.memThresholdOverride != null ? String(d.memThresholdOverride) : "",
+      cpuResolveThreshold: d.cpuResolveThresholdOverride != null ? String(d.cpuResolveThresholdOverride) : "",
+      memResolveThreshold: d.memResolveThresholdOverride != null ? String(d.memResolveThresholdOverride) : "",
+    });
   };
   const closeAll = () => {
     setIsAddOpen(false);
@@ -217,6 +227,10 @@ export default function DevicesPage() {
           name: form.name, ip: form.ip, type: form.type,
           vendor: form.vendor || null, model: form.model || null,
           location: form.location || null, description: form.description || null,
+          cpuThresholdOverride: form.cpuThreshold || null,
+          memThresholdOverride: form.memThreshold || null,
+          cpuResolveThresholdOverride: form.cpuResolveThreshold || null,
+          memResolveThresholdOverride: form.memResolveThreshold || null,
           credentials: form.snmpCommunity ? {
             snmpCommunity: form.snmpCommunity,
             snmpPort: Number(form.snmpPort) || 161,
@@ -508,6 +522,45 @@ export default function DevicesPage() {
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none" />
               </div>
 
+              {/* Threshold Override (per-device) */}
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                    Override Ambang Batas (opsional)
+                  </p>
+                  <span className="text-[11px] text-slate-500">Kosongkan = pakai nilai global</span>
+                </div>
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">CPU Alert %</label>
+                    <input type="number" min={1} max={100} placeholder="85" title="Batas alert CPU"
+                      value={form.cpuThreshold} onChange={setField("cpuThreshold")}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">CPU Resolve %</label>
+                    <input type="number" min={1} max={100} placeholder="80" title="Batas resolve (hysteresis) CPU"
+                      value={form.cpuResolveThreshold} onChange={setField("cpuResolveThreshold")}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Mem Alert %</label>
+                    <input type="number" min={1} max={100} placeholder="90" title="Batas alert memory"
+                      value={form.memThreshold} onChange={setField("memThreshold")}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Mem Resolve %</label>
+                    <input type="number" min={1} max={100} placeholder="85" title="Batas resolve (hysteresis) memory"
+                      value={form.memResolveThreshold} onChange={setField("memResolveThreshold")}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-2">
+                  Global: CPU 85% / resolve 80%, Mem 90% / resolve 85%. Jika resolve tidak diisi, otomatis alert − 5%.
+                </p>
+              </div>
+
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
                 <button type="button" onClick={closeAll}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium rounded-xl transition-colors">
@@ -569,6 +622,23 @@ export default function DevicesPage() {
                 <p className="text-xs text-slate-400 bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
                   {viewDevice.description}
                 </p>
+              )}
+
+              {(
+                viewDevice.cpuThresholdOverride != null ||
+                viewDevice.memThresholdOverride != null ||
+                viewDevice.cpuResolveThresholdOverride != null ||
+                viewDevice.memResolveThresholdOverride != null
+              ) && (
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800/60">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Threshold Override</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <p className="text-slate-500">CPU Alert:<span className="text-white font-mono ml-1">{viewDevice.cpuThresholdOverride != null ? `${viewDevice.cpuThresholdOverride}%` : "—"}</span></p>
+                    <p className="text-slate-500">CPU Resolve:<span className="text-white font-mono ml-1">{viewDevice.cpuResolveThresholdOverride != null ? `${viewDevice.cpuResolveThresholdOverride}%` : "—"}</span></p>
+                    <p className="text-slate-500">Mem Alert:<span className="text-white font-mono ml-1">{viewDevice.memThresholdOverride != null ? `${viewDevice.memThresholdOverride}%` : "—"}</span></p>
+                    <p className="text-slate-500">Mem Resolve:<span className="text-white font-mono ml-1">{viewDevice.memResolveThresholdOverride != null ? `${viewDevice.memResolveThresholdOverride}%` : "—"}</span></p>
+                  </div>
+                </div>
               )}
 
               {viewDevice.activeAlerts.length > 0 && (

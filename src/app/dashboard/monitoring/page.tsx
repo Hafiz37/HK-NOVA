@@ -9,8 +9,12 @@ import {
   ResponsiveContainer,
   Area,
   AreaChart,
+  ReferenceLine,
+  ReferenceArea,
 } from 'recharts';
 import { useRealtimeMonitoring, SSEStatus } from '@/hooks/useSSE';
+import { useBaseline } from '@/hooks/useBaseline';
+import BaselineBadge from '@/components/dashboard/baseline-badge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DeviceRow {
@@ -128,6 +132,10 @@ export default function MonitoringPage() {
   const [loading, setLoading] = useState(true);
   const [ackLoading, setAckLoading] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState('');
+
+  // Baseline historis (24 jam) untuk metrik ICMP
+  const { data: baselineLatency } = useBaseline(selectedDevice || null, 'latency', timeRange);
+  const { data: baselineLoss } = useBaseline(selectedDevice || null, 'packetLoss', timeRange);
 
   const handleMonitoringUpdate = useCallback((data: unknown) => {
     const d = data as MonitoringUpdate;
@@ -275,7 +283,19 @@ export default function MonitoringPage() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* Latency Chart */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">📈 Latency (ms)</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-white">📈 Latency (ms)</h3>
+              {baselineLatency && (
+                <div className="flex items-center gap-2">
+                  <BaselineBadge level={baselineLatency.deviation.level} />
+                  {!baselineLatency.insufficientData && (
+                    <span className="text-[11px] text-slate-500">
+                      Baseline: {baselineLatency.baseline.mean.toFixed(1)} ms ± {baselineLatency.baseline.stddev.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                 <defs>
@@ -295,6 +315,23 @@ export default function MonitoringPage() {
                     typeof v === 'number' ? [`${v.toFixed(2)} ms`, 'Latency'] : ['—', 'Latency']
                   }
                 />
+                {baselineLatency && !baselineLatency.insufficientData && (
+                  <>
+                    <ReferenceArea
+                      y1={baselineLatency.baseline.mean - baselineLatency.baseline.stddev}
+                      y2={baselineLatency.baseline.mean + baselineLatency.baseline.stddev}
+                      fill="#3b82f6"
+                      fillOpacity={0.08}
+                    />
+                    <ReferenceLine
+                      y={baselineLatency.baseline.mean}
+                      stroke="#818cf8"
+                      strokeDasharray="6 4"
+                      strokeWidth={1.5}
+                      label={{ value: 'baseline', fill: '#818cf8', fontSize: 10, position: 'insideTopRight' }}
+                    />
+                  </>
+                )}
                 <Area type="monotone" dataKey="latency" stroke="#3b82f6" strokeWidth={2} fill="url(#latencyGrad)" dot={false} connectNulls={false} />
               </AreaChart>
             </ResponsiveContainer>
@@ -302,7 +339,19 @@ export default function MonitoringPage() {
 
           {/* Packet Loss Chart */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">📉 Packet Loss (%)</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-white">📉 Packet Loss (%)</h3>
+              {baselineLoss && (
+                <div className="flex items-center gap-2">
+                  <BaselineBadge level={baselineLoss.deviation.level} />
+                  {!baselineLoss.insufficientData && (
+                    <span className="text-[11px] text-slate-500">
+                      Baseline: {baselineLoss.baseline.mean.toFixed(1)}% ± {baselineLoss.baseline.stddev.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                 <defs>
@@ -322,6 +371,23 @@ export default function MonitoringPage() {
                     typeof v === 'number' ? [`${v.toFixed(1)}%`, 'Packet Loss'] : ['—', 'Packet Loss']
                   }
                 />
+                {baselineLoss && !baselineLoss.insufficientData && (
+                  <>
+                    <ReferenceArea
+                      y1={baselineLoss.baseline.mean - baselineLoss.baseline.stddev}
+                      y2={baselineLoss.baseline.mean + baselineLoss.baseline.stddev}
+                      fill="#ef4444"
+                      fillOpacity={0.08}
+                    />
+                    <ReferenceLine
+                      y={baselineLoss.baseline.mean}
+                      stroke="#f87171"
+                      strokeDasharray="6 4"
+                      strokeWidth={1.5}
+                      label={{ value: 'baseline', fill: '#f87171', fontSize: 10, position: 'insideTopRight' }}
+                    />
+                  </>
+                )}
                 <Area type="monotone" dataKey="packetLoss" stroke="#ef4444" strokeWidth={2} fill="url(#lossGrad)" dot={false} connectNulls={false} />
               </AreaChart>
             </ResponsiveContainer>

@@ -44,3 +44,9 @@ export const SNMP_HIGH_MEM_THRESHOLD = Number(process.env.SNMP_HIGH_MEM_THRESHOL
 // Hysteresis: resolve thresholds (5% below alert thresholds)
 export const SNMP_HIGH_CPU_RESOLVE_THRESHOLD = Number(process.env.SNMP_HIGH_CPU_RESOLVE_THRESHOLD ?? '80');
 export const SNMP_HIGH_MEM_RESOLVE_THRESHOLD = Number(process.env.SNMP_HIGH_MEM_RESOLVE_THRESHOLD ?? '85');
+
+// Historical baseline constants
+export const BASELINE_WINDOW_HOURS = Number(process.env.BASELINE_WINDOW_HOURS ?? '24');
+export const BASELINE_MIN_SAMPLES = 3;
+export const BASELINE_WARN_SIGMA = 2;
+export const BASELINE_CRIT_SIGMA = 3;

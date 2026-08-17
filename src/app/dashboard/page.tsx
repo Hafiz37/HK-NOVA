@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import TopListCard, { type TopItem } from "@/components/dashboard/top-list-card";
 
 interface WorkerHealth {
   expectedCycles: number;
@@ -35,6 +36,13 @@ interface SummaryData {
   lastUpdated: string;
 }
 
+interface TopData {
+  topAlerts: TopItem[];
+  topLatency: TopItem[];
+  topCpu: TopItem[];
+  topMem: TopItem[];
+}
+
 const WORKER_ICONS: Record<string, string> = {
   "icmp-worker": "📡",
   "snmp-worker": "📊",
@@ -47,8 +55,10 @@ export default function DashboardPage() {
 
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [workers, setWorkers] = useState<WorkerStatus[]>([]);
+  const [top, setTop] = useState<TopData | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingWorkers, setLoadingWorkers] = useState(true);
+  const [loadingTop, setLoadingTop] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const fetchSummary = async () => {
@@ -87,8 +97,26 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchTop = async () => {
+    try {
+      const res = await fetch("/api/monitoring/top?n=5");
+      if (!res.ok) return;
+      const d = await res.json();
+      setTop({
+        topAlerts: d.topAlerts ?? [],
+        topLatency: d.topLatency ?? [],
+        topCpu: d.topCpu ?? [],
+        topMem: d.topMem ?? [],
+      });
+    } catch (err) {
+      console.error("Failed to fetch top-N:", err);
+    } finally {
+      setLoadingTop(false);
+    }
+  };
+
   const fetchAll = async () => {
-    await Promise.all([fetchSummary(), fetchWorkers()]);
+    await Promise.all([fetchSummary(), fetchWorkers(), fetchTop()]);
     setLastRefresh(new Date());
   };
 
@@ -330,6 +358,53 @@ export default function DashboardPage() {
               );
             })()}
           </div>
+        </div>
+      </div>
+
+      {/* ── Top-N Widgets ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+            🏆 Top-N (5 besar)
+          </h3>
+          <span className="text-[11px] text-slate-600">berdasarkan data terbaru</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <TopListCard
+            title="Alert Terbanyak"
+            icon="🔔"
+            accent="rose"
+            items={top?.topAlerts ?? []}
+            loading={loadingTop}
+            formatValue={(v) => `${v} alert`}
+          />
+          <TopListCard
+            title="Latency Tertinggi"
+            icon="⚡"
+            accent="blue"
+            unit="ms"
+            items={top?.topLatency ?? []}
+            loading={loadingTop}
+            formatValue={(v) => `${Math.round(v)} ms`}
+          />
+          <TopListCard
+            title="CPU Utilization"
+            icon="🧠"
+            accent="orange"
+            unit="%"
+            items={top?.topCpu ?? []}
+            loading={loadingTop}
+            formatValue={(v) => `${v.toFixed(1)}%`}
+          />
+          <TopListCard
+            title="Memory Utilization"
+            icon="💾"
+            accent="cyan"
+            unit="%"
+            items={top?.topMem ?? []}
+            loading={loadingTop}
+            formatValue={(v) => `${v.toFixed(1)}%`}
+          />
         </div>
       </div>
 

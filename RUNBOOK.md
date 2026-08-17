@@ -16,8 +16,6 @@ pnpm dev:workers
 pnpm worker:icmp       # ICMP poller for real devices (isDemo: false)
 pnpm demo:generator    # Synthetic metrics for demo devices (isDemo: true)
 pnpm worker:snmp       # SNMP poller for real devices
-pnpm worker:backup     # Config backup scheduler
-pnpm worker:anomaly    # Anomaly detector
 pnpm worker:retention  # Data retention cleanup
 ```
 

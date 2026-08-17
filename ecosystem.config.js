@@ -41,32 +41,6 @@ module.exports = {
       },
     },
     {
-      name: 'hk-nova-backup-worker',
-      script: 'tsx',
-      args: 'src/workers/backup-scheduler.ts',
-      cwd: './',
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '500M',
-      env: {
-        NODE_ENV: 'production',
-      },
-    },
-    {
-      name: 'hk-nova-anomaly-worker',
-      script: 'tsx',
-      args: 'src/workers/anomaly-detector.ts',
-      cwd: './',
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '500M',
-      env: {
-        NODE_ENV: 'production',
-      },
-    },
-    {
       name: 'hk-nova-demo-generator',
       script: 'tsx',
       args: 'src/workers/demo-generator.ts',

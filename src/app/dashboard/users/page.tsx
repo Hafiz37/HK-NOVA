@@ -13,12 +13,6 @@ interface UserItem {
   lastLoginAt: string | null;
 }
 
-interface CurrentUser {
-  id: string;
-  username: string;
-  role: string;
-}
-
 const ROLE_BADGES: Record<string, string> = {
   ADMIN: "text-purple-400 bg-purple-500/10 border-purple-500/20",
   OPERATOR: "text-blue-400 bg-blue-500/10 border-blue-500/20",
@@ -26,7 +20,7 @@ const ROLE_BADGES: Record<string, string> = {
 };
 
 export default function UsersPage() {
-  const { user, isAdmin, loading: authLoading } = useAuth();
+  const { user } = useAuth();
 
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);

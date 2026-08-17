@@ -105,17 +105,24 @@ model Device {
   status      DeviceStatus @default(UNKNOWN)
   description String?      @db.Text
   isDemo      Boolean      @default(false)
-  
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  deletedAt   DateTime?
 
-  credentials Credential?
-  metrics     Metric[]
-  backups     Backup[]
-  provisioning ProvisioningLog[]
-  anomalies   Anomaly[]
-  alerts      Alert[]
+  // Per-device threshold overrides (null = pakai nilai global dari constants.ts)
+  cpuThresholdOverride        Float?
+  memThresholdOverride        Float?
+  cpuResolveThresholdOverride Float?
+  memResolveThresholdOverride Float?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  credentials       Credential?
+  metrics           Metric[]
+  backups           Backup[]
+  provisioning      ProvisioningLog[]
+  anomalies         Anomaly[]
+  alerts            Alert[]
+  MaintenanceWindow MaintenanceWindow[]
 
   @@index([status])
   @@index([type])
@@ -124,144 +131,173 @@ model Device {
 }
 
 model Credential {
-  id           String   @id @default(cuid())
-  deviceId     String   @unique
-  device       Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  
-  snmpVersion  String?
+  id       String @id @default(cuid())
+  deviceId String @unique
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  snmpVersion   String?
   snmpCommunity String? @db.Text
-  snmpUser     String?
-  snmpAuthPass String?  @db.Text
-  snmpPrivPass String?  @db.Text
-  snmpPort     Int?     @default(161)
-  
-  sshUsername  String?
-  sshPassword  String?  @db.Text
-  sshPort      Int?     @default(22)
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  snmpUser      String?
+  snmpAuthPass  String? @db.Text
+  snmpPrivPass  String? @db.Text
+  snmpPort      Int?    @default(161)
+
+  sshUsername String?
+  sshPassword String? @db.Text
+  sshPort     Int?    @default(22)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Metric {
-  id         String      @id @default(cuid())
-  deviceId   String
-  device     Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  
-  timestamp  DateTime    @default(now())
+  id       String @id @default(cuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  timestamp  DateTime     @default(now())
   metricType String
   source     MetricSource @default(REAL)
-  
+
   latency    Float?
   packetLoss Float?
-  
-  cpuUtil    Float?
-  memUtil    Float?
-  
+
+  cpuUtil Float?
+  memUtil Float?
+
   interfaceData Json?
-  
+
   @@index([deviceId, timestamp])
   @@index([metricType, timestamp])
   @@index([source])
 }
 
 model Backup {
-  id            String       @id @default(cuid())
-  deviceId      String
-  device        Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  
-  timestamp     DateTime     @default(now())
-  configHash    String
-  configContent String       @db.LongText
-  changeDetected Boolean     @default(true)
-  status        BackupStatus
-  errorMessage  String?      @db.Text
-  
+  id       String @id @default(cuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  timestamp      DateTime     @default(now())
+  configHash     String
+  configContent  String       @db.LongText
+  changeDetected Boolean      @default(true)
+  status         BackupStatus
+  errorMessage   String?      @db.Text
+
   @@index([deviceId, timestamp])
 }
 
 model ProvisioningLog {
-  id          String              @id @default(cuid())
-  deviceId    String
-  device      Device              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  
-  action      ProvisioningAction
-  ontSerial   String?
-  ponPort     String?
-  vlan        Int?
+  id       String @id @default(cuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  action         ProvisioningAction
+  ontSerial      String?
+  ponPort        String?
+  vlan           Int?
   serviceProfile String?
-  
-  command     String              @db.Text
-  response    String?             @db.Text
-  status      ProvisioningStatus
+
+  command      String             @db.Text
+  response     String?            @db.Text
+  status       ProvisioningStatus
   errorMessage String?            @db.Text
-  
-  executedAt  DateTime            @default(now())
-  executedBy  String?
-  
+
+  executedAt DateTime @default(now())
+  executedBy String?
+
   @@index([deviceId, executedAt])
   @@index([ontSerial])
 }
 
 model Anomaly {
-  id           String           @id @default(cuid())
-  deviceId     String
-  device       Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  
+  id       String @id @default(cuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
   metricType   String
-  timestamp    DateTime         @default(now())
+  timestamp    DateTime        @default(now())
   anomalyScore Float
   severity     AnomalySeverity
-  
-  autoResolved Boolean          @default(false)
+
+  autoResolved Boolean   @default(false)
   resolvedAt   DateTime?
-  
+
   @@index([deviceId, timestamp])
   @@index([severity])
 }
 
+model MaintenanceWindow {
+  id       String  @id @default(cuid())
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  name            String
+  startAt         DateTime
+  endAt           DateTime
+  reason          String?
+  suppressedTypes Json? // ["DEVICE_DOWN", "HIGH_UTILIZATION"]
+  isActive        Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([deviceId, startAt])
+  @@index([isActive])
+}
+
 model Alert {
-  id          String        @id @default(cuid())
-  type        AlertType
-  deviceId    String?
-  device      Device?       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  
-  message     String        @db.Text
-  severity    AlertSeverity
-  status      AlertStatus   @default(ACTIVE)
-  
-  createdAt   DateTime      @default(now())
+  id       String    @id @default(cuid())
+  type     AlertType
+  deviceId String?
+  device   Device?   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  message  String        @db.Text
+  severity AlertSeverity
+  status   AlertStatus   @default(ACTIVE)
+
+  // Deduplikasi & korelasi alert
+  dedupKey       String? // fingerprint: icmp:down:{deviceId}, snmp:cpu:{deviceId}, snmp:mem:{deviceId}
+  correlationKey String? // grup korelasi: device:{deviceId}
+  parentId       String?
+  parentAlert    Alert?  @relation("AlertHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  childAlerts    Alert[] @relation("AlertHierarchy")
+
+  createdAt      DateTime  @default(now())
   acknowledgedAt DateTime?
-  resolvedAt  DateTime?
-  
+  resolvedAt     DateTime?
+
   @@index([status, severity])
   @@index([createdAt])
+  @@index([dedupKey])
+  @@index([correlationKey])
+  @@index([parentId])
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   action    String
   entity    String
   entityId  String?
   userId    String?
   details   Json?
   ipAddress String?
-  
+
   createdAt DateTime @default(now())
-  
+
   @@index([entity, entityId])
   @@index([createdAt])
 }
 
 model User {
-  id           String    @id @default(cuid())
-  username     String    @unique
+  id           String   @id @default(cuid())
+  username     String   @unique
   passwordHash String
-  email        String?   @unique
+  email        String?  @unique
   fullName     String?
-  role         UserRole  @default(OPERATOR)
-  
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  lastLoginAt  DateTime?
+  role         UserRole @default(OPERATOR)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
 }

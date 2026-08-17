@@ -4,6 +4,7 @@ import { DeviceType, DeviceStatus, Prisma } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
 import { requireSession } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
+import { normalizeThresholdInput } from '@/lib/thresholds';
 
 /**
  * GET /api/devices?search=...&type=...&status=...&showDemo=true
@@ -58,6 +59,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         status: true,
         description: true,
         isDemo: true,
+        cpuThresholdOverride: true,
+        memThresholdOverride: true,
+        cpuResolveThresholdOverride: true,
+        memResolveThresholdOverride: true,
         createdAt: true,
         updatedAt: true,
         metrics: {
@@ -97,6 +102,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       status: device.status,
       description: device.description,
       isDemo: device.isDemo,
+      cpuThresholdOverride: device.cpuThresholdOverride,
+      memThresholdOverride: device.memThresholdOverride,
+      cpuResolveThresholdOverride: device.cpuResolveThresholdOverride,
+      memResolveThresholdOverride: device.memResolveThresholdOverride,
       createdAt: device.createdAt,
       updatedAt: device.updatedAt,
       latestLatency: device.metrics[0]?.latency ?? null,
@@ -125,7 +134,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     const body = await request.json();
-    const { name, ip, type, vendor, model, location, description, credentials } = body;
+    const {
+      name, ip, type, vendor, model, location, description, credentials,
+      cpuThresholdOverride,
+      memThresholdOverride,
+      cpuResolveThresholdOverride,
+      memResolveThresholdOverride,
+    } = body;
 
     // Basic Validation
     if (!name || typeof name !== 'string' || name.trim() === '') {
@@ -169,6 +184,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         location: location?.trim() || null,
         description: description?.trim() || null,
         status: 'UNKNOWN',
+        cpuThresholdOverride: normalizeThresholdInput(cpuThresholdOverride),
+        memThresholdOverride: normalizeThresholdInput(memThresholdOverride),
+        cpuResolveThresholdOverride: normalizeThresholdInput(cpuResolveThresholdOverride),
+        memResolveThresholdOverride: normalizeThresholdInput(memResolveThresholdOverride),
         ...(credentials
           ? {
               credentials: {
@@ -203,6 +222,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       location: newDevice.location,
       status: newDevice.status,
       description: newDevice.description,
+      cpuThresholdOverride: newDevice.cpuThresholdOverride,
+      memThresholdOverride: newDevice.memThresholdOverride,
+      cpuResolveThresholdOverride: newDevice.cpuResolveThresholdOverride,
+      memResolveThresholdOverride: newDevice.memResolveThresholdOverride,
       createdAt: newDevice.createdAt,
       updatedAt: newDevice.updatedAt,
     };

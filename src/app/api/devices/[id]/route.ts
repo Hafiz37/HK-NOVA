@@ -4,6 +4,7 @@ import { DeviceType, DeviceStatus, UserRole } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
 import { requireSession, requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
+import { normalizeThresholdInput } from '@/lib/thresholds';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -85,7 +86,8 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
   try {
     const { id } = await paramsPromise;
     const body = await request.json();
-    const { name, ip, type, vendor, model, location, status, description, credentials } = body;
+    const { name, ip, type, vendor, model, location, status, description, credentials,
+      cpuThresholdOverride, memThresholdOverride, cpuResolveThresholdOverride, memResolveThresholdOverride } = body;
 
     const existing = await prisma.device.findFirst({
       where: { id, deletedAt: null },
@@ -105,6 +107,10 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
       location: existing.location,
       status: existing.status,
       description: existing.description,
+      cpuThresholdOverride: existing.cpuThresholdOverride,
+      memThresholdOverride: existing.memThresholdOverride,
+      cpuResolveThresholdOverride: existing.cpuResolveThresholdOverride,
+      memResolveThresholdOverride: existing.memResolveThresholdOverride,
     };
 
     if (ip && ip !== existing.ip) {
@@ -127,6 +133,10 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
         ...(location !== undefined ? { location: location ? location.trim() : null } : {}),
         ...(status && Object.values(DeviceStatus).includes(status) ? { status: status as DeviceStatus } : {}),
         ...(description !== undefined ? { description: description ? description.trim() : null } : {}),
+        ...(cpuThresholdOverride !== undefined ? { cpuThresholdOverride: normalizeThresholdInput(cpuThresholdOverride) } : {}),
+        ...(memThresholdOverride !== undefined ? { memThresholdOverride: normalizeThresholdInput(memThresholdOverride) } : {}),
+        ...(cpuResolveThresholdOverride !== undefined ? { cpuResolveThresholdOverride: normalizeThresholdInput(cpuResolveThresholdOverride) } : {}),
+        ...(memResolveThresholdOverride !== undefined ? { memResolveThresholdOverride: normalizeThresholdInput(memResolveThresholdOverride) } : {}),
         ...(credentials
           ? {
               credentials: {
@@ -172,6 +182,10 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
       location: updated.location,
       status: updated.status,
       description: updated.description,
+      cpuThresholdOverride: updated.cpuThresholdOverride,
+      memThresholdOverride: updated.memThresholdOverride,
+      cpuResolveThresholdOverride: updated.cpuResolveThresholdOverride,
+      memResolveThresholdOverride: updated.memResolveThresholdOverride,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     };

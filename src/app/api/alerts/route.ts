@@ -34,17 +34,25 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const [alerts, total] = await Promise.all([
       prisma.alert.findMany({
-        where,
+        where: { ...where, parentId: null },
         include: {
           device: {
             select: { id: true, name: true, ip: true, type: true, location: true },
+          },
+          childAlerts: {
+            include: {
+              device: {
+                select: { id: true, name: true, ip: true, type: true, location: true },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
           },
         },
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
-      prisma.alert.count({ where }),
+      prisma.alert.count({ where: { ...where, parentId: null } }),
     ]);
 
     return NextResponse.json({

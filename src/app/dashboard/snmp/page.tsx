@@ -4,8 +4,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Area, AreaChart, BarChart, Bar, Legend, LineChart, Line,
+  ReferenceLine, ReferenceArea,
 } from 'recharts';
 import { useRealtimeSnmp, SSEStatus } from '@/hooks/useSSE';
+import { useBaseline } from '@/hooks/useBaseline';
+import BaselineBadge from '@/components/dashboard/baseline-badge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DeviceSnmp {
@@ -174,6 +177,10 @@ export default function SnmpMonitoringPage() {
   const [lastRefresh, setLastRefresh]     = useState('');
   const [selectedInterface, setSelectedInterface] = useState<number | null>(null);
   const [bandwidthSeries, setBandwidthSeries] = useState<BandwidthTimeSeries[]>([]);
+
+  // Baseline historis (24 jam) untuk metrik SNMP
+  const { data: baselineCpu } = useBaseline(selectedDevice || null, 'cpu', timeRange);
+  const { data: baselineMem } = useBaseline(selectedDevice || null, 'mem', timeRange);
 
   const handleSnmpUpdate = useCallback((data: unknown) => {
     setSummary(data as SnmpSummary);
@@ -373,7 +380,19 @@ export default function SnmpMonitoringPage() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* CPU Chart */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">⚡ CPU Utilization (%)</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-white">⚡ CPU Utilization (%)</h3>
+              {baselineCpu && (
+                <div className="flex items-center gap-2">
+                  <BaselineBadge level={baselineCpu.deviation.level} />
+                  {!baselineCpu.insufficientData && (
+                    <span className="text-[11px] text-slate-500">
+                      Baseline: {baselineCpu.baseline.mean.toFixed(1)}% ± {baselineCpu.baseline.stddev.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                 <defs>
@@ -393,6 +412,23 @@ export default function SnmpMonitoringPage() {
                     typeof v === 'number' ? [`${v.toFixed(1)}%`, 'CPU'] : ['—', 'CPU']
                   }
                 />
+                {baselineCpu && !baselineCpu.insufficientData && (
+                  <>
+                    <ReferenceArea
+                      y1={baselineCpu.baseline.mean - baselineCpu.baseline.stddev}
+                      y2={baselineCpu.baseline.mean + baselineCpu.baseline.stddev}
+                      fill="#06b6d4"
+                      fillOpacity={0.08}
+                    />
+                    <ReferenceLine
+                      y={baselineCpu.baseline.mean}
+                      stroke="#67e8f9"
+                      strokeDasharray="6 4"
+                      strokeWidth={1.5}
+                      label={{ value: 'baseline', fill: '#67e8f9', fontSize: 10, position: 'insideTopRight' }}
+                    />
+                  </>
+                )}
                 <Area type="monotone" dataKey="cpu" stroke="#06b6d4" strokeWidth={2}
                   fill="url(#cpuGrad)" dot={false} connectNulls={false} />
               </AreaChart>
@@ -401,7 +437,19 @@ export default function SnmpMonitoringPage() {
 
           {/* Memory Chart */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">🧠 Memory Utilization (%)</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-white">🧠 Memory Utilization (%)</h3>
+              {baselineMem && (
+                <div className="flex items-center gap-2">
+                  <BaselineBadge level={baselineMem.deviation.level} />
+                  {!baselineMem.insufficientData && (
+                    <span className="text-[11px] text-slate-500">
+                      Baseline: {baselineMem.baseline.mean.toFixed(1)}% ± {baselineMem.baseline.stddev.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                 <defs>
@@ -421,6 +469,23 @@ export default function SnmpMonitoringPage() {
                     typeof v === 'number' ? [`${v.toFixed(1)}%`, 'Memory'] : ['—', 'Memory']
                   }
                 />
+                {baselineMem && !baselineMem.insufficientData && (
+                  <>
+                    <ReferenceArea
+                      y1={baselineMem.baseline.mean - baselineMem.baseline.stddev}
+                      y2={baselineMem.baseline.mean + baselineMem.baseline.stddev}
+                      fill="#a855f7"
+                      fillOpacity={0.08}
+                    />
+                    <ReferenceLine
+                      y={baselineMem.baseline.mean}
+                      stroke="#d8b4fe"
+                      strokeDasharray="6 4"
+                      strokeWidth={1.5}
+                      label={{ value: 'baseline', fill: '#d8b4fe', fontSize: 10, position: 'insideTopRight' }}
+                    />
+                  </>
+                )}
                 <Area type="monotone" dataKey="memory" stroke="#a855f7" strokeWidth={2}
                   fill="url(#memGrad)" dot={false} connectNulls={false} />
               </AreaChart>

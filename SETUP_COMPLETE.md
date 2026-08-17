@@ -140,8 +140,8 @@ hk-nova/
 - ✅ `db:reset` - Reset & reseed DB
 - ✅ `worker:icmp` - ICMP worker
 - ✅ `worker:snmp` - SNMP worker
-- ✅ `worker:backup` - Backup worker
-- ✅ `worker:anomaly` - Anomaly worker
+- ⏳ `worker:backup` - Backup worker (Phase 3 — belum diimplementasi)
+- ⏳ `worker:anomaly` - Anomaly worker (Phase 4 — belum diimplementasi)
 - ✅ `pm2:*` - PM2 commands
 
 **OLT Templates:**
