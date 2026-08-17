@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   XAxis,
   YAxis,
@@ -10,6 +10,7 @@ import {
   Area,
   AreaChart,
 } from 'recharts';
+import { useRealtimeMonitoring, SSEStatus } from '@/hooks/useSSE';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DeviceRow {
@@ -22,6 +23,7 @@ interface DeviceRow {
   latestLatency: number | null;
   latestPacketLoss: number | null;
   lastCheck: string | null;
+  isDemo: boolean;
 }
 
 interface Summary {
@@ -44,6 +46,13 @@ interface Alert {
   status: string;
   createdAt: string;
   device: { name: string; ip: string } | null;
+}
+
+interface MonitoringUpdate {
+  devices: DeviceRow[];
+  summary: Summary;
+  alerts: Alert[];
+  updatedAt: string;
 }
 
 const TIME_RANGES = [
@@ -91,6 +100,23 @@ function StatCard({ label, value, sub, accent }: { label: string; value: string 
   );
 }
 
+// ─── Connection Status Badge ──────────────────────────────────────────────────
+function ConnectionBadge({ status }: { status: SSEStatus }) {
+  const config: Record<SSEStatus, { label: string; cls: string; dot: string }> = {
+    connecting:   { label: 'Menghubungkan…', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30', dot: 'bg-amber-400 animate-pulse' },
+    connected:    { label: 'Terhubung',      cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', dot: 'bg-emerald-400' },
+    disconnected: { label: 'Terputus',       cls: 'bg-slate-500/10 text-slate-400 border-slate-500/30', dot: 'bg-slate-600' },
+    error:        { label: 'Error',          cls: 'bg-rose-500/10 text-rose-400 border-rose-500/30', dot: 'bg-rose-400 animate-pulse' },
+  };
+  const c = config[status];
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${c.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+      {c.label}
+    </span>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function MonitoringPage() {
   const [devices, setDevices] = useState<DeviceRow[]>([]);
@@ -103,32 +129,18 @@ export default function MonitoringPage() {
   const [ackLoading, setAckLoading] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState('');
 
-  // ── Fetch summary + devices + alerts ────────────────────────────────────────
-  const fetchOverviewRef = useRef<() => Promise<void>>(async () => {
-    try {
-      const [devRes, sumRes, alertRes] = await Promise.all([
-        fetch('/api/devices'),
-        fetch('/api/monitoring/summary'),
-        fetch('/api/alerts?status=ACTIVE&limit=20'),
-      ]);
-      const [devJson, sumJson, alertJson] = await Promise.all([
-        devRes.json() as Promise<{ data: DeviceRow[] }>,
-        sumRes.json() as Promise<Summary>,
-        alertRes.json() as Promise<{ data: Alert[] }>,
-      ]);
-      setDevices(devJson.data ?? []);
-      setSummary(sumJson);
-      setAlerts(alertJson.data ?? []);
-      setLastRefresh(new Date().toLocaleTimeString('id-ID'));
-    } catch {
-      // silently retry on next cycle
-    } finally {
-      setLoading(false);
-    }
-  });
+  const handleMonitoringUpdate = useCallback((data: unknown) => {
+    const d = data as MonitoringUpdate;
+    setDevices(d.devices);
+    setSummary(d.summary);
+    setAlerts(d.alerts);
+    setLastRefresh(new Date().toLocaleTimeString('id-ID'));
+    setLoading(false);
+  }, []);
 
-  // ── Fetch metrics for selected device ───────────────────────────────────────
-  const fetchMetricsRef = useRef<() => Promise<void>>(async () => {
+  const { status: sseStatus } = useRealtimeMonitoring(handleMonitoringUpdate, true);
+
+  const fetchMetrics = useCallback(async () => {
     if (!selectedDevice) { setMetrics([]); return; }
     try {
       const res = await fetch(`/api/devices/${selectedDevice}/metrics?hours=${timeRange}&type=ICMP`);
@@ -137,35 +149,9 @@ export default function MonitoringPage() {
     } catch {
       setMetrics([]);
     }
-  });
-
-  // Initial fetch
-  useEffect(() => {
-    void fetchOverviewRef.current();
-  }, []);
-
-  // Fetch metrics when device/timeRange changes
-  useEffect(() => {
-    void fetchMetricsRef.current();
   }, [selectedDevice, timeRange]);
 
-  // Auto-refresh every 60s
-  useEffect(() => {
-    const t = setInterval(() => {
-      void fetchOverviewRef.current();
-      void fetchMetricsRef.current();
-    }, 60_000);
-    return () => clearInterval(t);
-  }, []);
-
-  // Auto-refresh every 60s
-  useEffect(() => {
-    const t = setInterval(() => {
-      void fetchOverviewRef.current();
-      void fetchMetricsRef.current();
-    }, 60_000);
-    return () => clearInterval(t);
-  }, []);
+  useEffect(() => { void fetchMetrics(); /* eslint-disable-line react-hooks/set-state-in-effect */ }, [fetchMetrics]);
 
   // Auto-select first device on initial load
   const initialSelectRef = useRef(true);
@@ -181,7 +167,7 @@ export default function MonitoringPage() {
     setAckLoading(alertId);
     try {
       await fetch(`/api/alerts/${alertId}/acknowledge`, { method: 'POST' });
-      await fetchOverviewRef.current();
+      // SSE will push updated alerts automatically
     } finally {
       setAckLoading(null);
     }
@@ -214,6 +200,9 @@ export default function MonitoringPage() {
           <p className="text-sm text-slate-400 mt-0.5">Real-time network device reachability</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {/* SSE Connection status */}
+          <ConnectionBadge status={sseStatus} />
+
           {/* Device selector */}
           <select
             id="device-select"
@@ -244,7 +233,7 @@ export default function MonitoringPage() {
           {/* Refresh */}
           <button
             id="btn-refresh"
-            onClick={() => { void fetchOverviewRef.current(); void fetchMetricsRef.current(); }}
+            onClick={() => { void fetchMetrics(); }}
             className="bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-sm px-3 py-2 rounded-lg transition-colors"
           >
             ↻ Refresh

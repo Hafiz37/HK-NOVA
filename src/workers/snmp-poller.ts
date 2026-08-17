@@ -14,7 +14,10 @@ import {
   DEFAULT_SNMP_TIMEOUT,
   SNMP_HIGH_CPU_THRESHOLD,
   SNMP_HIGH_MEM_THRESHOLD,
+  SNMP_HIGH_CPU_RESOLVE_THRESHOLD,
+  SNMP_HIGH_MEM_RESOLVE_THRESHOLD,
 } from '../lib/constants';
+import { randomUUID } from 'crypto';
 import { sendTelegramNotification, formatAlertMessage } from '../lib/telegram';
 
 // ─── Prisma singleton for worker process ────────────────────────────────────
@@ -41,7 +44,7 @@ const OID = {
   // RAM type OID
   hrStorageRam: '1.3.6.1.2.1.25.2.1.2',
 
-  // IF-MIB: Interface
+  // IF-MIB: Interface (32-bit counters)
   ifDescr:       '1.3.6.1.2.1.2.2.1.2',           // table
   ifOperStatus:  '1.3.6.1.2.1.2.2.1.8',
   ifSpeed:       '1.3.6.1.2.1.2.2.1.5',
@@ -49,10 +52,27 @@ const OID = {
   ifOutOctets:   '1.3.6.1.2.1.2.2.1.16',
   ifInErrors:    '1.3.6.1.2.1.2.2.1.14',
   ifOutErrors:   '1.3.6.1.2.1.2.2.1.20',
+
+  // IF-MIB: Interface (64-bit counters — IF-MIB::ifHCInOctets / ifHCOutOctets)
+  ifHCInOctets:  '1.3.6.1.2.1.31.1.1.1.6',       // 64-bit in octets
+  ifHCOutOctets: '1.3.6.1.2.1.31.1.1.1.10',      // 64-bit out octets
 } as const;
 
 // ─── In-memory cooldown tracker ──────────────────────────────────────────────
 const notificationCooldown = new Map<string, number>();
+
+// ─── Cycle health tracking ────────────────────────────────────────────────────
+interface CycleRecord {
+  cycleId: string;
+  startedAt: number;
+  durationMs: number;
+}
+
+const cycleHistory: CycleRecord[] = []; // rolling window of last 20 cycles
+
+export function getCycleHistory(): CycleRecord[] {
+  return cycleHistory;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface SnmpCredential {
@@ -214,7 +234,8 @@ async function pollMemory(session: any): Promise<number | null> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function pollInterfaces(session: any): Promise<InterfaceEntry[]> {
   try {
-    const [descrs, statuses, speeds, inOcts, outOcts, inErrs, outErrs] = await Promise.all([
+    // Try 64-bit counters first (IF-MIB::ifHCInOctets / ifHCOutOctets)
+    const [descrs, statuses, speeds, inOcts, outOcts, inErrs, outErrs, inOcts64, outOcts64] = await Promise.all([
       snmpSubtree(session, OID.ifDescr),
       snmpSubtree(session, OID.ifOperStatus),
       snmpSubtree(session, OID.ifSpeed),
@@ -222,30 +243,38 @@ async function pollInterfaces(session: any): Promise<InterfaceEntry[]> {
       snmpSubtree(session, OID.ifOutOctets),
       snmpSubtree(session, OID.ifInErrors),
       snmpSubtree(session, OID.ifOutErrors),
+      snmpSubtree(session, OID.ifHCInOctets),
+      snmpSubtree(session, OID.ifHCOutOctets),
     ]);
 
     const toMap = (rows: Array<{ oid: string; value: unknown }>, base: string) =>
       new Map<number, unknown>(rows.map((r) => [oidIndex(r.oid, base), r.value]));
 
-    const descrMap  = toMap(descrs,   OID.ifDescr);
-    const statusMap = toMap(statuses, OID.ifOperStatus);
-    const speedMap  = toMap(speeds,   OID.ifSpeed);
-    const inMap     = toMap(inOcts,   OID.ifInOctets);
-    const outMap    = toMap(outOcts,  OID.ifOutOctets);
-    const inErrMap  = toMap(inErrs,   OID.ifInErrors);
-    const outErrMap = toMap(outErrs,  OID.ifOutErrors);
+    const descrMap   = toMap(descrs,    OID.ifDescr);
+    const statusMap  = toMap(statuses,  OID.ifOperStatus);
+    const speedMap   = toMap(speeds,    OID.ifSpeed);
+    const inMap32    = toMap(inOcts,    OID.ifInOctets);
+    const outMap32   = toMap(outOcts,   OID.ifOutOctets);
+    const inMap64    = toMap(inOcts64,  OID.ifHCInOctets);
+    const outMap64   = toMap(outOcts64, OID.ifHCOutOctets);
+    const inErrMap   = toMap(inErrs,    OID.ifInErrors);
+    const outErrMap  = toMap(outErrs,   OID.ifOutErrors);
 
     const interfaces: InterfaceEntry[] = [];
     for (const [idx] of descrMap) {
+      // Prefer 64-bit counters, fall back to 32-bit
+      const inOctets  = inMap64.has(idx)  ? Number(inMap64.get(idx))  : Number(inMap32.get(idx)  ?? 0);
+      const outOctets = outMap64.has(idx) ? Number(outMap64.get(idx)) : Number(outMap32.get(idx) ?? 0);
+
       interfaces.push({
         index:      idx,
-        name:       String(descrMap.get(idx) ?? `if${idx}`),
-        operStatus: Number(statusMap.get(idx) ?? 2),
-        speed:      Number(speedMap.get(idx)  ?? 0),
-        inOctets:   Number(inMap.get(idx)     ?? 0),
-        outOctets:  Number(outMap.get(idx)    ?? 0),
-        inErrors:   Number(inErrMap.get(idx)  ?? 0),
-        outErrors:  Number(outErrMap.get(idx) ?? 0),
+        name:       String(descrMap.get(idx)   ?? `if${idx}`),
+        operStatus: Number(statusMap.get(idx)  ?? 2),
+        speed:      Number(speedMap.get(idx)   ?? 0),
+        inOctets,
+        outOctets,
+        inErrors:   Number(inErrMap.get(idx)   ?? 0),
+        outErrors:  Number(outErrMap.get(idx)  ?? 0),
       });
     }
 
@@ -310,57 +339,128 @@ async function pollDevice(device: {
   }
 }
 
-// ─── Alert: HIGH_UTILIZATION ─────────────────────────────────────────────────
+// ─── Alert: HIGH_UTILIZATION (with hysteresis auto-resolution) ───────────────
 async function handleUtilizationAlerts(
   device: { id: string; name: string; ip: string },
   cpuUtil: number | null | undefined,
   memUtil: number | null | undefined
 ): Promise<void> {
-  const cpu = cpuUtil ?? 0;
-  const mem = memUtil ?? 0;
+  // Only process alerts when we have actual values (not null)
+  // If SNMP failed to read CPU/MEM, don't create or resolve alerts
 
-  if (cpu >= SNMP_HIGH_CPU_THRESHOLD) {
-    await prisma.alert.create({
-      data: {
-        type: 'HIGH_UTILIZATION',
-        deviceId: device.id,
-        message: `CPU utilization on ${device.name} (${device.ip}) is ${cpu.toFixed(1)}%, exceeding threshold of ${SNMP_HIGH_CPU_THRESHOLD}%.`,
-        severity: cpu >= 95 ? 'CRITICAL' : 'HIGH',
-        status: 'ACTIVE',
-      },
-    });
+  // ── CPU alert / resolution ──────────────────────────────────────────────────
+  if (cpuUtil !== null && cpuUtil !== undefined) {
+    const cpu = cpuUtil;
+    if (cpu >= SNMP_HIGH_CPU_THRESHOLD) {
+      // Only create a new alert if there isn't already an ACTIVE/ACKNOWLEDGED one for this device
+      const existingCpuAlert = await prisma.alert.findFirst({
+        where: {
+          deviceId: device.id,
+          type: 'HIGH_UTILIZATION',
+          status: { in: ['ACTIVE', 'ACKNOWLEDGED'] },
+          message: { startsWith: 'CPU utilization' },
+        },
+      });
 
-    const severity = cpu >= 95 ? 'CRITICAL' : 'HIGH';
-    await sendNotificationWithCooldown(
-      `${device.id}-cpu`,
-      device.name,
-      'HIGH_UTILIZATION',
-      severity,
-      `CPU ${device.name} (${device.ip}) mencapai ${cpu.toFixed(1)}% — melebihi batas ${SNMP_HIGH_CPU_THRESHOLD}%.`
-    );
-    log('WARN', `HIGH CPU alert for ${device.name}: ${cpu.toFixed(1)}%`);
+      if (!existingCpuAlert) {
+        const severity = cpu >= 95 ? 'CRITICAL' : 'HIGH';
+        await prisma.alert.create({
+          data: {
+            type: 'HIGH_UTILIZATION',
+            deviceId: device.id,
+            message: `CPU utilization on ${device.name} (${device.ip}) is ${cpu.toFixed(1)}%, exceeding threshold of ${SNMP_HIGH_CPU_THRESHOLD}%.`,
+            severity,
+            status: 'ACTIVE',
+          },
+        });
+        await sendNotificationWithCooldown(
+          `${device.id}-cpu`,
+          device.name,
+          'HIGH_UTILIZATION',
+          severity,
+          `CPU ${device.name} (${device.ip}) mencapai ${cpu.toFixed(1)}% — melebihi batas ${SNMP_HIGH_CPU_THRESHOLD}%.`
+        );
+        log('WARN', `HIGH CPU alert created for ${device.name}: ${cpu.toFixed(1)}%`);
+      }
+    } else if (cpu < SNMP_HIGH_CPU_RESOLVE_THRESHOLD) {
+      // Hysteresis: CPU dropped below resolve threshold — resolve active/acknowledged CPU alerts
+      const resolved = await prisma.alert.updateMany({
+        where: {
+          deviceId: device.id,
+          type: 'HIGH_UTILIZATION',
+          status: { in: ['ACTIVE', 'ACKNOWLEDGED'] },
+          message: { startsWith: 'CPU utilization' },
+        },
+        data: { status: 'RESOLVED', resolvedAt: new Date() },
+      });
+      if (resolved.count > 0) {
+        log('INFO', `AUTO-RESOLVED ${resolved.count} HIGH_CPU alert(s) for ${device.name}: CPU now ${cpu.toFixed(1)}% (below ${SNMP_HIGH_CPU_RESOLVE_THRESHOLD}%)`);
+        await sendNotificationWithCooldown(
+          `${device.id}-cpu-recover`,
+          device.name,
+          'HIGH_UTILIZATION_RESOLVED',
+          'INFO',
+          `CPU ${device.name} (${device.ip}) kembali normal: ${cpu.toFixed(1)}% (batas resolve: ${SNMP_HIGH_CPU_RESOLVE_THRESHOLD}%).`
+        );
+      }
+    }
   }
 
-  if (mem >= SNMP_HIGH_MEM_THRESHOLD) {
-    await prisma.alert.create({
-      data: {
-        type: 'HIGH_UTILIZATION',
-        deviceId: device.id,
-        message: `Memory utilization on ${device.name} (${device.ip}) is ${mem.toFixed(1)}%, exceeding threshold of ${SNMP_HIGH_MEM_THRESHOLD}%.`,
-        severity: mem >= 95 ? 'CRITICAL' : 'HIGH',
-        status: 'ACTIVE',
-      },
-    });
+  // ── Memory alert / resolution ───────────────────────────────────────────────
+  if (memUtil !== null && memUtil !== undefined) {
+    const mem = memUtil;
+    if (mem >= SNMP_HIGH_MEM_THRESHOLD) {
+      const existingMemAlert = await prisma.alert.findFirst({
+        where: {
+          deviceId: device.id,
+          type: 'HIGH_UTILIZATION',
+          status: { in: ['ACTIVE', 'ACKNOWLEDGED'] },
+          message: { startsWith: 'Memory utilization' },
+        },
+      });
 
-    const severity = mem >= 95 ? 'CRITICAL' : 'HIGH';
-    await sendNotificationWithCooldown(
-      `${device.id}-mem`,
-      device.name,
-      'HIGH_UTILIZATION',
-      severity,
-      `Memory ${device.name} (${device.ip}) mencapai ${mem.toFixed(1)}% — melebihi batas ${SNMP_HIGH_MEM_THRESHOLD}%.`
-    );
-    log('WARN', `HIGH MEMORY alert for ${device.name}: ${mem.toFixed(1)}%`);
+      if (!existingMemAlert) {
+        const severity = mem >= 95 ? 'CRITICAL' : 'HIGH';
+        await prisma.alert.create({
+          data: {
+            type: 'HIGH_UTILIZATION',
+            deviceId: device.id,
+            message: `Memory utilization on ${device.name} (${device.ip}) is ${mem.toFixed(1)}%, exceeding threshold of ${SNMP_HIGH_MEM_THRESHOLD}%.`,
+            severity,
+            status: 'ACTIVE',
+          },
+        });
+        await sendNotificationWithCooldown(
+          `${device.id}-mem`,
+          device.name,
+          'HIGH_UTILIZATION',
+          severity,
+          `Memory ${device.name} (${device.ip}) mencapai ${mem.toFixed(1)}% — melebihi batas ${SNMP_HIGH_MEM_THRESHOLD}%.`
+        );
+        log('WARN', `HIGH MEMORY alert created for ${device.name}: ${mem.toFixed(1)}%`);
+      }
+    } else if (mem < SNMP_HIGH_MEM_RESOLVE_THRESHOLD) {
+      // Hysteresis: Memory dropped below resolve threshold — resolve active/acknowledged MEM alerts
+      const resolved = await prisma.alert.updateMany({
+        where: {
+          deviceId: device.id,
+          type: 'HIGH_UTILIZATION',
+          status: { in: ['ACTIVE', 'ACKNOWLEDGED'] },
+          message: { startsWith: 'Memory utilization' },
+        },
+        data: { status: 'RESOLVED', resolvedAt: new Date() },
+      });
+      if (resolved.count > 0) {
+        log('INFO', `AUTO-RESOLVED ${resolved.count} HIGH_MEM alert(s) for ${device.name}: MEM now ${mem.toFixed(1)}% (below ${SNMP_HIGH_MEM_RESOLVE_THRESHOLD}%)`);
+        await sendNotificationWithCooldown(
+          `${device.id}-mem-recover`,
+          device.name,
+          'HIGH_UTILIZATION_RESOLVED',
+          'INFO',
+          `Memory ${device.name} (${device.ip}) kembali normal: ${mem.toFixed(1)}% (batas resolve: ${SNMP_HIGH_MEM_RESOLVE_THRESHOLD}%).`
+        );
+      }
+    }
   }
 }
 
@@ -459,18 +559,30 @@ async function processBatch(
   log('INFO', `Batch complete: ${okCount} OK, ${failCount} FAILED out of ${results.length} devices`);
 }
 
+// ─── Overlap guard ────────────────────────────────────────────────────────────
+let currentCycleId: string | null = null;
+
 // ─── Main polling cycle ───────────────────────────────────────────────────────
 async function runPollCycle(): Promise<void> {
+  // Overlap guard: skip if previous cycle still running
+  if (currentCycleId) {
+    log('WARN', `Skipping poll cycle — previous cycle [${currentCycleId}] still running`);
+    return;
+  }
+
   const cycleStart = Date.now();
-  log('INFO', 'Starting SNMP poll cycle');
+  const cycleId = randomUUID();
+  currentCycleId = cycleId;
+  log('INFO', `Starting SNMP poll cycle [${cycleId}]`);
 
   try {
-    // Fetch all active devices that have SNMP credentials
+    // Fetch all active devices that have SNMP credentials (exclude demo - handled by demo-generator)
     const devices = await prisma.device.findMany({
       where: {
         status: { not: 'MAINTENANCE' },
         deletedAt: null,
         credentials: { isNot: null },
+        isDemo: false,
       },
       select: {
         id: true,
@@ -491,6 +603,7 @@ async function runPollCycle(): Promise<void> {
 
     if (devices.length === 0) {
       log('INFO', 'No active devices with SNMP credentials to poll');
+      currentCycleId = null;
       return;
     }
 
@@ -523,9 +636,15 @@ async function runPollCycle(): Promise<void> {
     }
 
     const elapsed = Date.now() - cycleStart;
-    log('INFO', `Poll cycle completed in ${elapsed}ms`);
+    log('INFO', `Poll cycle [${cycleId}] completed in ${elapsed}ms`);
+
+    // Record cycle for health tracking (keep last 20)
+    cycleHistory.push({ cycleId, startedAt: cycleStart, durationMs: elapsed });
+    if (cycleHistory.length > 20) cycleHistory.shift();
   } catch (err) {
     log('ERROR', 'Poll cycle failed', err instanceof Error ? err.message : err);
+  } finally {
+    currentCycleId = null;
   }
 }
 

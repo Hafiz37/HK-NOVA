@@ -15,6 +15,9 @@ function log(level: 'INFO' | 'WARN' | 'SUCCESS', message: string): void {
   console.log(`${icon[level]} ${message}`);
 }
 
+// ─── Config ───────────────────────────────────────────────────────────────────
+const SETTING_KEY = 'demo:generator:enabled';
+
 // ─── Device definitions ──────────────────────────────────────────────────────
 const demoDevices = [
   // ICMP UP (reachable public IPs)
@@ -302,6 +305,12 @@ async function main() {
     let cpuUtil = 30 + Math.random() * 20;
     let memUtil = 40 + Math.random() * 20;
 
+    // Cumulative octet counters for realistic bandwidth
+    let inOctets1  = Math.floor(Math.random() * 1e9);
+    let outOctets1 = Math.floor(Math.random() * 1e9);
+    let inOctets2  = Math.floor(Math.random() * 5e8);
+    let outOctets2 = Math.floor(Math.random() * 5e8);
+
     for (let i = 0; i < dataPoints; i++) {
       const timestamp = new Date(now - (dataPoints - i) * interval);
 
@@ -325,14 +334,34 @@ async function main() {
 
       // SNMP metrics (for SNMP devices)
       if (isSnmp && !isDown) {
+        // Simulate realistic bandwidth increments per interval
+        // interval is in ms, convert to seconds
+        const intervalSec = interval / 1000;
+        const inBps1  = Math.floor(randomWalk(50_000_000, 20_000_000, 1_000_000, 200_000_000));
+        const outBps1 = Math.floor(randomWalk(30_000_000, 15_000_000, 1_000_000, 150_000_000));
+        const inBps2  = Math.floor(randomWalk(10_000_000, 5_000_000,   100_000,  50_000_000));
+        const outBps2 = Math.floor(randomWalk(5_000_000,  3_000_000,   100_000,  30_000_000));
+
+        inOctets1  += Math.floor(inBps1  * intervalSec / 8);
+        outOctets1 += Math.floor(outBps1 * intervalSec / 8);
+        inOctets2  += Math.floor(inBps2  * intervalSec / 8);
+        outOctets2 += Math.floor(outBps2 * intervalSec / 8);
+
+        // Handle 64-bit counter wrap
+        const MAX64 = 18446744073709551616;
+        if (inOctets1  >= MAX64) inOctets1  %= MAX64;
+        if (outOctets1 >= MAX64) outOctets1 %= MAX64;
+        if (inOctets2  >= MAX64) inOctets2  %= MAX64;
+        if (outOctets2 >= MAX64) outOctets2 %= MAX64;
+
         const interfaces = [
           {
             index: 1,
             name: 'eth0',
             operStatus: 1,
             speed: 1000000000,
-            inOctets: Math.floor(Math.random() * 1e9),
-            outOctets: Math.floor(Math.random() * 1e9),
+            inOctets: inOctets1,
+            outOctets: outOctets1,
             inErrors: Math.floor(Math.random() * 100),
             outErrors: Math.floor(Math.random() * 50),
           },
@@ -341,8 +370,8 @@ async function main() {
             name: 'eth1',
             operStatus: 1,
             speed: 1000000000,
-            inOctets: Math.floor(Math.random() * 5e8),
-            outOctets: Math.floor(Math.random() * 5e8),
+            inOctets: inOctets2,
+            outOctets: outOctets2,
             inErrors: 0,
             outErrors: 0,
           },
@@ -495,6 +524,15 @@ async function main() {
 
   log('SUCCESS', `Created ${alertsCreated} alerts`);
 
+  // 4. Enable demo generator by default
+  log('INFO', 'Enabling demo generator...');
+  await prisma.setting.upsert({
+    where: { key: SETTING_KEY },
+    update: { value: { enabled: true } },
+    create: { key: SETTING_KEY, value: { enabled: true } },
+  });
+  log('SUCCESS', 'Demo generator enabled');
+
   log('SUCCESS', '🎉 Demo seed completed!');
   console.log('');
   console.log('📝 Summary:');
@@ -504,9 +542,11 @@ async function main() {
   console.log('');
   console.log('💡 Next steps:');
   console.log('   1. Start web: pnpm dev');
-  console.log('   2. Start workers: pnpm worker:icmp && pnpm worker:snmp');
+  console.log('   2. Start workers: pnpm dev:workers   (runs ICMP + Demo Generator)');
+  console.log('      Or individually: pnpm worker:icmp && pnpm demo:generator');
   console.log('   3. (Optional) Setup SNMP agents: pnpm demo:agents');
-  console.log('   4. Toggle demo mode in UI: /dashboard/devices');
+  console.log('   4. Toggle demo mode in UI: /dashboard/devices (Admin only)');
+  console.log('   5. Production: pnpm pm2:start');
   console.log('');
 }
 

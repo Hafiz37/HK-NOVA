@@ -4,6 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 
+interface WorkerHealth {
+  expectedCycles: number;
+  actualCycles: number;
+  missedCycles: number;
+  avgCycleDurationMs: number | null;
+  lastCycleDurationMs: number | null;
+  lagSeconds: number | null;
+}
+
 interface WorkerStatus {
   id: string;
   name: string;
@@ -11,6 +20,7 @@ interface WorkerStatus {
   status: "RUNNING" | "STOPPED";
   lastHeartbeat: string | null;
   detail: string;
+  health: WorkerHealth | null;
 }
 
 interface SummaryData {
@@ -488,6 +498,23 @@ export default function DashboardPage() {
                     <p className="text-xs text-slate-500 truncate mt-0.5">
                       {worker.detail}
                     </p>
+                    {worker.health && isRunning && (
+                      <p className="text-[10px] text-slate-600 mt-1">
+                        {worker.health.missedCycles > 0 ? (
+                          <span className="text-amber-400">
+                            {worker.health.missedCycles} missed
+                          </span>
+                        ) : (
+                          <span className="text-emerald-500/80">on schedule</span>
+                        )}
+                        {worker.health.lagSeconds != null && worker.health.lagSeconds > 0 && (
+                          <span className="text-amber-400"> · lag {worker.health.lagSeconds}s</span>
+                        )}
+                        {worker.health.avgCycleDurationMs != null && (
+                          <span> · avg {(worker.health.avgCycleDurationMs / 1000).toFixed(1)}s</span>
+                        )}
+                      </p>
+                    )}
                   </div>
 
                   {/* Badge + Timestamp */}

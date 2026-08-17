@@ -2,6 +2,7 @@
  * ICMP Poller Worker
  * Standalone Node.js process for polling device reachability via ICMP ping.
  * Runs on node-cron schedule, uses queue-based batching with concurrency control.
+ * Supports both raw socket (net-ping) and system ping fallback.
  */
 
 import cron from 'node-cron';
@@ -14,11 +15,13 @@ import {
   DEFAULT_PING_TIMEOUT,
 } from '../lib/constants';
 import { sendTelegramNotification, formatAlertMessage } from '../lib/telegram';
+import { randomUUID } from 'crypto';
 
 // ─── Prisma singleton for worker process ────────────────────────────────────
 const prisma = new PrismaClient();
 
 // ─── net-ping types (no @types package bundled) ──────────────────────────────
+// net-ping has no types, using require
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ping = require('net-ping') as {
   createSession: (opts: NetPingSessionOptions) => NetPingSession;
@@ -39,9 +42,60 @@ interface NetPingSession {
   close(): void;
 }
 
+// ─── System ping fallback (no root required) ─────────────────────────────────
+async function pingHostSystem(ip: string, timeoutMs: number): Promise<{ latency: number; success: true } | { success: false; error: string }> {
+  return new Promise((resolve) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { spawn } = require('child_process');
+    // ping -c 1 -W timeout_sec ip
+    const timeoutSec = Math.ceil(timeoutMs / 1000);
+    const child = spawn('ping', ['-c', '1', '-W', String(timeoutSec), ip]);
+    const start = Date.now();
+    let output = '';
+
+    child.stdout.on('data', (data: Buffer) => { output += data.toString(); });
+    child.stderr.on('data', (data: Buffer) => { output += data.toString(); });
+
+    child.on('close', (code: number | null) => {
+      const latency = Date.now() - start;
+      if (code === 0) {
+        // Parse latency from output: "time=1.23 ms"
+        const match = output.match(/time[=<]([\d.]+)\s*ms/);
+        const parsedLatency = match ? parseFloat(match[1]) : latency;
+        resolve({ latency: parsedLatency, success: true });
+      } else {
+        resolve({ success: false, error: `ping exit code ${code}` });
+      }
+    });
+
+    child.on('error', (err: Error) => {
+      resolve({ success: false, error: err.message });
+    });
+
+    // Safety timeout
+    setTimeout(() => {
+      child.kill('SIGKILL');
+      resolve({ success: false, error: 'ping command timeout' });
+    }, timeoutMs + 1000);
+  });
+}
+
 // ─── In-memory cooldown tracker ──────────────────────────────────────────────
 /** Map<deviceId, lastNotifiedTimestamp> */
 const notificationCooldown = new Map<string, number>();
+
+// ─── Cycle health tracking ────────────────────────────────────────────────────
+interface CycleRecord {
+  cycleId: string;
+  startedAt: number;
+  durationMs: number;
+}
+
+const cycleHistory: CycleRecord[] = []; // rolling window of last 20 cycles
+
+export function getCycleHistory(): CycleRecord[] {
+  return cycleHistory;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface PingResult {
@@ -61,38 +115,56 @@ function log(level: 'INFO' | 'WARN' | 'ERROR', message: string, meta?: unknown):
 }
 
 // ─── Ping a single host with exponential backoff retries ─────────────────────
-async function pingHost(session: NetPingSession, ip: string): Promise<{ latency: number; success: true } | { success: false; error: string }> {
-  let attempt = 0;
-
-  while (attempt <= ICMP_PING_RETRIES) {
-    const result = await new Promise<{ latency: number; success: true } | { success: false; error: string }>((resolve) => {
-      const sent = Date.now();
-      session.pingHost(ip, (err, _target, _sent, rcvd) => {
-        if (err) {
-          resolve({ success: false, error: err.message });
-        } else {
-          const latency = rcvd.getTime() - sent;
-          resolve({ latency, success: true });
-        }
+async function pingHost(session: NetPingSession | null, ip: string): Promise<{ latency: number; success: true } | { success: false; error: string }> {
+  // Try net-ping first (raw sockets)
+  if (session) {
+    let attempt = 0;
+    while (attempt <= ICMP_PING_RETRIES) {
+      const result = await new Promise<{ latency: number; success: true } | { success: false; error: string }>((resolve) => {
+        const sent = Date.now();
+        session!.pingHost(ip, (err, _target, _sent, rcvd) => {
+          if (err) {
+            resolve({ success: false, error: err.message });
+          } else {
+            const latency = rcvd.getTime() - sent;
+            resolve({ latency, success: true });
+          }
+        });
       });
-    });
 
+      if (result.success) return result;
+
+      // If permission error, fall back to system ping immediately
+      if (result.error.includes('Operation not permitted') || result.error.includes('EPERM') || result.error.includes('EACCES')) {
+        log('WARN', `net-ping permission error for ${ip}, falling back to system ping`);
+        break;
+      }
+
+      attempt++;
+      if (attempt <= ICMP_PING_RETRIES) {
+        const delay = 500 * Math.pow(2, attempt - 1);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+
+  // Fallback: system ping command (no root required)
+  log('INFO', `Using system ping fallback for ${ip}`);
+  for (let attempt = 0; attempt <= ICMP_PING_RETRIES; attempt++) {
+    const result = await pingHostSystem(ip, DEFAULT_PING_TIMEOUT);
     if (result.success) return result;
-
-    attempt++;
-    if (attempt <= ICMP_PING_RETRIES) {
-      // Exponential backoff: 500ms, 1000ms, ...
-      const delay = 500 * Math.pow(2, attempt - 1);
+    if (attempt < ICMP_PING_RETRIES) {
+      const delay = 500 * Math.pow(2, attempt);
       await new Promise((r) => setTimeout(r, delay));
     }
   }
 
-  return { success: false, error: 'Ping timed out after retries' };
+  return { success: false, error: 'Ping timed out after retries (net-ping + system ping)' };
 }
 
 // ─── Poll a single device ─────────────────────────────────────────────────────
 async function pollDevice(
-  session: NetPingSession,
+  session: NetPingSession | null,
   device: { id: string; ip: string; name: string }
 ): Promise<PingResult> {
   try {
@@ -256,14 +328,19 @@ async function processBatch(
   let session: NetPingSession | null = null;
 
   try {
-    session = ping.createSession({
-      timeout: DEFAULT_PING_TIMEOUT,
-      retries: 0, // We handle retries manually with backoff
-      packetSize: 64,
-    });
+    try {
+      session = ping.createSession({
+        timeout: DEFAULT_PING_TIMEOUT,
+        retries: 0, // We handle retries manually with backoff
+        packetSize: 64,
+      });
+    } catch (sessionErr) {
+      log('WARN', `Failed to create net-ping session, using system ping fallback: ${sessionErr instanceof Error ? sessionErr.message : sessionErr}`);
+      session = null;
+    }
 
     const settled = await Promise.allSettled(
-      devices.map((device) => pollDevice(session!, device))
+      devices.map((device) => pollDevice(session, device))
     );
 
     const results: PingResult[] = settled
@@ -296,30 +373,49 @@ async function processBatch(
   }
 }
 
+// ─── Overlap guard ────────────────────────────────────────────────────────────
+let currentCycleId: string | null = null;
+
 // ─── Main polling cycle ───────────────────────────────────────────────────────
 async function runPollCycle(): Promise<void> {
+  // Overlap guard: skip if previous cycle still running
+  if (currentCycleId) {
+    log('WARN', `Skipping poll cycle — previous cycle [${currentCycleId}] still running`);
+    return;
+  }
+
   const cycleStart = Date.now();
-  log('INFO', 'Starting ICMP poll cycle');
+  const cycleId = randomUUID();
+  currentCycleId = cycleId;
+  log('INFO', `Starting ICMP poll cycle [${cycleId}]`);
 
   try {
-    // Fetch all active devices (exclude MAINTENANCE)
+    // Fetch all active REAL devices (exclude MAINTENANCE and demo devices)
+    // Demo devices are handled by demo-generator worker
     const devices = await prisma.device.findMany({
       where: {
         status: { not: 'MAINTENANCE' },
         deletedAt: null,
+        isDemo: false,
       },
-      select: { id: true, name: true, ip: true, status: true },
+      select: { id: true, name: true, ip: true, status: true, isDemo: true },
     });
 
-    if (devices.length === 0) {
+    // Also fetch demo device count for logging
+    const demoCount = await prisma.device.count({
+      where: { status: { not: 'MAINTENANCE' }, deletedAt: null, isDemo: true },
+    });
+
+    if (devices.length === 0 && demoCount === 0) {
       log('INFO', 'No active devices to poll');
+      currentCycleId = null;
       return;
     }
 
     // Build lookup map for status transition logic
     const deviceMap = new Map(devices.map((d) => [d.id, d]));
 
-    log('INFO', `Polling ${devices.length} devices in batches of ${ICMP_BATCH_SIZE}`);
+    log('INFO', `Polling ${devices.length} REAL devices (+ ${demoCount} demo devices handled by demo-generator) in batches of ${ICMP_BATCH_SIZE}`);
 
     // Process in batches
     for (let i = 0; i < devices.length; i += ICMP_BATCH_SIZE) {
@@ -331,9 +427,15 @@ async function runPollCycle(): Promise<void> {
     }
 
     const elapsed = Date.now() - cycleStart;
-    log('INFO', `Poll cycle completed in ${elapsed}ms`);
+    log('INFO', `Poll cycle [${cycleId}] completed in ${elapsed}ms`);
+
+    // Record cycle for health tracking (keep last 20)
+    cycleHistory.push({ cycleId, startedAt: cycleStart, durationMs: elapsed });
+    if (cycleHistory.length > 20) cycleHistory.shift();
   } catch (err) {
     log('ERROR', 'Poll cycle failed', err instanceof Error ? err.message : err);
+  } finally {
+    currentCycleId = null;
   }
 }
 

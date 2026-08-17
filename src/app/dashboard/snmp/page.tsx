@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  Area, AreaChart, BarChart, Bar, Legend,
+  Area, AreaChart, BarChart, Bar, Legend, LineChart, Line,
 } from 'recharts';
+import { useRealtimeSnmp, SSEStatus } from '@/hooks/useSSE';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DeviceSnmp {
@@ -48,6 +49,20 @@ interface IfEntry {
   outErrors: number;
 }
 
+interface BandwidthTimeSeries {
+  timestamp: string;
+  interfaces: Array<{
+    index: number;
+    name: string;
+    operStatus: number;
+    speed: number;
+    inBps: number;
+    outBps: number;
+    inErrors: number;
+    outErrors: number;
+  }>;
+}
+
 const TIME_RANGES = [
   { label: '1h',  hours: 1  },
   { label: '6h',  hours: 6  },
@@ -75,6 +90,13 @@ function fmtBytes(b: number): string {
   if (b >= 1e6) return (b / 1e6).toFixed(2) + ' MB';
   if (b >= 1e3) return (b / 1e3).toFixed(1) + ' KB';
   return b + ' B';
+}
+
+function fmtBps(bps: number): string {
+  if (bps >= 1e9) return (bps / 1e9).toFixed(2) + ' Gbps';
+  if (bps >= 1e6) return (bps / 1e6).toFixed(2) + ' Mbps';
+  if (bps >= 1e3) return (bps / 1e3).toFixed(1) + ' Kbps';
+  return bps + ' bps';
 }
 
 function fmtTime(iso: string) {
@@ -125,6 +147,23 @@ function UtilBar({ label, value, warn = 85, crit = 95 }: {
   );
 }
 
+// ─── Connection Status Badge ──────────────────────────────────────────────────
+function ConnectionBadge({ status }: { status: SSEStatus }) {
+  const config: Record<SSEStatus, { label: string; cls: string; dot: string }> = {
+    connecting:   { label: 'Menghubungkan…', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30', dot: 'bg-amber-400 animate-pulse' },
+    connected:    { label: 'Terhubung',      cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', dot: 'bg-emerald-400' },
+    disconnected: { label: 'Terputus',       cls: 'bg-slate-500/10 text-slate-400 border-slate-500/30', dot: 'bg-slate-600' },
+    error:        { label: 'Error',          cls: 'bg-rose-500/10 text-rose-400 border-rose-500/30', dot: 'bg-rose-400 animate-pulse' },
+  };
+  const c = config[status];
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${c.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+      {c.label}
+    </span>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function SnmpMonitoringPage() {
   const [summary, setSummary]             = useState<SnmpSummary | null>(null);
@@ -133,39 +172,28 @@ export default function SnmpMonitoringPage() {
   const [metrics, setMetrics]             = useState<MetricPoint[]>([]);
   const [loading, setLoading]             = useState(true);
   const [lastRefresh, setLastRefresh]     = useState('');
+  const [selectedInterface, setSelectedInterface] = useState<number | null>(null);
+  const [bandwidthSeries, setBandwidthSeries] = useState<BandwidthTimeSeries[]>([]);
 
-  // ── Fetch overview ───────────────────────────────────────────────────────────
-  const fetchOverviewRef = useRef<() => Promise<void>>(async () => {
-    try {
-      const res  = await fetch('/api/monitoring/snmp-summary');
-      const json = await res.json() as SnmpSummary;
-      setSummary(json);
-      setLastRefresh(new Date().toLocaleTimeString('id-ID'));
-    } catch { /* silent retry */ }
-    finally { setLoading(false); }
-  });
-
-  // ── Fetch per-device metrics ─────────────────────────────────────────────────
-  const fetchMetricsRef = useRef<() => Promise<void>>(async () => {
-    if (!selectedDevice) { setMetrics([]); return; }
-    try {
-      const res  = await fetch(`/api/devices/${selectedDevice}/snmp-metrics?hours=${timeRange}`);
-      const json = await res.json() as { data: MetricPoint[] };
-      setMetrics(json.data ?? []);
-    } catch { setMetrics([]); }
-  });
-
-  useEffect(() => { void fetchOverviewRef.current(); }, []);
-  useEffect(() => { void fetchMetricsRef.current(); }, [selectedDevice, timeRange]);
-
-  // Auto-refresh every 30s
-  useEffect(() => {
-    const t = setInterval(() => {
-      void fetchOverviewRef.current();
-      void fetchMetricsRef.current();
-    }, 30_000);
-    return () => clearInterval(t);
+  const handleSnmpUpdate = useCallback((data: unknown) => {
+    setSummary(data as SnmpSummary);
+    setLastRefresh(new Date().toLocaleTimeString('id-ID'));
+    setLoading(false);
   }, []);
+
+  const { status: sseStatus } = useRealtimeSnmp(handleSnmpUpdate, true);
+
+  const fetchMetrics = useCallback(async () => {
+    if (!selectedDevice) { setMetrics([]); setBandwidthSeries([]); return; }
+    try {
+      const res  = await fetch(`/api/devices/${selectedDevice}/snmp-metrics?hours=${timeRange}&includeBandwidth=true`);
+      const json = await res.json() as { data: MetricPoint[]; bandwidthTimeSeries?: BandwidthTimeSeries[] };
+      setMetrics(json.data ?? []);
+      setBandwidthSeries(json.bandwidthTimeSeries ?? []);
+    } catch { setMetrics([]); setBandwidthSeries([]); }
+  }, [selectedDevice, timeRange]);
+
+  useEffect(() => { void fetchMetrics(); /* eslint-disable-line react-hooks/set-state-in-effect */ }, [fetchMetrics]);
 
   // Auto-select first device
   const didAutoSelect = useRef(false);
@@ -188,6 +216,20 @@ export default function SnmpMonitoringPage() {
   const interfaces: IfEntry[] = Array.isArray(latestMetric?.interfaceData)
     ? (latestMetric.interfaceData as IfEntry[])
     : [];
+
+  // Interface options for bandwidth chart selector
+  const interfaceOptions = interfaces.filter(i => i.operStatus === 1).map(i => ({
+    index: i.index,
+    label: `${i.name} (${i.speed >= 1e9 ? `${i.speed / 1e9}G` : i.speed >= 1e6 ? `${i.speed / 1e6}M` : `${i.speed}`}bps)`,
+  }));
+
+  const activeInterface = selectedInterface ?? interfaceOptions[0]?.index ?? null;
+
+  const bwChartData = bandwidthSeries.flatMap((point) => {
+    const iface = point.interfaces.find((i) => i.index === activeInterface);
+    if (!iface) return [];
+    return [{ time: fmtTime(point.timestamp), in: iface.inBps, out: iface.outBps }];
+  });
 
   if (loading) {
     return (
@@ -213,11 +255,14 @@ export default function SnmpMonitoringPage() {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {/* SSE Connection status */}
+          <ConnectionBadge status={sseStatus} />
+
           {/* Device selector */}
           <select
             id="snmp-device-select"
             value={selectedDevice}
-            onChange={(e) => setSelectedDevice(e.target.value)}
+            onChange={(e) => { setSelectedDevice(e.target.value); setSelectedInterface(null); }}
             className="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500"
           >
             <option value="">— Select Device —</option>
@@ -234,7 +279,7 @@ export default function SnmpMonitoringPage() {
               <button
                 key={r.hours}
                 id={`snmp-range-${r.label}`}
-                onClick={() => setTimeRange(r.hours)}
+                onClick={() => { setTimeRange(r.hours); setSelectedInterface(null); }}
                 className={`px-3 py-2 text-sm font-medium transition-colors ${
                   timeRange === r.hours
                     ? 'bg-cyan-600 text-white'
@@ -248,7 +293,7 @@ export default function SnmpMonitoringPage() {
 
           <button
             id="snmp-refresh"
-            onClick={() => { void fetchOverviewRef.current(); void fetchMetricsRef.current(); }}
+            onClick={() => { void fetchMetrics(); }}
             className="bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-sm px-3 py-2 rounded-lg transition-colors"
           >
             ↻ Refresh
@@ -409,6 +454,71 @@ export default function SnmpMonitoringPage() {
               </ResponsiveContainer>
             </div>
           )}
+
+          {/* Bandwidth Chart */}
+          {interfaceOptions.length > 0 && activeInterface !== null && bwChartData.length > 0 && (
+            <div className="xl:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-white">📈 Interface Bandwidth (Real-time)</h3>
+                <select
+                  value={activeInterface}
+                  onChange={(e) => setSelectedInterface(Number(e.target.value))}
+                  className="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                >
+                  {interfaceOptions.map(opt => (
+                    <option key={opt.index} value={opt.index}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={bwChartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="bwInGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#06b6d4" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}   />
+                    </linearGradient>
+                    <linearGradient id="bwOutGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#f59e0b" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}   />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="time" tick={{ fill: '#64748b', fontSize: 11 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: 8 }}
+                    labelStyle={{ color: '#94a3b8' }}
+                    formatter={(v, name) => {
+                      const bps = typeof v === 'number' ? v : 0;
+                      const label = name === 'in' ? 'In' : 'Out';
+                      return [`${fmtBps(bps)}`, label];
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12, color: '#94a3b8' }} />
+                  <Line
+                    type="monotone"
+                    dataKey="in"
+                    name="In"
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    fill="url(#bwInGrad)"
+                    dot={false}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="out"
+                    name="Out"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    fill="url(#bwOutGrad)"
+                    dot={false}
+                    connectNulls={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       ) : selectedDevice ? (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-500">
@@ -443,7 +553,7 @@ export default function SnmpMonitoringPage() {
             {(summary?.devices ?? []).map((d) => (
               <div
                 key={d.deviceId}
-                onClick={() => setSelectedDevice(d.deviceId)}
+                onClick={() => { setSelectedDevice(d.deviceId); setSelectedInterface(null); }}
                 id={`snmp-device-${d.deviceId}`}
                 className={`px-5 py-4 cursor-pointer transition-colors ${
                   selectedDevice === d.deviceId
@@ -478,7 +588,7 @@ export default function SnmpMonitoringPage() {
                   {/* View button */}
                   <button
                     id={`btn-snmp-view-${d.deviceId}`}
-                    onClick={(e) => { e.stopPropagation(); setSelectedDevice(d.deviceId); }}
+                    onClick={(e) => { e.stopPropagation(); setSelectedDevice(d.deviceId); setSelectedInterface(null); }}
                     className={`text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0 ${
                       selectedDevice === d.deviceId
                         ? 'bg-cyan-600 text-white'

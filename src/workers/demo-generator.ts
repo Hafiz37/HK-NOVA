@@ -20,7 +20,16 @@ let isShuttingDown = false;
 let isEnabled = true;
 
 // In-memory state for random walk
-const deviceState = new Map<string, { latency: number; cpuUtil: number; memUtil: number }>();
+const deviceState = new Map<string, { 
+  latency: number; 
+  cpuUtil: number; 
+  memUtil: number;
+  // Cumulative octet counters for realistic bandwidth calculation
+  inOctets1: number;
+  outOctets1: number;
+  inOctets2: number;
+  outOctets2: number;
+}>();
 
 // ─── Logging helper ───────────────────────────────────────────────────────────
 function log(level: 'INFO' | 'WARN' | 'ERROR', message: string, meta?: unknown): void {
@@ -131,6 +140,10 @@ async function generateIcmpMetrics(): Promise<void> {
           latency: 20 + Math.random() * 30,
           cpuUtil: 30 + Math.random() * 20,
           memUtil: 40 + Math.random() * 20,
+          inOctets1:  Math.floor(Math.random() * 1e9),
+          outOctets1: Math.floor(Math.random() * 1e9),
+          inOctets2:  Math.floor(Math.random() * 5e8),
+          outOctets2: Math.floor(Math.random() * 5e8),
         });
       }
 
@@ -208,24 +221,50 @@ async function generateSnmpMetrics(): Promise<void> {
           latency: 20 + Math.random() * 30,
           cpuUtil: 30 + Math.random() * 20,
           memUtil: 40 + Math.random() * 20,
+          // Start with realistic initial counter values
+          inOctets1:  Math.floor(Math.random() * 1e9),
+          outOctets1: Math.floor(Math.random() * 1e9),
+          inOctets2:  Math.floor(Math.random() * 5e8),
+          outOctets2: Math.floor(Math.random() * 5e8),
         });
       }
 
       const state = deviceState.get(device.id)!;
 
-      // Random walk
+      // Random walk for CPU/MEM
       state.cpuUtil = randomWalk(state.cpuUtil, 5, 10, 95);
       state.memUtil = randomWalk(state.memUtil, 5, 20, 90);
 
-      // Generate interface data
+      // Simulate realistic bandwidth: add random increments to counters
+      // ~10-100 Mbps average traffic
+      const inBps1  = Math.floor(randomWalk(50_000_000, 20_000_000, 1_000_000, 200_000_000));
+      const outBps1 = Math.floor(randomWalk(30_000_000, 15_000_000, 1_000_000, 150_000_000));
+      const inBps2  = Math.floor(randomWalk(10_000_000, 5_000_000,   100_000,  50_000_000));
+      const outBps2 = Math.floor(randomWalk(5_000_000,  3_000_000,   100_000,  30_000_000));
+
+      // 5-minute interval = 300 seconds
+      const intervalSec = 300;
+      state.inOctets1  += Math.floor(inBps1  * intervalSec / 8);
+      state.outOctets1 += Math.floor(outBps1 * intervalSec / 8);
+      state.inOctets2  += Math.floor(inBps2  * intervalSec / 8);
+      state.outOctets2 += Math.floor(outBps2 * intervalSec / 8);
+
+      // Handle 64-bit counter wrap (2^64)
+      const MAX64 = 18446744073709551616;
+      if (state.inOctets1  >= MAX64) state.inOctets1  %= MAX64;
+      if (state.outOctets1 >= MAX64) state.outOctets1 %= MAX64;
+      if (state.inOctets2  >= MAX64) state.inOctets2  %= MAX64;
+      if (state.outOctets2 >= MAX64) state.outOctets2 %= MAX64;
+
+      // Generate interface data with cumulative counters
       const interfaces = [
         {
           index: 1,
           name: 'eth0',
           operStatus: 1,
           speed: 1000000000,
-          inOctets: Math.floor(Math.random() * 1e9),
-          outOctets: Math.floor(Math.random() * 1e9),
+          inOctets: state.inOctets1,
+          outOctets: state.outOctets1,
           inErrors: Math.floor(Math.random() * 100),
           outErrors: Math.floor(Math.random() * 50),
         },
@@ -234,8 +273,8 @@ async function generateSnmpMetrics(): Promise<void> {
           name: 'eth1',
           operStatus: 1,
           speed: 1000000000,
-          inOctets: Math.floor(Math.random() * 5e8),
-          outOctets: Math.floor(Math.random() * 5e8),
+          inOctets: state.inOctets2,
+          outOctets: state.outOctets2,
           inErrors: 0,
           outErrors: 0,
         },

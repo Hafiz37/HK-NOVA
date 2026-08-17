@@ -6,9 +6,23 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+interface IfEntry {
+  index: number;
+  name: string;
+  operStatus: number;
+  speed: number;
+  inOctets: number;
+  outOctets: number;
+  inErrors: number;
+  outErrors: number;
+}
+
 /**
- * GET /api/devices/[id]/snmp-metrics?hours=24
+ * GET /api/devices/[id]/snmp-metrics?hours=24&includeBandwidth=true
+ *
  * Returns time-series SNMP metric history (CPU, memory, interfaces) for a device.
+ * When includeBandwidth=true, also computes per-interface bandwidth rates (bps)
+ * from consecutive octet counter deltas.
  */
 export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const auth = await requireSession();
@@ -16,8 +30,9 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 
   try {
     const { id } = await params;
-    const searchParams = request.nextUrl.searchParams;
-    const hours = Math.min(Number(searchParams.get('hours') ?? '24'), 168); // max 7 days
+    const searchParams     = request.nextUrl.searchParams;
+    const hours            = Math.min(Number(searchParams.get('hours') ?? '24'), 168); // max 7 days
+    const includeBandwidth = searchParams.get('includeBandwidth') === 'true';
 
     // Validate device exists
     const device = await prisma.device.findFirst({
@@ -76,6 +91,73 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
       dataPoints:  metrics.length,
     };
 
+    // ── Interface bandwidth rate calculation ──────────────────────────────────
+    // For each pair of consecutive metrics that have interfaceData, compute
+    // inBps / outBps = (octets_delta / seconds_delta) * 8
+    const bandwidthTimeSeries: Array<{
+      timestamp: string;
+      interfaces: Array<{
+        index: number;
+        name: string;
+        operStatus: number;
+        speed: number;
+        inBps: number;
+        outBps: number;
+        inErrors: number;
+        outErrors: number;
+      }>;
+    }> = [];
+
+    if (includeBandwidth) {
+      for (let i = 1; i < metrics.length; i++) {
+        const prev = metrics[i - 1];
+        const curr = metrics[i];
+
+        const prevIfs = Array.isArray(prev.interfaceData) ? (prev.interfaceData as unknown as IfEntry[]) : [];
+        const currIfs = Array.isArray(curr.interfaceData) ? (curr.interfaceData as unknown as IfEntry[]) : [];
+
+        if (prevIfs.length === 0 || currIfs.length === 0) continue;
+
+        const prevTs  = new Date(prev.timestamp).getTime();
+        const currTs  = new Date(curr.timestamp).getTime();
+        const deltaS  = (currTs - prevTs) / 1000;
+        if (deltaS <= 0) continue;
+
+        const prevMap = new Map<number, IfEntry>(prevIfs.map(iface => [iface.index, iface]));
+
+        type RateIf = {
+          index: number; name: string; operStatus: number; speed: number;
+          inBps: number; outBps: number; inErrors: number; outErrors: number;
+        };
+        const rateInterfaces: RateIf[] = currIfs.flatMap((iface) => {
+            const p = prevMap.get(iface.index);
+            if (!p) return [];
+
+            const MAX64 = 18446744073709551616;
+            const inDelta  = iface.inOctets  >= p.inOctets  ? iface.inOctets  - p.inOctets  : MAX64 - p.inOctets  + iface.inOctets;
+            const outDelta = iface.outOctets >= p.outOctets ? iface.outOctets - p.outOctets : MAX64 - p.outOctets + iface.outOctets;
+
+            return [{
+              index:      iface.index,
+              name:       iface.name,
+              operStatus: iface.operStatus,
+              speed:      iface.speed,
+              inBps:      Math.round((inDelta  / deltaS) * 8),
+              outBps:     Math.round((outDelta / deltaS) * 8),
+              inErrors:   iface.inErrors,
+              outErrors:  iface.outErrors,
+            }];
+          });
+
+        if (rateInterfaces.length > 0) {
+          bandwidthTimeSeries.push({
+            timestamp:  curr.timestamp.toISOString(),
+            interfaces: rateInterfaces,
+          });
+        }
+      }
+    }
+
     return NextResponse.json({
       device: {
         id: device.id,
@@ -88,6 +170,7 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
       period: { hours, since: since.toISOString() },
       summary,
       data: metrics,
+      ...(includeBandwidth ? { bandwidthTimeSeries } : {}),
     });
   } catch (error) {
     console.error('[API /api/devices/[id]/snmp-metrics] Error:', error);

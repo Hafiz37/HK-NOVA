@@ -44,9 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    fetchUser();
+    void fetchUser(); /* eslint-disable-line react-hooks/set-state-in-effect */
 
-    const interval = setInterval(fetchUser, 30_000);
+    const interval = setInterval(() => { void fetchUser(); }, 30_000);
     return () => clearInterval(interval);
   }, []);
 

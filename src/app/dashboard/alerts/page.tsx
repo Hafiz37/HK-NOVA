@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRealtimeMonitoring } from "@/hooks/useSSE";
 
 interface AlertItem {
   id: string;
@@ -80,6 +81,14 @@ export default function AlertsPage() {
     const run = async () => { await fetchAlerts(); };
     void run();
   }, [fetchAlerts]);
+
+  const lastSseRefresh = useRef(0);
+  useRealtimeMonitoring(() => {
+    const now = Date.now();
+    if (now - lastSseRefresh.current < 10_000) return;
+    lastSseRefresh.current = now;
+    void fetchAlerts();
+  }, true);
 
   const doAction = async (id: string, action: "acknowledge" | "resolve") => {
     setActing(id);
