@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { UserRole } from '@prisma/client';
 import { requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
+import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function GET(): Promise<NextResponse> {
   const auth = await requireRole([UserRole.ADMIN]);
@@ -31,6 +32,10 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.users, 'users:mutation', clientIp);
+  if (rateLimitError) return rateLimitError;
+
   const auth = await requireRole([UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 

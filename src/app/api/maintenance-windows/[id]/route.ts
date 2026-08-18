@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { UserRole } from '@prisma/client';
 import { requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
+import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 function notFound(): NextResponse {
   return NextResponse.json(
@@ -23,6 +24,10 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.mutation, 'maintenance:mutation', clientIp);
+  if (rateLimitError) return rateLimitError;
+
   const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 
@@ -57,6 +62,10 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.mutation, 'maintenance:mutation', clientIp);
+  if (rateLimitError) return rateLimitError;
+
   const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 

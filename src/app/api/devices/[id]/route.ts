@@ -4,6 +4,7 @@ import { DeviceType, DeviceStatus, UserRole } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
 import { requireSession, requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
+import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { normalizeThresholdInput } from '@/lib/thresholds';
 import { isValidIpv4 } from '@/lib/utils';
 
@@ -72,12 +73,20 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
  * Update device details or status.
  */
 export async function PUT(request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.mutation, 'devices:mutation', clientIp);
+  if (rateLimitError) return rateLimitError;
+
   const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
   return updateDevice(request, params, auth);
 }
 
 export async function PATCH(request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.mutation, 'devices:mutation', clientIp);
+  if (rateLimitError) return rateLimitError;
+
   const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
   return updateDevice(request, params, auth);
@@ -227,6 +236,10 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
  * Soft delete a device. Requires ADMIN role.
  */
 export async function DELETE(request: NextRequest, { params }: Params): Promise<NextResponse> {
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.mutation, 'devices:mutation', clientIp);
+  if (rateLimitError) return rateLimitError;
+
   const auth = await requireRole([UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 

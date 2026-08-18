@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import prisma from '@/lib/prisma';
 import { getPollingIntervalMs, setPollingInterval, POLL_INTERVAL_OPTIONS, intervalToLabel, SETTING_KEY, DEFAULT_POLL_INTERVAL_MS } from '@/lib/polling-config';
 import { logAudit, getClientIp } from '@/lib/audit';
+import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function GET(): Promise<NextResponse> {
   const auth = await requireSession();
@@ -29,6 +30,10 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.settings, 'settings:mutation', clientIp);
+  if (rateLimitError) return rateLimitError;
+
   const auth = await requireRole([UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 

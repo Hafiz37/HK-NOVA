@@ -4,6 +4,7 @@ import { DeviceType, DeviceStatus, UserRole, Prisma } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
 import { requireSession, requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
+import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { normalizeThresholdInput } from '@/lib/thresholds';
 import { isValidIpv4 } from '@/lib/utils';
 
@@ -130,6 +131,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * Creates a new network device.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.mutation, 'devices:mutation', clientIp);
+  if (rateLimitError) return rateLimitError;
+
   const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 

@@ -4,12 +4,17 @@ import prisma from '@/lib/prisma';
 import { UserRole } from '@prisma/client';
 import { requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
+import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.users, 'users:mutation', clientIp);
+  if (rateLimitError) return rateLimitError;
+
   const auth = await requireRole([UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 
@@ -121,6 +126,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.users, 'users:mutation', clientIp);
+  if (rateLimitError) return rateLimitError;
+
   const auth = await requireRole([UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 

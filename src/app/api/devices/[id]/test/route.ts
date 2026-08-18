@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { DEFAULT_PING_TIMEOUT, DEFAULT_SNMP_TIMEOUT, DEFAULT_SSH_TIMEOUT } from '@/lib/constants';
-import { requireSession } from '@/lib/auth';
+import { requireRole } from '@/lib/auth';
+import { UserRole } from '@prisma/client';
+import { getClientIp } from '@/lib/audit';
+import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -160,7 +163,11 @@ async function testSsh(
  * Body: { type: "icmp" | "snmp" | "ssh" }
  */
 export async function POST(request: NextRequest, { params }: Params): Promise<NextResponse> {
-  const auth = await requireSession();
+  const clientIp = getClientIp(request) || '127.0.0.1';
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.test, 'devices:test', clientIp);
+  if (rateLimitError) return rateLimitError;
+
+  const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 
   try {
