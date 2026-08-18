@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
+import { getPollingIntervalMs, intervalToLabel, DEFAULT_POLL_INTERVAL_MS } from '@/lib/polling-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
  * GET /api/workers/status
  *
  * Menentukan status worker berdasarkan keberadaan data terbaru di DB.
- * Threshold ICMP: 2 menit (sesuai cron interval default 1 menit + buffer).
+ * Threshold memakai interval polling terkonfigurasi (polling:real:interval) + buffer.
  * Health metrics (expectedCycles, missedCycles, lag, avgDuration) dihitung
  * dari clustering timestamp metrik di DB — tidak membutuhkan IPC ke worker process.
  * Window: fixed 2 jam observasi agar expected/actual cycles konsisten.
@@ -19,9 +20,14 @@ export async function GET(): Promise<NextResponse> {
 
   try {
     const now = Date.now();
-    const ICMP_THRESHOLD_MS   = 2  * 60 * 1000;        // 2 menit
-    const SNMP_THRESHOLD_MS   = 10 * 60 * 1000;        // 10 menit
-    const BACKUP_THRESHOLD_MS = 25 * 60 * 60 * 1000;   // 25 jam
+
+    // Interval polling terkonfigurasi (berlaku untuk ICMP & SNMP sekaligus)
+    const intervalMs = (await getPollingIntervalMs(prisma)) ?? DEFAULT_POLL_INTERVAL_MS;
+
+    // Threshold aktif: bebas 2 siklus (min. 30 detik buffer)
+    // Threshold ICMP & SNMP memakai interval yang sama (satu pengaturan global)
+    const POLL_THRESHOLD_MS    = Math.max(intervalMs * 2, 30_000);   // 2 siklus terlewat
+    const BACKUP_THRESHOLD_MS  = 25 * 60 * 60 * 1000;                // 25 jam
 
     // Observation window for cycle health (2 hours)
     const WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -30,35 +36,32 @@ export async function GET(): Promise<NextResponse> {
     // ── ICMP Worker ───────────────────────────────────────────────────────────
     const [latestIcmp, latestSnmp] = await Promise.all([
       prisma.metric.findFirst({
-        where: { metricType: 'ICMP' },
+        where: { metricType: 'ICMP', source: 'REAL' },
         orderBy: { timestamp: 'desc' },
         select: { timestamp: true },
       }),
       // ── SNMP Worker ─────────────────────────────────────────────────────────
       prisma.metric.findFirst({
-        where: { metricType: 'SNMP' },
+        where: { metricType: 'SNMP', source: 'REAL' },
         orderBy: { timestamp: 'desc' },
         select: { timestamp: true },
       }),
     ]);
 
     const lastIcmpMs   = latestIcmp   ? new Date(latestIcmp.timestamp).getTime()   : 0;
-    const isIcmpActive = lastIcmpMs  > 0 && now - lastIcmpMs  <= ICMP_THRESHOLD_MS;
+    const isIcmpActive = lastIcmpMs  > 0 && now - lastIcmpMs  <= POLL_THRESHOLD_MS;
 
     const lastSnmpMs   = latestSnmp   ? new Date(latestSnmp.timestamp).getTime()   : 0;
-    const isSnmpActive = lastSnmpMs  > 0 && now - lastSnmpMs  <= SNMP_THRESHOLD_MS;
+    const isSnmpActive = lastSnmpMs  > 0 && now - lastSnmpMs  <= POLL_THRESHOLD_MS;
 
     // Uptime based on window (not first metric ever)
     const icmpUptimeSec = isIcmpActive ? Math.floor(WINDOW_MS / 1000) : null;
     const snmpUptimeSec = isSnmpActive ? Math.floor(WINDOW_MS / 1000) : null;
 
     // ── Cycle health metrics (fixed 2h window, DB-inferred from timestamp clustering) ───────────
-    // ICMP cron: */1 → 1min interval, cluster window 30s
-    // SNMP cron: */5 → 5min interval, cluster window 90s
-    const ICMP_INTERVAL_MS = 60 * 1000;
-    const SNMP_INTERVAL_MS = 5 * 60 * 1000;
-    const ICMP_BUCKET_MS   = 30 * 1000;
-    const SNMP_BUCKET_MS   = 90 * 1000;
+    // Interval & bucket mengikuti pengaturan interval global
+    const ICMP_BUCKET_MS = Math.max((intervalMs / 2) | 0, 5_000);
+    const SNMP_BUCKET_MS = Math.max((intervalMs / 2) | 0, 5_000);
 
     const computeCycleHealth = (
       windowStartMs: number,
@@ -111,12 +114,12 @@ export async function GET(): Promise<NextResponse> {
     // Fetch recent metric timestamps (last 2h) for cycle inference
     const [icmpTimestamps, snmpTimestamps] = await Promise.all([
       prisma.metric.findMany({
-        where: { metricType: 'ICMP', timestamp: { gte: new Date(windowStart) } },
+        where: { metricType: 'ICMP', source: 'REAL', timestamp: { gte: new Date(windowStart) } },
         select: { timestamp: true },
         orderBy: { timestamp: 'asc' },
       }),
       prisma.metric.findMany({
-        where: { metricType: 'SNMP', timestamp: { gte: new Date(windowStart) } },
+        where: { metricType: 'SNMP', source: 'REAL', timestamp: { gte: new Date(windowStart) } },
         select: { timestamp: true },
         orderBy: { timestamp: 'asc' },
       }),
@@ -125,8 +128,8 @@ export async function GET(): Promise<NextResponse> {
     const icmpTsMs = icmpTimestamps.map(m => new Date(m.timestamp).getTime());
     const snmpTsMs = snmpTimestamps.map(m => new Date(m.timestamp).getTime());
 
-    const icmpHealth = computeCycleHealth(windowStart, now, ICMP_INTERVAL_MS, ICMP_BUCKET_MS, icmpTsMs);
-    const snmpHealth = computeCycleHealth(windowStart, now, SNMP_INTERVAL_MS, SNMP_BUCKET_MS, snmpTsMs);
+    const icmpHealth = computeCycleHealth(windowStart, now, intervalMs, ICMP_BUCKET_MS, icmpTsMs);
+    const snmpHealth = computeCycleHealth(windowStart, now, intervalMs, SNMP_BUCKET_MS, snmpTsMs);
 
     // ── Backup Worker ─────────────────────────────────────────────────────────
     const latestBackup = await prisma.backup.findFirst({
@@ -142,7 +145,7 @@ export async function GET(): Promise<NextResponse> {
       select: { timestamp: true },
     });
     const lastAnomalyMs   = latestAnomaly ? new Date(latestAnomaly.timestamp).getTime() : 0;
-    const isAnomalyActive = lastAnomalyMs > 0 && now - lastAnomalyMs <= ICMP_THRESHOLD_MS;
+    const isAnomalyActive = lastAnomalyMs > 0 && now - lastAnomalyMs <= POLL_THRESHOLD_MS;
 
     // ── Assemble response ─────────────────────────────────────────────────────
     const workers = [
@@ -154,6 +157,8 @@ export async function GET(): Promise<NextResponse> {
         status: isIcmpActive ? 'RUNNING' : 'STOPPED',
         lastHeartbeat: latestIcmp?.timestamp ?? null,
         uptimeSeconds: icmpUptimeSec,
+        configuredIntervalMs: intervalMs,
+        configuredIntervalLabel: intervalToLabel(intervalMs),
         health: {
           expectedCycles:      icmpHealth.expectedCycles,
           actualCycles:        icmpHealth.actualCycles,
@@ -177,6 +182,8 @@ export async function GET(): Promise<NextResponse> {
         status: isSnmpActive ? 'RUNNING' : 'STOPPED',
         lastHeartbeat: latestSnmp?.timestamp ?? null,
         uptimeSeconds: snmpUptimeSec,
+        configuredIntervalMs: intervalMs,
+        configuredIntervalLabel: intervalToLabel(intervalMs),
         health: {
           expectedCycles:      snmpHealth.expectedCycles,
           actualCycles:        snmpHealth.actualCycles,

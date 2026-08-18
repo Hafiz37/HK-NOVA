@@ -13,7 +13,8 @@ export type AuditEntity =
   | 'User'
   | 'Device'
   | 'Alert'
-  | 'Setting';
+  | 'Setting'
+  | 'MaintenanceWindow';
 
 export interface AuditDetails {
   before?: Record<string, unknown>;

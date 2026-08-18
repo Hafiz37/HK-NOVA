@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
+import { parsePositiveNumberParam } from '@/lib/utils';
 import {
   buildBaseline,
   getLatestValue,
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
       );
     }
     const field = fieldParam as BaselineField;
-    const hours = Math.min(168, Math.max(1, Number(searchParams.get('hours') ?? '24')));
+    const hours = parsePositiveNumberParam(searchParams.get('hours'), 24, 1, 168);
 
     const device = await prisma.device.findFirst({
       where: { id, deletedAt: null },

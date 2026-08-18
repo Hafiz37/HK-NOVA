@@ -198,29 +198,38 @@ export async function processUtilizationAlert(
     const summary =
       metric === 'cpu' ? `CPU ${value.toFixed(1)}%` : `Memory ${value.toFixed(1)}%`;
 
-    await prisma.alert.update({
-      where: { id: down.id },
-      data: {
-        severity: 'CRITICAL',
-        correlationKey,
-        message: `${down.message}\n[Terkorelasi] ${summary} (threshold ${threshold}%)`,
-      },
+    // Dedupe child korelasi: cegah pertumbuhan baris tak terbatas selagi
+    // perangkat DOWN + utilization tinggi (dicek sekali, eskalasi sekali).
+    const existingChild = await prisma.alert.findFirst({
+      where: { dedupKey, parentId: down.id },
+      select: { id: true },
     });
 
-    // Catat utilization sebagai child (sudah resolved) untuk jejak audit
-    await prisma.alert.create({
-      data: {
-        type: 'HIGH_UTILIZATION',
-        deviceId: device.id,
-        message,
-        severity,
-        status: 'RESOLVED',
-        resolvedAt: new Date(),
-        dedupKey,
-        correlationKey,
-        parentId: down.id,
-      },
-    });
+    if (!existingChild) {
+      await prisma.alert.update({
+        where: { id: down.id },
+        data: {
+          severity: 'CRITICAL',
+          correlationKey,
+          message: `${down.message}\n[Terkorelasi] ${summary} (threshold ${threshold}%)`,
+        },
+      });
+
+      // Catat utilization sebagai child (sudah resolved) untuk jejak audit
+      await prisma.alert.create({
+        data: {
+          type: 'HIGH_UTILIZATION',
+          deviceId: device.id,
+          message,
+          severity,
+          status: 'RESOLVED',
+          resolvedAt: new Date(),
+          dedupKey,
+          correlationKey,
+          parentId: down.id,
+        },
+      });
+    }
 
     return { action: 'correlated' };
   }

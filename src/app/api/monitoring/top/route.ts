@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
+import { parsePositiveIntParam } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
 
   try {
-    const n = Math.min(20, Math.max(1, Number(request.nextUrl.searchParams.get('n') ?? '5')));
+    const n = parsePositiveIntParam(request.nextUrl.searchParams.get('n'), 5, 1, 20);
     const showDemo = request.nextUrl.searchParams.get('showDemo') !== 'false';
 
     // ── Top-N devices by active alerts ────────────────────────────────────────

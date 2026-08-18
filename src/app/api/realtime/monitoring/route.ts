@@ -100,7 +100,8 @@ export async function GET(request: Request): Promise<Response> {
             updatedAt: new Date().toISOString(),
           });
         } catch (err) {
-          send('error', { message: String(err) });
+          console.error('[API /api/realtime/monitoring] Error:', err);
+          send('error', { message: 'Terjadi kesalahan saat mengambil data monitoring' });
         }
       };
 

@@ -1,19 +1,19 @@
 /**
  * ICMP Poller Worker
  * Standalone Node.js process for polling device reachability via ICMP ping.
- * Runs on node-cron schedule, uses queue-based batching with concurrency control.
+ * Interval diambil dari pengaturan DB (polling:real:interval) melalui scheduler
+ * dinamis — bisa diubah dari UI tanpa restart. Berbasis batch dengan kontrol concurrency.
  * Supports both raw socket (net-ping) and system ping fallback.
  */
 
-import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import {
   ICMP_BATCH_SIZE,
-  ICMP_POLL_INTERVAL,
   ICMP_PING_RETRIES,
   ICMP_ALERT_COOLDOWN_MS,
   DEFAULT_PING_TIMEOUT,
 } from '../lib/constants';
+import { startPollScheduler } from '../lib/poll-scheduler';
 import { sendTelegramNotification, formatAlertMessage } from '../lib/telegram';
 import { randomUUID } from 'crypto';
 import { isDeviceInMaintenance } from '../lib/maintenance';
@@ -209,8 +209,10 @@ async function handleAlertTransition(
   }
 
   // UP → DOWN: create DEVICE_DOWN alert (dedupe + korelasi)
-  if (previousStatus !== 'DOWN' && newStatus === 'DOWN') {
-    const baseMessage = `Device ${device.name} (${device.ip}) is unreachable. ICMP ping failed after ${ICMP_PING_RETRIES + 1} attempts.`;
+  // Hanya bilamana sebelumnya benar-benar UP — perangkat baru (UNKNOWN) tidak
+  // boleh langsung memicu alert pada siklus pertama.
+  if (previousStatus === 'UP' && newStatus === 'DOWN') {
+    const baseMessage = `Device ${device.name} (${device.ip}) is unreachable. ICMP ping failed after repeated attempts.`;
 
     const result = await processDeviceDownAlert(prisma, device, baseMessage);
 
@@ -444,16 +446,13 @@ process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
-log('INFO', `ICMP Poller starting with schedule: "${ICMP_POLL_INTERVAL}", batch size: ${ICMP_BATCH_SIZE}`);
+log('INFO', `ICMP Poller starting with dynamic interval, batch size: ${ICMP_BATCH_SIZE}`);
 
-// Run once immediately on startup
-void runPollCycle();
-
-// Schedule recurring runs
-cron.schedule(ICMP_POLL_INTERVAL, () => {
-  if (!isShuttingDown) {
-    void runPollCycle();
-  }
+void startPollScheduler({
+  prisma,
+  runCycle: runPollCycle,
+  log,
+  isShuttingDown: () => isShuttingDown,
 });
 
 log('INFO', 'ICMP Poller worker is running. Press Ctrl+C to stop.');

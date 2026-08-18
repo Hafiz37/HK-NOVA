@@ -9,6 +9,7 @@ import {
   type BaselineField,
 } from '@/lib/baseline';
 import { BASELINE_WINDOW_HOURS } from '@/lib/constants';
+import { parsePositiveIntParam, parsePositiveNumberParam } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,8 +34,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       );
     }
     const field = fieldParam as BaselineField;
-    const n = Math.min(50, Math.max(1, Number(searchParams.get('n') ?? '10')));
-    const hours = Math.min(168, Math.max(1, Number(searchParams.get('hours') ?? String(BASELINE_WINDOW_HOURS))));
+    const n = parsePositiveIntParam(searchParams.get('n'), 10, 1, 50);
+    const hours = parsePositiveNumberParam(
+      searchParams.get('hours'),
+      BASELINE_WINDOW_HOURS,
+      1,
+      168
+    );
 
     const devices = await prisma.device.findMany({
       where: { deletedAt: null },

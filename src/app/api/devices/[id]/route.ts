@@ -5,6 +5,7 @@ import { encrypt } from '@/lib/encryption';
 import { requireSession, requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
 import { normalizeThresholdInput } from '@/lib/thresholds';
+import { isValidIpv4 } from '@/lib/utils';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -71,13 +72,13 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
  * Update device details or status.
  */
 export async function PUT(request: NextRequest, { params }: Params): Promise<NextResponse> {
-  const auth = await requireSession();
+  const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
   return updateDevice(request, params, auth);
 }
 
 export async function PATCH(request: NextRequest, { params }: Params): Promise<NextResponse> {
-  const auth = await requireSession();
+  const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
   return updateDevice(request, params, auth);
 }
@@ -114,6 +115,9 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
     };
 
     if (ip && ip !== existing.ip) {
+      if (!isValidIpv4(ip.trim())) {
+        return NextResponse.json({ error: 'Invalid IPv4 address format' }, { status: 400 });
+      }
       const ipCheck = await prisma.device.findFirst({
         where: { ip: ip.trim(), deletedAt: null, id: { not: id } },
       });

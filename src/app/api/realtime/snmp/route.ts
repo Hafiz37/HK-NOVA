@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
+import { resolveThresholds } from '@/lib/thresholds';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +49,7 @@ export async function GET(request: Request): Promise<Response> {
 
           const [latestSnmpRecord, latestSnmpMetrics, highUtilAlerts] = await Promise.all([
             prisma.metric.findFirst({
-              where: { metricType: 'SNMP' },
+              where: { metricType: 'SNMP', source: 'REAL' },
               orderBy: { timestamp: 'desc' },
               select: { timestamp: true },
             }),
@@ -73,7 +74,13 @@ export async function GET(request: Request): Promise<Response> {
           const deviceInfo = deviceIds.length
             ? await prisma.device.findMany({
                 where: { id: { in: deviceIds }, deletedAt: null },
-                select: { id: true, name: true, ip: true, status: true },
+                select: {
+                  id: true, name: true, ip: true, status: true,
+                  cpuThresholdOverride: true,
+                  memThresholdOverride: true,
+                  cpuResolveThresholdOverride: true,
+                  memResolveThresholdOverride: true,
+                },
               })
             : [];
           const deviceMap = new Map(deviceInfo.map(d => [d.id, d]));
@@ -95,21 +102,53 @@ export async function GET(request: Request): Promise<Response> {
           const memSamples = devices.filter(d => d.memUtil !== null).map(d => d.memUtil as number);
           const avg = (arr: number[]) => arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
 
+          const highCpuCount = () => {
+            let count = 0;
+            for (const m of latestSnmpMetrics) {
+              const d = deviceMap.get(m.deviceId);
+              if (m.cpuUtil == null) continue;
+              const t = d ? resolveThresholds({
+                cpuThresholdOverride: d.cpuThresholdOverride,
+                memThresholdOverride: d.memThresholdOverride,
+                cpuResolveThresholdOverride: d.cpuResolveThresholdOverride,
+                memResolveThresholdOverride: d.memResolveThresholdOverride,
+              }) : null;
+              if (m.cpuUtil >= (t?.cpuAlert ?? 85)) count++;
+            }
+            return count;
+          };
+          const highMemCount = () => {
+            let count = 0;
+            for (const m of latestSnmpMetrics) {
+              const d = deviceMap.get(m.deviceId);
+              if (m.memUtil == null) continue;
+              const t = d ? resolveThresholds({
+                cpuThresholdOverride: d.cpuThresholdOverride,
+                memThresholdOverride: d.memThresholdOverride,
+                cpuResolveThresholdOverride: d.cpuResolveThresholdOverride,
+                memResolveThresholdOverride: d.memResolveThresholdOverride,
+              }) : null;
+              if (m.memUtil >= (t?.memAlert ?? 90)) count++;
+            }
+            return count;
+          };
+
           send('snmp-update', {
             worker: { active: isActive, lastHeartbeat: latestSnmpRecord?.timestamp ?? null },
             aggregate: {
               avgCpuUtil:     avg(cpuSamples),
               avgMemUtil:     avg(memSamples),
               devicesPolled:  devices.length,
-              devicesHighCpu: devices.filter(d => (d.cpuUtil ?? 0) >= 85).length,
-              devicesHighMem: devices.filter(d => (d.memUtil ?? 0) >= 90).length,
+              devicesHighCpu: highCpuCount(),
+              devicesHighMem: highMemCount(),
               highUtilAlerts,
             },
             devices,
             updatedAt: new Date().toISOString(),
           });
         } catch (err) {
-          send('error', { message: String(err) });
+          console.error('[API /api/realtime/snmp] Error:', err);
+          send('error', { message: 'Terjadi kesalahan saat mengambil data SNMP' });
         }
       };
 

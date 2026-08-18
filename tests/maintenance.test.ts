@@ -135,9 +135,9 @@ describe('Maintenance Windows API Integration Tests', () => {
       expect(deleted).toBeNull();
     });
 
-    it('should return 500 for non-existent window', async () => {
+    it('should return 404 for non-existent window', async () => {
       const res = await adminAgent().delete('/api/maintenance-windows/nonexistent');
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(404);
     });
   });
 

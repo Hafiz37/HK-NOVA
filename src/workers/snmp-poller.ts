@@ -2,17 +2,17 @@
  * SNMP Poller Worker
  * Standalone Node.js process for polling device metrics via SNMP.
  * Collects CPU utilization, memory utilization, and interface statistics.
- * Runs on node-cron schedule, uses queue-based batching with concurrency control.
+ * Interval diambil dari pengaturan DB (polling:real:interval) melalui scheduler
+ * dinamis — bisa diubah dari UI tanpa restart. Berbasis batch dengan kontrol concurrency.
  */
 
-import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import {
   SNMP_BATCH_SIZE,
-  SNMP_POLL_INTERVAL,
   SNMP_ALERT_COOLDOWN_MS,
   DEFAULT_SNMP_TIMEOUT,
 } from '../lib/constants';
+import { startPollScheduler } from '../lib/poll-scheduler';
 import { randomUUID } from 'crypto';
 import { sendTelegramNotification, formatAlertMessage } from '../lib/telegram';
 import { isDeviceInMaintenance } from '../lib/maintenance';
@@ -118,10 +118,36 @@ function createSnmpSession(ip: string, cred: SnmpCredential): any | null {
     if (versionStr === 'v1' || versionStr === '1') version = snmp.Version1;
     if (versionStr === 'v3' || versionStr === '3') version = snmp.Version3;
 
+    const port = cred.snmpPort ?? 161;
     const community = cred.snmpCommunity ?? 'public';
 
+    // SNMPv3: pakai user name + passphrase (auth/priv). Community diabaikan.
+    if (version === snmp.Version3) {
+      const user = cred.snmpUser ?? '';
+      const authPass = cred.snmpAuthPass ?? '';
+      const privPass = cred.snmpPrivPass ?? '';
+      const level =
+        authPass && privPass ? 'authPriv'
+        : authPass            ? 'authNoPriv'
+        :                       'noAuthNoPriv';
+
+      return snmp.createSession(ip, '', {
+        port,
+        retries: 1,
+        timeout: DEFAULT_SNMP_TIMEOUT,
+        version,
+        user,
+        name: '',
+        level,
+        authProtocol: 'sha',
+        authKey: authPass,
+        privProtocol: 'aes',
+        privKey: privPass,
+      });
+    }
+
     return snmp.createSession(ip, community, {
-      port: cred.snmpPort ?? 161,
+      port,
       retries: 1,
       timeout: DEFAULT_SNMP_TIMEOUT,
       version,
@@ -665,16 +691,13 @@ process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => void gracefulShutdown('SIGINT'));
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
-log('INFO', `SNMP Poller starting with schedule: "${SNMP_POLL_INTERVAL}", batch size: ${SNMP_BATCH_SIZE}`);
+log('INFO', `SNMP Poller starting with dynamic interval, batch size: ${SNMP_BATCH_SIZE}`);
 
-// Run once immediately on startup
-void runPollCycle();
-
-// Schedule recurring runs
-cron.schedule(SNMP_POLL_INTERVAL, () => {
-  if (!isShuttingDown) {
-    void runPollCycle();
-  }
+void startPollScheduler({
+  prisma,
+  runCycle: runPollCycle,
+  log,
+  isShuttingDown: () => isShuttingDown,
 });
 
 log('INFO', 'SNMP Poller worker is running. Press Ctrl+C to stop.');

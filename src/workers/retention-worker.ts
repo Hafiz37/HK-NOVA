@@ -72,7 +72,14 @@ async function cleanupOldMetrics(): Promise<{ deletedCount: number }> {
 }
 
 // ─── Main cleanup cycle ──────────────────────────────────────────────────────
+let cleaningInProgress = false;
+
 async function runCleanupCycle(): Promise<void> {
+  if (cleaningInProgress) {
+    log('INFO', 'Retention cleanup already in progress — skipping scheduled run');
+    return;
+  }
+  cleaningInProgress = true;
   const cycleStart = Date.now();
   log('INFO', 'Starting retention cleanup cycle');
 
@@ -82,6 +89,8 @@ async function runCleanupCycle(): Promise<void> {
     log('INFO', `Retention cleanup cycle completed in ${elapsed}ms. Total deleted: ${deletedCount} metrics. Retention period: ${METRICS_RETENTION_DAYS} days`);
   } catch (err) {
     log('ERROR', 'Retention cleanup cycle failed', err instanceof Error ? err.message : err);
+  } finally {
+    cleaningInProgress = false;
   }
 }
 

@@ -103,6 +103,7 @@ export async function buildBaseline(
   });
 
   const values = rows
+    .filter((r) => r[column] != null)
     .map((r) => Number(r[column]))
     .filter((v) => typeof v === 'number' && !Number.isNaN(v));
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
+import { resolveThresholds } from '@/lib/thresholds';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,7 @@ export async function GET(): Promise<NextResponse> {
 
     // ── SNMP worker heartbeat ─────────────────────────────────────────────────
     const latestSnmpRecord = await prisma.metric.findFirst({
-      where: { metricType: 'SNMP' },
+      where: { metricType: 'SNMP', source: 'REAL' },
       orderBy: { timestamp: 'desc' },
       select: { timestamp: true },
     });
@@ -69,7 +70,13 @@ export async function GET(): Promise<NextResponse> {
     const deviceInfo = deviceIds.length
       ? await prisma.device.findMany({
           where: { id: { in: deviceIds }, deletedAt: null },
-          select: { id: true, name: true, ip: true, status: true },
+          select: {
+            id: true, name: true, ip: true, status: true,
+            cpuThresholdOverride: true,
+            memThresholdOverride: true,
+            cpuResolveThresholdOverride: true,
+            memResolveThresholdOverride: true,
+          },
         })
       : [];
 
@@ -85,12 +92,28 @@ export async function GET(): Promise<NextResponse> {
         cpuUtil:   m.cpuUtil !== null ? Number(m.cpuUtil)  : null,
         memUtil:   m.memUtil !== null ? Number(m.memUtil)  : null,
         timestamp: m.timestamp,
+        thresholds: d ? resolveThresholds({
+          cpuThresholdOverride: d.cpuThresholdOverride,
+          memThresholdOverride: d.memThresholdOverride,
+          cpuResolveThresholdOverride: d.cpuResolveThresholdOverride,
+          memResolveThresholdOverride: d.memResolveThresholdOverride,
+        }) : null,
       };
     });
 
     const devicesPolled   = devicesWithSnmp.length;
-    const devicesHighCpu  = devicesWithSnmp.filter((d) => (d.cpuUtil  ?? 0) >= 85).length;
-    const devicesHighMem  = devicesWithSnmp.filter((d) => (d.memUtil  ?? 0) >= 90).length;
+    const devicesHighCpu  = devicesWithSnmp.filter((d) => d.cpuUtil != null && (d.thresholds ? d.cpuUtil >= d.thresholds.cpuAlert : d.cpuUtil >= 85)).length;
+    const devicesHighMem  = devicesWithSnmp.filter((d) => d.memUtil != null && (d.thresholds ? d.memUtil >= d.thresholds.memAlert : d.memUtil >= 90)).length;
+
+    const publicDevices = devicesWithSnmp.map((d) => ({
+      deviceId:  d.deviceId,
+      name:      d.name,
+      ip:        d.ip,
+      status:    d.status,
+      cpuUtil:   d.cpuUtil,
+      memUtil:   d.memUtil,
+      timestamp: d.timestamp,
+    }));
 
     return NextResponse.json({
       worker: {
@@ -105,7 +128,7 @@ export async function GET(): Promise<NextResponse> {
         devicesHighMem,
         highUtilAlerts,
       },
-      devices:     devicesWithSnmp,
+      devices:     publicDevices,
       updatedAt:   new Date().toISOString(),
     });
   } catch (error) {

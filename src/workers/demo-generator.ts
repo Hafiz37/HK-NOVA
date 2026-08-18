@@ -329,10 +329,13 @@ async function main(): Promise<void> {
   await loadEnabledState();
 
   // Poll for state changes every 10 seconds (faster than 1 min cron)
+  let statePollInFlight = false;
   const statePollInterval = setInterval(() => {
-    if (!isShuttingDown) {
-      void loadEnabledState();
-    }
+    if (isShuttingDown || statePollInFlight) return;
+    statePollInFlight = true;
+    void loadEnabledState().finally(() => {
+      statePollInFlight = false;
+    });
   }, 10_000);
 
   // Run ICMP generation immediately and on schedule

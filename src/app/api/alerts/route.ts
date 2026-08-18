@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { AlertStatus, AlertSeverity } from '@prisma/client';
 import { requireSession } from '@/lib/auth';
+import { parsePositiveIntParam } from '@/lib/utils';
 
 /**
  * GET /api/alerts?status=ACTIVE&severity=HIGH
@@ -15,8 +16,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const searchParams = request.nextUrl.searchParams;
     const statusParam = searchParams.get('status');
     const severityParam = searchParams.get('severity');
-    const page = Math.max(1, Number(searchParams.get('page') ?? '1'));
-    const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? '50')));
+    const page = parsePositiveIntParam(searchParams.get('page'), 1, 1, Number.MAX_SAFE_INTEGER);
+    const limit = parsePositiveIntParam(searchParams.get('limit'), 50, 1, 100);
     const skip = (page - 1) * limit;
 
     // Build filter

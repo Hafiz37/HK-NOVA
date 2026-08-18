@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/auth';
+import { UserRole } from '@prisma/client';
+import { requireSession, requireRole } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   const auth = await requireSession();
@@ -26,15 +27,16 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: windows });
   } catch (err) {
+    console.error('[API /api/maintenance-windows GET] Error:', err);
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : String(err) },
+      { success: false, error: 'Gagal mengambil data maintenance window' },
       { status: 500 }
     );
   }
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireSession();
+  const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 
   try {
@@ -48,12 +50,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const start = new Date(startAt);
+    const end = new Date(endAt);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return NextResponse.json(
+        { success: false, error: 'Format tanggal startAt/endAt tidak valid' },
+        { status: 400 }
+      );
+    }
+    if (end <= start) {
+      return NextResponse.json(
+        { success: false, error: 'endAt harus setelah startAt' },
+        { status: 400 }
+      );
+    }
+
     const window = await prisma.maintenanceWindow.create({
       data: {
         deviceId: deviceId || null,
         name,
-        startAt: new Date(startAt),
-        endAt: new Date(endAt),
+        startAt: start,
+        endAt: end,
         reason: reason || null,
         suppressedTypes: suppressedTypes
           ? (suppressedTypes as unknown as import('@prisma/client').Prisma.InputJsonValue)
@@ -72,8 +89,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: window });
   } catch (err) {
+    console.error('[API /api/maintenance-windows POST] Error:', err);
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : String(err) },
+      { success: false, error: 'Gagal membuat maintenance window' },
       { status: 500 }
     );
   }

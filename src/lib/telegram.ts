@@ -1,4 +1,5 @@
 import TelegramBot from 'node-telegram-bot-api';
+import { escapeHtml } from './utils';
 
 const token = process.env.TELEGRAM_BOT_TOKEN || '';
 const chatId = process.env.TELEGRAM_CHAT_ID || '';
@@ -40,11 +41,11 @@ export function formatAlertMessage(
   const emoji = severityEmoji[severity as keyof typeof severityEmoji] || '⚪';
 
   return `
-${emoji} <b>${type}</b>
+${emoji} <b>${escapeHtml(type)}</b>
 
-<b>Device:</b> ${deviceName}
-<b>Severity:</b> ${severity}
-<b>Message:</b> ${message}
+<b>Device:</b> ${escapeHtml(deviceName)}
+<b>Severity:</b> ${escapeHtml(severity)}
+<b>Message:</b> ${escapeHtml(message)}
 <b>Time:</b> ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}
   `.trim();
 }

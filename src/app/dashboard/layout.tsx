@@ -128,6 +128,18 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             )}
             {user?.role === "ADMIN" && (
               <Link
+                href="/dashboard/settings"
+                className={`block px-3 py-2 text-sm rounded-md transition-colors ${
+                  pathname.startsWith("/dashboard/settings")
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                }`}
+              >
+                ⚙️ Pengaturan
+              </Link>
+            )}
+            {user?.role === "ADMIN" && (
+              <Link
                 href="/dashboard/audit-logs"
                 className={`block px-3 py-2 text-sm rounded-md transition-colors ${
                   pathname.startsWith("/dashboard/audit-logs")

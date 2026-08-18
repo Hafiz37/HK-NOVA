@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { DeviceType, DeviceStatus, Prisma } from '@prisma/client';
+import { DeviceType, DeviceStatus, UserRole, Prisma } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
-import { requireSession } from '@/lib/auth';
+import { requireSession, requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
 import { normalizeThresholdInput } from '@/lib/thresholds';
+import { isValidIpv4 } from '@/lib/utils';
 
 /**
  * GET /api/devices?search=...&type=...&status=...&showDemo=true
@@ -129,7 +130,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * Creates a new network device.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireSession();
+  const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 
   try {
@@ -151,9 +152,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Device IP address is required' }, { status: 400 });
     }
 
-    // Validate IP format (IPv4 or hostname/IPv6)
-    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-    if (!ipv4Regex.test(ip.trim())) {
+    // Validate IP format (IPv4 only — hostname/IPv6 belum didukung)
+    if (!isValidIpv4(ip.trim())) {
       return NextResponse.json({ error: 'Invalid IPv4 address format' }, { status: 400 });
     }
 

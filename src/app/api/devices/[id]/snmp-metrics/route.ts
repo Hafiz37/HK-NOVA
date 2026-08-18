@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
+import { parsePositiveNumberParam } from '@/lib/utils';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
   try {
     const { id } = await params;
     const searchParams     = request.nextUrl.searchParams;
-    const hours            = Math.min(Number(searchParams.get('hours') ?? '24'), 168); // max 7 days
+    const hours            = parsePositiveNumberParam(searchParams.get('hours'), 24, 1, 168); // max 7 days
     const includeBandwidth = searchParams.get('includeBandwidth') === 'true';
 
     // Validate device exists

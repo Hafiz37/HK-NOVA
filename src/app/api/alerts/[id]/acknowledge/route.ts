@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { requireSession } from '@/lib/auth';
+import { UserRole } from '@prisma/client';
+import { requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
 
 interface RouteParams {
@@ -12,7 +13,7 @@ interface RouteParams {
  * Updates alert status to ACKNOWLEDGED.
  */
 export async function POST(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
-  const auth = await requireSession();
+  const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 
   try {

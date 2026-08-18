@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { requireSession } from '@/lib/auth';
+import { UserRole } from '@prisma/client';
+import { requireRole } from '@/lib/auth';
+import { parsePositiveIntParam } from '@/lib/utils';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireSession();
+  const auth = await requireRole([UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '20', 10);
+    const page = parsePositiveIntParam(searchParams.get('page'), 1, 1, Number.MAX_SAFE_INTEGER);
+    const limit = parsePositiveIntParam(searchParams.get('limit'), 20, 1, 100);
     const action = searchParams.get('action');
     const entity = searchParams.get('entity');
     const userId = searchParams.get('userId');

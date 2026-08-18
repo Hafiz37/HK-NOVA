@@ -32,6 +32,29 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
       role: existingUser.role,
     };
 
+    // Cegah admin lockout: admin tidak boleh menurunkan role dirinya sendiri,
+    // dan role ADMIN terakhir tidak boleh dicabut.
+    if (role !== undefined && role !== existingUser.role) {
+      const newRole = role as UserRole;
+      if (id === auth.user.id && existingUser.role === 'ADMIN' && newRole !== 'ADMIN') {
+        return NextResponse.json(
+          { error: 'Tidak dapat menurunkan role akun sendiri' },
+          { status: 400 }
+        );
+      }
+      if (existingUser.role === 'ADMIN' && newRole !== 'ADMIN') {
+        const otherAdmins = await prisma.user.count({
+          where: { role: 'ADMIN', id: { not: id } },
+        });
+        if (otherAdmins === 0) {
+          return NextResponse.json(
+            { error: 'Tidak dapat menghapus role ADMIN terakhir' },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     const dataToUpdate: Record<string, unknown> = {};
 
     if (fullName !== undefined) dataToUpdate.fullName = fullName ? fullName.trim() : null;

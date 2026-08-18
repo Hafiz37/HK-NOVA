@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
+import { parsePositiveNumberParam } from '@/lib/utils';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
   try {
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
-    const hours = Math.min(Number(searchParams.get('hours') ?? '24'), 168); // max 7 days
+    const hours = parsePositiveNumberParam(searchParams.get('hours'), 24, 1, 168); // max 7 days
     const metricType = searchParams.get('type') ?? 'ICMP';
 
     // Validate device exists
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 
     // Compute summary statistics
     const icmpMetrics = metrics.filter((m) => m.latency !== null);
+    const packetLossRows = metrics.filter((m) => m.packetLoss !== null);
     const avgLatency =
       icmpMetrics.length > 0
         ? icmpMetrics.reduce((sum, m) => sum + (m.latency ?? 0), 0) / icmpMetrics.length
@@ -61,8 +63,8 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
     const minLatency =
       icmpMetrics.length > 0 ? Math.min(...icmpMetrics.map((m) => m.latency ?? 0)) : null;
     const avgPacketLoss =
-      metrics.length > 0
-        ? metrics.reduce((sum, m) => sum + (m.packetLoss ?? 0), 0) / metrics.length
+      packetLossRows.length > 0
+        ? packetLossRows.reduce((sum, m) => sum + (m.packetLoss ?? 0), 0) / packetLossRows.length
         : null;
 
     return NextResponse.json({
