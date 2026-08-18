@@ -18,8 +18,9 @@ Dokumen ini merangkum inventarisasi **Potensi Masalah (Perlu Perhatian)** dan **
 ### 2. Notifikasi Telegram Kosong (`TELEGRAM_BOT_TOKEN=""`)
 - **Masalah**: Ketika variabel `TELEGRAM_BOT_TOKEN` atau `TELEGRAM_CHAT_ID` belum diisi pada file `.env`, pengiriman notifikasi Telegram akan gagal secara diam-diam (*silent fail*) tanpa menghentikan worker.
 - **Solusi & Status**:
-  - **Opsional**: Pengisian `TELEGRAM_BOT_TOKEN` bersifat opsional pada Phase 1.
+  - **Opsional**: Pengisian `TELEGRAM_BOT_TOKEN` bersifat opsional.
   - Module `src/lib/telegram.ts` menangani ketiadaan token dengan aman menggunakan logging `console.warn` tanpa melemparkan *uncaught exception* yang dapat merusak siklus polling ICMP.
+  - ✅ Multi-kanal: Email (SMTP), Webhook (Slack/Discord), dan SMS kini didukung (lihat `src/lib/notify-config.ts`, `src/lib/channels/*`, API `GET/POST /api/settings/notifications`, halaman `/dashboard/settings`).
 
 ---
 
@@ -32,11 +33,12 @@ Dokumen ini merangkum inventarisasi **Potensi Masalah (Perlu Perhatian)** dan **
 
 ---
 
-### 4. Cooldown Notification In-Memory
-- **Masalah**: Cooldown notifikasi alert Telegram disimpan dalam memori (*In-Memory Map*) pada proses Node.js worker. Jika worker di-restart, state cooldown akan ter-reset, sehingga alert bisa terkirim kembali jika status device masih DOWN.
-- **Solusi & Catatan MVP**:
-  - Pendekatan in-memory ini sangat efisien dan **acceptable untuk tahap MVP Phase 1**.
-  - Untuk Phase selanjutnya (Production Hardening), cooldown state dapat dipindahkan ke Redis atau tabel database `AlertCooldown`.
+### 4. Cooldown Notification In-Memory (TELAH DIGANTI: DB-Backed)
+- **Masalah (sebelumnya)**: Cooldown notifikasi alert Telegram disimpan dalam memori (*In-Memory Map*) pada proses Node.js worker. Jika worker di-restart, state cooldown akan ter-reset, sehingga alert bisa terkirim kembali jika status device masih DOWN.
+- **Solusi & Status**: ✅ **Telah diselesaikan.**
+  - Cooldown sekarang dipersist di tabel MySQL `AlertCooldown` (unik per `deviceId` + `channel` + `cooldownKey`), sehingga **bertahan setelah worker restart**.
+  - Kanal notifikasi Telegram, Email (SMTP), Webhook (Slack/Discord), dan SMS dilacak cooldown-nya secara terpisah — satu kanal gagal/cooldown tidak membungkam kanal lain.
+  - Implementasi: `src/lib/cooldown.ts`, `src/lib/notifier.ts`, model `AlertCooldown` (`prisma/schema.prisma`).
 
 ---
 

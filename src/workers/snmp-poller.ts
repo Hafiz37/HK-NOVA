@@ -14,7 +14,7 @@ import {
 } from '../lib/constants';
 import { startPollScheduler } from '../lib/poll-scheduler';
 import { randomUUID } from 'crypto';
-import { sendTelegramNotification, formatAlertMessage } from '../lib/telegram';
+import { dispatchNotifications } from '../lib/notifier';
 import { isDeviceInMaintenance } from '../lib/maintenance';
 import { resolveThresholds, type ThresholdOverrides } from '../lib/thresholds';
 import {
@@ -59,9 +59,6 @@ const OID = {
   ifHCInOctets:  '1.3.6.1.2.1.31.1.1.1.6',       // 64-bit in octets
   ifHCOutOctets: '1.3.6.1.2.1.31.1.1.1.10',      // 64-bit out octets
 } as const;
-
-// ─── In-memory cooldown tracker ──────────────────────────────────────────────
-const notificationCooldown = new Map<string, number>();
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface SnmpCredential {
@@ -394,20 +391,30 @@ async function handleUtilizationAlerts(
 
       if (r.action === 'created') {
         await sendNotificationWithCooldown(
-          `${device.id}-cpu`,
-          device.name,
-          'HIGH_UTILIZATION',
-          r.alert.severity,
-          `CPU ${device.name} (${device.ip}) mencapai ${cpu.toFixed(1)}% — melebihi batas ${t.cpuAlert}%.`
+          {
+            type: 'HIGH_UTILIZATION',
+            severity: r.alert.severity,
+            deviceId: device.id,
+            deviceName: device.name,
+            deviceIp: device.ip,
+            message: `CPU ${device.name} (${device.ip}) mencapai ${cpu.toFixed(1)}% — melebihi batas ${t.cpuAlert}%.`,
+            cooldownKey: 'cpu',
+            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+          }
         );
         log('WARN', `HIGH CPU alert created for ${device.name}: ${cpu.toFixed(1)}% (threshold ${t.cpuAlert}%, severity ${r.alert.severity})`);
       } else if (r.action === 'correlated') {
         await sendNotificationWithCooldown(
-          `${device.id}-cpu`,
-          device.name,
-          'HIGH_UTILIZATION_CORRELATED',
-          'CRITICAL',
-          `CPU ${device.name} (${device.ip}) ${cpu.toFixed(1)}% — perangkat DOWN, alert DEVICE_DOWN dinaikkan ke CRITICAL.`
+          {
+            type: 'HIGH_UTILIZATION_CORRELATED',
+            severity: 'CRITICAL',
+            deviceId: device.id,
+            deviceName: device.name,
+            deviceIp: device.ip,
+            message: `CPU ${device.name} (${device.ip}) ${cpu.toFixed(1)}% — perangkat DOWN, alert DEVICE_DOWN dinaikkan ke CRITICAL.`,
+            cooldownKey: 'cpu',
+            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+          }
         );
         log('WARN', `[CORRELATED] CPU ${device.name}: ${cpu.toFixed(1)}% saat perangkat DOWN — DEVICE_DOWN dinaikkan ke CRITICAL`);
       }
@@ -423,11 +430,16 @@ async function handleUtilizationAlerts(
       if (resolved > 0) {
         log('INFO', `AUTO-RESOLVED ${resolved} HIGH_CPU alert(s) for ${device.name}: CPU now ${cpu.toFixed(1)}% (below ${t.cpuResolve}%)`);
         await sendNotificationWithCooldown(
-          `${device.id}-cpu-recover`,
-          device.name,
-          'HIGH_UTILIZATION_RESOLVED',
-          'INFO',
-          `CPU ${device.name} (${device.ip}) kembali normal: ${cpu.toFixed(1)}% (batas resolve: ${t.cpuResolve}%).`
+          {
+            type: 'HIGH_UTILIZATION_RESOLVED',
+            severity: 'INFO',
+            deviceId: device.id,
+            deviceName: device.name,
+            deviceIp: device.ip,
+            message: `CPU ${device.name} (${device.ip}) kembali normal: ${cpu.toFixed(1)}% (batas resolve: ${t.cpuResolve}%).`,
+            cooldownKey: 'cpu-recover',
+            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+          }
         );
       }
     }
@@ -446,20 +458,30 @@ async function handleUtilizationAlerts(
 
       if (r.action === 'created') {
         await sendNotificationWithCooldown(
-          `${device.id}-mem`,
-          device.name,
-          'HIGH_UTILIZATION',
-          r.alert.severity,
-          `Memory ${device.name} (${device.ip}) mencapai ${mem.toFixed(1)}% — melebihi batas ${t.memAlert}%.`
+          {
+            type: 'HIGH_UTILIZATION',
+            severity: r.alert.severity,
+            deviceId: device.id,
+            deviceName: device.name,
+            deviceIp: device.ip,
+            message: `Memory ${device.name} (${device.ip}) mencapai ${mem.toFixed(1)}% — melebihi batas ${t.memAlert}%.`,
+            cooldownKey: 'mem',
+            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+          }
         );
         log('WARN', `HIGH MEMORY alert created for ${device.name}: ${mem.toFixed(1)}% (threshold ${t.memAlert}%, severity ${r.alert.severity})`);
       } else if (r.action === 'correlated') {
         await sendNotificationWithCooldown(
-          `${device.id}-mem`,
-          device.name,
-          'HIGH_UTILIZATION_CORRELATED',
-          'CRITICAL',
-          `Memory ${device.name} (${device.ip}) ${mem.toFixed(1)}% — perangkat DOWN, alert DEVICE_DOWN dinaikkan ke CRITICAL.`
+          {
+            type: 'HIGH_UTILIZATION_CORRELATED',
+            severity: 'CRITICAL',
+            deviceId: device.id,
+            deviceName: device.name,
+            deviceIp: device.ip,
+            message: `Memory ${device.name} (${device.ip}) ${mem.toFixed(1)}% — perangkat DOWN, alert DEVICE_DOWN dinaikkan ke CRITICAL.`,
+            cooldownKey: 'mem',
+            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+          }
         );
         log('WARN', `[CORRELATED] Memory ${device.name}: ${mem.toFixed(1)}% saat perangkat DOWN — DEVICE_DOWN dinaikkan ke CRITICAL`);
       }
@@ -475,36 +497,49 @@ async function handleUtilizationAlerts(
       if (resolved > 0) {
         log('INFO', `AUTO-RESOLVED ${resolved} HIGH_MEM alert(s) for ${device.name}: MEM now ${mem.toFixed(1)}% (below ${t.memResolve}%)`);
         await sendNotificationWithCooldown(
-          `${device.id}-mem-recover`,
-          device.name,
-          'HIGH_UTILIZATION_RESOLVED',
-          'INFO',
-          `Memory ${device.name} (${device.ip}) kembali normal: ${mem.toFixed(1)}% (batas resolve: ${t.memResolve}%).`
+          {
+            type: 'HIGH_UTILIZATION_RESOLVED',
+            severity: 'INFO',
+            deviceId: device.id,
+            deviceName: device.name,
+            deviceIp: device.ip,
+            message: `Memory ${device.name} (${device.ip}) kembali normal: ${mem.toFixed(1)}% (batas resolve: ${t.memResolve}%).`,
+            cooldownKey: 'mem-recover',
+            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+          }
         );
       }
     }
   }
 }
 
-// ─── Cooldown-aware Telegram notification ────────────────────────────────────
+// ─── Cooldown-aware multi-channel notification ───────────────────────────────
 async function sendNotificationWithCooldown(
-  key: string,
-  deviceName: string,
-  type: string,
-  severity: string,
-  message: string
-): Promise<void> {
-  const lastNotified = notificationCooldown.get(key) ?? 0;
-  const now = Date.now();
-
-  if (now - lastNotified < SNMP_ALERT_COOLDOWN_MS) {
-    log('INFO', `Notification cooldown active for ${key}, skipping Telegram`);
-    return;
+  payload: {
+    deviceId: string;
+    deviceName: string;
+    deviceIp: string;
+    type: string;
+    severity: string;
+    message: string;
+    cooldownKey: string;
+    cooldownMs: number;
   }
-
-  notificationCooldown.set(key, now);
-  const formatted = formatAlertMessage(type, severity, deviceName, message);
-  await sendTelegramNotification(formatted);
+): Promise<void> {
+  try {
+    const result = await dispatchNotifications(prisma, payload);
+    if (result.sent.length > 0) {
+      log('INFO', `Notification sent via: ${result.sent.join(', ')}`);
+    }
+    if (result.skipped.length > 0) {
+      log('INFO', `Notification skipped (disabled/cooldown) for: ${result.skipped.join(', ')}`);
+    }
+    if (result.failed.length > 0) {
+      log('WARN', `Notification failed for: ${result.failed.join(', ')}`);
+    }
+  } catch (err) {
+    log('ERROR', 'Failed to dispatch notification', err instanceof Error ? err.message : err);
+  }
 }
 
 // ─── Persist SNMP results to DB ──────────────────────────────────────────────

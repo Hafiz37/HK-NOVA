@@ -14,7 +14,7 @@ import {
   DEFAULT_PING_TIMEOUT,
 } from '../lib/constants';
 import { startPollScheduler } from '../lib/poll-scheduler';
-import { sendTelegramNotification, formatAlertMessage } from '../lib/telegram';
+import { dispatchNotifications } from '../lib/notifier';
 import { randomUUID } from 'crypto';
 import { isDeviceInMaintenance } from '../lib/maintenance';
 import {
@@ -87,10 +87,6 @@ async function pingHostSystem(ip: string, timeoutMs: number): Promise<{ latency:
     }, timeoutMs + 1000);
   });
 }
-
-// ─── In-memory cooldown tracker ──────────────────────────────────────────────
-/** Map<deviceId, lastNotifiedTimestamp> */
-const notificationCooldown = new Map<string, number>();
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface PingResult {
@@ -219,8 +215,16 @@ async function handleAlertTransition(
     if (result.created) {
       log('WARN', `Alert DEVICE_DOWN created for ${device.name} (${device.ip}) severity=${result.alert.severity}`);
 
-      await sendNotificationWithCooldown(device.id, device.name, 'DEVICE_DOWN', result.alert.severity,
-        `${device.name} (${device.ip}) tidak dapat dijangkau. Semua percobaan ping gagal.`);
+      await dispatchNotifications(prisma, {
+        type: 'DEVICE_DOWN',
+        severity: result.alert.severity,
+        deviceId: device.id,
+        deviceName: device.name,
+        deviceIp: device.ip,
+        message: `${device.name} (${device.ip}) tidak dapat dijangkau. Semua percobaan ping gagal.`,
+        cooldownKey: 'default',
+        cooldownMs: ICMP_ALERT_COOLDOWN_MS,
+      });
     } else {
       log('INFO', `Alert DEVICE_DOWN sudah aktif (dedupe) untuk ${device.name} (${device.ip})`);
     }
@@ -243,29 +247,17 @@ async function handleAlertTransition(
 
     log('INFO', `Device recovered: ${device.name} (${device.ip}) (${downResolved} DEVICE_DOWN resolved, ${childrenResolved} children resolved)`);
 
-    await sendNotificationWithCooldown(device.id, device.name, 'DEVICE_UP', 'MEDIUM',
-      `${device.name} (${device.ip}) kembali online dan dapat dijangkau.`);
+    await dispatchNotifications(prisma, {
+      type: 'DEVICE_UP',
+      severity: 'MEDIUM',
+      deviceId: device.id,
+      deviceName: device.name,
+      deviceIp: device.ip,
+      message: `${device.name} (${device.ip}) kembali online dan dapat dijangkau.`,
+      cooldownKey: 'default',
+      cooldownMs: ICMP_ALERT_COOLDOWN_MS,
+    });
   }
-}
-
-async function sendNotificationWithCooldown(
-  deviceId: string,
-  deviceName: string,
-  type: string,
-  severity: string,
-  message: string
-): Promise<void> {
-  const lastNotified = notificationCooldown.get(deviceId) ?? 0;
-  const now = Date.now();
-
-  if (now - lastNotified < ICMP_ALERT_COOLDOWN_MS) {
-    log('INFO', `Notification cooldown active for ${deviceName}, skipping Telegram message`);
-    return;
-  }
-
-  notificationCooldown.set(deviceId, now);
-  const formatted = formatAlertMessage(type, severity, deviceName, message);
-  await sendTelegramNotification(formatted);
 }
 
 // ─── Process results and persist to DB ──────────────────────────────────────

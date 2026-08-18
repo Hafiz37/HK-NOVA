@@ -169,7 +169,7 @@ hk-nova/
 ├── src/
 │   ├── app/                  # Next.js pages & API routes
 │   ├── components/           # React components
-│   ├── lib/                  # Utilities (prisma, encryption, telegram)
+│   ├── lib/                  # Utilities (prisma, encryption, notifier, cooldown, telegram)
 │   ├── workers/              # Background workers (ICMP, SNMP, Retention)
 │   ├── types/                # TypeScript types
 │   └── config/               # Configuration files (OLT templates, SNMP OIDs)

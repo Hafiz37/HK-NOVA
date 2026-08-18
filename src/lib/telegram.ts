@@ -1,51 +1,30 @@
-import TelegramBot from 'node-telegram-bot-api';
-import { escapeHtml } from './utils';
+import { sendTelegramToChats, formatTelegramMessage } from './channels/telegram';
 
+/**
+ * Telegram notification helper (backward-compatible with the original module).
+ * Reads token/chat IDs from env; TELEGRAM_CHAT_ID may contain multiple
+ * comma-separated chat IDs for multi-recipient delivery.
+ */
 const token = process.env.TELEGRAM_BOT_TOKEN || '';
-const chatId = process.env.TELEGRAM_CHAT_ID || '';
-
-let bot: TelegramBot | null = null;
-
-if (token && chatId) {
-  bot = new TelegramBot(token, { polling: false });
-}
+const chatIds = (process.env.TELEGRAM_CHAT_ID || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 export async function sendTelegramNotification(message: string): Promise<boolean> {
-  if (!bot || !chatId) {
+  if (!token || chatIds.length === 0) {
     console.warn('Telegram not configured. Message:', message);
     return false;
   }
-
-  try {
-    await bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
-    return true;
-  } catch (error) {
-    console.error('Failed to send Telegram notification:', error);
-    return false;
-  }
+  return sendTelegramToChats(token, chatIds, message);
 }
 
+/** Format an alert as a Telegram HTML message. */
 export function formatAlertMessage(
   type: string,
   severity: string,
   deviceName: string,
   message: string
 ): string {
-  const severityEmoji = {
-    LOW: '🟢',
-    MEDIUM: '🟡',
-    HIGH: '🟠',
-    CRITICAL: '🔴',
-  };
-
-  const emoji = severityEmoji[severity as keyof typeof severityEmoji] || '⚪';
-
-  return `
-${emoji} <b>${escapeHtml(type)}</b>
-
-<b>Device:</b> ${escapeHtml(deviceName)}
-<b>Severity:</b> ${escapeHtml(severity)}
-<b>Message:</b> ${escapeHtml(message)}
-<b>Time:</b> ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}
-  `.trim();
+  return formatTelegramMessage(type, severity, deviceName, message);
 }

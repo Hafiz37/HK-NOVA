@@ -94,6 +94,19 @@ model Setting {
   updatedAt DateTime @updatedAt
 }
 
+model AlertCooldown {
+  id          String   @id @default(cuid())
+  deviceId    String
+  channel     String   // "telegram" | "email" | "webhook" | "sms"
+  cooldownKey String   @default("default") // "default" | "cpu" | "mem" | "cpu-recover" | "mem-recover"
+  cooldownAt  DateTime @db.Timestamp(3)
+  createdAt   DateTime @default(now())
+
+  @@unique([deviceId, channel, cooldownKey])
+  @@index([deviceId])
+  @@index([cooldownAt])
+}
+
 model Device {
   id          String       @id @default(cuid())
   name        String
