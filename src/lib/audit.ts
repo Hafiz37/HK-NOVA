@@ -7,14 +7,17 @@ export type AuditAction =
   | 'UPDATE'
   | 'DELETE'
   | 'ACKNOWLEDGE'
-  | 'RESOLVE';
+  | 'RESOLVE'
+  | 'EXPORT';
 
 export type AuditEntity =
   | 'User'
   | 'Device'
   | 'Alert'
   | 'Setting'
-  | 'MaintenanceWindow';
+  | 'MaintenanceWindow'
+  | 'Metric'
+  | 'AuditLog';
 
 export interface AuditDetails {
   before?: Record<string, unknown>;

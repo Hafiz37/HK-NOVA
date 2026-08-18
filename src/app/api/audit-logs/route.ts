@@ -83,12 +83,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       user: log.userId ? userMap.get(log.userId) || null : null,
     }));
 
+    // Daftar filter yang tersedia (server-side, akurat untuk volume besar)
+    const [availableActions, availableEntities] = await Promise.all([
+      prisma.auditLog.findMany({ distinct: ['action'], select: { action: true }, orderBy: { action: 'asc' } }),
+      prisma.auditLog.findMany({ distinct: ['entity'], select: { entity: true }, orderBy: { entity: 'asc' } }),
+    ]);
+
     return NextResponse.json({
       data: enrichedLogs,
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      meta: {
+        actions: availableActions.map((a) => a.action),
+        entities: availableEntities.map((e) => e.entity),
+      },
     });
   } catch (error) {
     console.error('[API /api/audit-logs GET] Error:', error);

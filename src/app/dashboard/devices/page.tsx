@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { ExportMenu } from "@/components/dashboard/export-menu";
 
 interface Device {
   id: string;
@@ -265,6 +266,14 @@ export default function DevicesPage() {
     }
   };
 
+  const buildExportUrl = (format: "csv" | "xlsx" | "pdf") => {
+    const params = new URLSearchParams({ format, showDemo: showDemo.toString() });
+    if (search.trim()) params.set("search", search.trim());
+    if (filterType) params.set("type", filterType);
+    if (filterStatus) params.set("status", filterStatus);
+    return `/api/export/devices?${params.toString()}`;
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -274,9 +283,12 @@ export default function DevicesPage() {
           <h2 className="text-2xl font-bold text-white tracking-tight">Manajemen Device</h2>
           <p className="text-slate-400 text-sm mt-1">Kelola perangkat jaringan router, switch, OLT, dan firewall</p>
         </div>
-        <button onClick={openAdd} className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95">
-          ➕ Tambah Device
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportMenu buildUrl={buildExportUrl} />
+          <button onClick={openAdd} className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95">
+            ➕ Tambah Device
+          </button>
+        </div>
       </div>
 
       {/* Toast */}

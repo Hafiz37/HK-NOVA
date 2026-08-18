@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { ExportMenu } from "@/components/dashboard/export-menu";
 
 interface AuditLogUser {
   id: string;
@@ -27,6 +28,7 @@ interface AuditLogResponse {
   page: number;
   limit: number;
   totalPages: number;
+  meta?: { actions: string[]; entities: string[] };
 }
 
 const ACTION_COLORS: Record<string, string> = {
@@ -64,6 +66,9 @@ export default function AuditLogsPage() {
     dateTo: "",
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [availableActions, setAvailableActions] = useState<string[]>([]);
+  const [availableEntities, setAvailableEntities] = useState<string[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<AuditLogUser[]>([]);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -84,6 +89,8 @@ export default function AuditLogsPage() {
       setLogs(json.data);
       setTotal(json.total);
       setTotalPages(json.totalPages);
+      if (json.meta?.actions) setAvailableActions(json.meta.actions);
+      if (json.meta?.entities) setAvailableEntities(json.meta.entities);
     } catch (err) {
       console.error("Failed to fetch audit logs:", err);
     } finally {
@@ -96,14 +103,31 @@ export default function AuditLogsPage() {
     fetchLogs();
   }, [fetchLogs]);
 
-  const uniqueActions = useMemo(() => [...new Set(logs.map((l) => l.action))], [logs]);
-  const uniqueEntities = useMemo(() => [...new Set(logs.map((l) => l.entity))], [logs]);
-  const uniqueUsers = useMemo(() => {
-    const seen = new Set<string>();
-    return logs
-      .map((l) => l.user)
-      .filter((u): u is AuditLogUser => Boolean(u) && !seen.has(u!.id) && !seen.add(u!.id));
-  }, [logs]);
+  // Daftar user untuk filter (server-side, akurat untuk volume besar)
+  useEffect(() => {
+    let active = true;
+    fetch("/api/users")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (active && json?.data) setAvailableUsers(json.data as AuditLogUser[]);
+      })
+      .catch(() => { /* silent */ });
+    return () => { active = false; };
+  }, []);
+
+  const uniqueActions = availableActions;
+  const uniqueEntities = availableEntities;
+  const uniqueUsers = availableUsers;
+
+  const buildExportUrl = (format: "csv" | "xlsx" | "pdf") => {
+    const params = new URLSearchParams({ format });
+    if (filters.action) params.set("action", filters.action);
+    if (filters.entity) params.set("entity", filters.entity);
+    if (filters.userId) params.set("userId", filters.userId);
+    if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) params.set("dateTo", filters.dateTo);
+    return `/api/export/audit-logs?${params.toString()}`;
+  };
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -134,6 +158,7 @@ export default function AuditLogsPage() {
           <p className="text-slate-400 mt-1 text-sm">Riwayat aktivitas semua user di sistem</p>
         </div>
         <div className="flex items-center gap-2">
+          <ExportMenu buildUrl={buildExportUrl} />
           <select
             value={limit}
             onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}

@@ -15,6 +15,7 @@ import {
 import { useRealtimeMonitoring, SSEStatus } from '@/hooks/useSSE';
 import { useBaseline } from '@/hooks/useBaseline';
 import BaselineBadge from '@/components/dashboard/baseline-badge';
+import { ExportMenu } from '@/components/dashboard/export-menu';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DeviceRow {
@@ -246,6 +247,14 @@ export default function MonitoringPage() {
           >
             ↻ Refresh
           </button>
+          {/* Export */}
+          {selectedDevice && (
+            <ExportMenu
+              buildUrl={(format) =>
+                `/api/export/metrics?deviceId=${selectedDevice}&hours=${timeRange}&type=ICMP&format=${format}`
+              }
+            />
+          )}
         </div>
       </div>
       {lastRefresh && <p className="text-xs text-slate-600 -mt-4">Last updated: {lastRefresh}</p>}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Fragment } from "react";
 import { useRealtimeMonitoring } from "@/hooks/useSSE";
+import { ExportMenu } from "@/components/dashboard/export-menu";
 
 interface AlertItem {
   id: string;
@@ -19,6 +20,16 @@ interface AlertItem {
   device: {
     id: string; name: string; ip: string; type: string; location: string | null;
   } | null;
+}
+
+interface AlertsListResponse {
+  data: AlertItem[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 const SEV_STYLES: Record<string, { label: string; cls: string }> = {
@@ -60,6 +71,11 @@ export default function AlertsPage() {
   const [tab, setTab]               = useState("ACTIVE");
   const [severity, setSeverity]     = useState("");
   const [search, setSearch]         = useState("");
+  const [searchApplied, setSearchApplied] = useState("");
+  const [page, setPage]             = useState(1);
+  const [limit, setLimit]           = useState(20);
+  const [total, setTotal]           = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [detail, setDetail]         = useState<AlertItem | null>(null);
   const [toast, setToast]           = useState<{ ok: boolean; msg: string } | null>(null);
   const [acting, setActing]         = useState<string | null>(null); // alertId being acted on
@@ -75,16 +91,40 @@ export default function AlertsPage() {
       const p = new URLSearchParams();
       if (tab !== "ALL") p.append("status", tab);
       if (severity) p.append("severity", severity);
-      p.append("limit", "100");
+      if (searchApplied) p.append("search", searchApplied);
+      p.append("page", page.toString());
+      p.append("limit", limit.toString());
       const res = await fetch(`/api/alerts?${p}`);
-      if (res.ok) setAlerts((await res.json()).data ?? []);
+      if (res.ok) {
+        const json: AlertsListResponse = await res.json();
+        setAlerts(json.data ?? []);
+        const pg = json.pagination;
+        if (pg) {
+          setTotal(pg.total);
+          setTotalPages(pg.totalPages);
+        }
+      }
     } catch { /* silent */ } finally { setLoading(false); }
-  }, [tab, severity]);
+  }, [tab, severity, searchApplied, page, limit]);
 
   useEffect(() => {
     const run = async () => { await fetchAlerts(); };
     void run();
   }, [fetchAlerts]);
+
+  // Debounce pencarian server-side
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setSearchApplied(search.trim());
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [search]);
+
+  // Reset halaman saat tab/severity/limit diganti
+  const changeTab = (next: string) => { setTab(next); setPage(1); };
+  const changeSeverity = (next: string) => { setSeverity(next); setPage(1); };
+  const changeLimit = (next: number) => { setLimit(next); setPage(1); };
 
   const lastSseRefresh = useRef(0);
   useRealtimeMonitoring(() => {
@@ -109,18 +149,15 @@ export default function AlertsPage() {
     } finally { setActing(null); }
   };
 
-  const filtered = alerts.filter(a => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      a.message.toLowerCase().includes(q) ||
-      a.type.toLowerCase().includes(q) ||
-      a.device?.name.toLowerCase().includes(q) ||
-      a.device?.ip.toLowerCase().includes(q)
-    );
-  });
+  const buildExportUrl = (format: "csv" | "xlsx" | "pdf") => {
+    const params = new URLSearchParams({ format });
+    if (tab !== "ALL") params.set("status", tab);
+    if (severity) params.set("severity", severity);
+    if (searchApplied) params.set("search", searchApplied);
+    return `/api/export/alerts?${params.toString()}`;
+  };
 
-  // counts per tab for badges
+  // counts per tab for badges (dari halaman saat ini)
   const counts = {
     ACTIVE: alerts.filter(a => a.status === "ACTIVE").length,
   };
@@ -133,10 +170,23 @@ export default function AlertsPage() {
           <h2 className="text-2xl font-bold text-white tracking-tight">Pusat Alert &amp; Notifikasi</h2>
           <p className="text-slate-400 text-sm mt-1">Daftar alert kejadian perangkat jaringan dan deteksi sistem</p>
         </div>
-        <button onClick={() => void fetchAlerts()}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-xl border border-slate-700 transition-colors">
-          🔄 Refresh
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <ExportMenu buildUrl={buildExportUrl} />
+          <select
+            value={limit}
+            onChange={(e) => changeLimit(Number(e.target.value))}
+            className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+          >
+            <option value={10}>10/halaman</option>
+            <option value={20}>20/halaman</option>
+            <option value={50}>50/halaman</option>
+            <option value={100}>100/halaman</option>
+          </select>
+          <button onClick={() => void fetchAlerts()}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-xl border border-slate-700 transition-colors">
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
       {/* Toast */}
@@ -150,7 +200,7 @@ export default function AlertsPage() {
       {/* Tabs */}
       <div className="flex border-b border-slate-800 gap-1 overflow-x-auto">
         {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+          <button key={t.key} onClick={() => changeTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-all flex items-center gap-1.5 ${
               tab === t.key
                 ? "border-blue-500 text-blue-400"
@@ -174,7 +224,7 @@ export default function AlertsPage() {
             value={search} onChange={e => setSearch(e.target.value)}
             className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" />
         </div>
-        <select value={severity} onChange={e => setSeverity(e.target.value)}
+        <select value={severity} onChange={e => changeSeverity(e.target.value)}
           className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-blue-500">
           <option value="">Semua Severity</option>
           <option value="CRITICAL">🔴 Critical</option>
@@ -210,7 +260,7 @@ export default function AlertsPage() {
                     ))}
                   </tr>
                 ))
-              ) : filtered.length === 0 ? (
+              ) : alerts.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-14 text-center">
                     <div className="text-3xl mb-2">{tab === "ACTIVE" ? "🎉" : "📋"}</div>
@@ -220,7 +270,7 @@ export default function AlertsPage() {
                     <p className="text-xs text-slate-500 mt-1">Sesuaikan filter atau tab status.</p>
                   </td>
                 </tr>
-              ) : filtered.map(alert => (
+              ) : alerts.map(alert => (
                 <Fragment key={alert.id}>
                 <tr className="hover:bg-slate-800/40 transition-colors">
                   <td className="px-5 py-4"><SevBadge severity={alert.severity} /></td>
@@ -309,9 +359,30 @@ export default function AlertsPage() {
             </tbody>
           </table>
         </div>
-        {!loading && filtered.length > 0 && (
-          <div className="px-5 py-3 border-t border-slate-800 text-xs text-slate-500">
-            {filtered.length} alert ditampilkan
+        {!loading && alerts.length > 0 && (
+          <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-xs text-slate-500">
+              Menampilkan {((page - 1) * limit) + 1} - {Math.min(page * limit, total)} dari {total} alert
+            </p>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Sebelumnya
+                </button>
+                <span className="text-sm text-slate-300 px-2">Halaman {page} / {totalPages}</span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Selanjutnya
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
