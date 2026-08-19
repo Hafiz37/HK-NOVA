@@ -79,8 +79,10 @@ export async function shouldSendNotification(
   input: CooldownKeyInput,
   now: number = Date.now()
 ): Promise<boolean> {
-  const { allowed } = await checkCooldown(prisma, input, now);
-  if (!allowed) return false;
-  await markNotified(prisma, input, now);
-  return true;
+  return await prisma.$transaction(async (tx) => {
+    const { allowed } = await checkCooldown(tx, input, now);
+    if (!allowed) return false;
+    await markNotified(tx, input, now);
+    return true;
+  });
 }
