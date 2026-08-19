@@ -7,8 +7,10 @@
 # Terminal 1 - Web server
 pnpm dev
 
-# Terminal 2 - All workers (ICMP + Demo Generator + SNMP + Backup + Anomaly + Retention)
+# Terminal 2 - Poller inti: ICMP (real) + Demo Generator (sintetis)
 pnpm dev:workers
+# Catatan: SNMP, Backup, dan Retention dijalankan terpisah (lihat di bawah).
+# Anomaly worker belum ada (fitur ML masih Planned).
 ```
 
 ### Individual Workers
@@ -16,7 +18,8 @@ pnpm dev:workers
 pnpm worker:icmp       # ICMP poller for real devices (isDemo: false)
 pnpm demo:generator    # Synthetic metrics for demo devices (isDemo: true)
 pnpm worker:snmp       # SNMP poller for real devices
-pnpm worker:retention  # Data retention cleanup
+pnpm worker:backup     # Autobackup config via SSH (cron)
+pnpm worker:retention  # Data retention cleanup (>30 hari)
 ```
 
 ### Production (PM2)
@@ -117,12 +120,11 @@ JWT_SECRET="your-secret-key"
 TELEGRAM_BOT_TOKEN="..."       # Optional: alerts
 TELEGRAM_CHAT_ID="..."         # Optional: alerts
 
-# Polling intervals (cron format)
+# Polling intervals (cron format) — lihat .env.example lengkap
 ICMP_POLL_INTERVAL="*/1 * * * *"        # Every minute
 SNMP_POLL_INTERVAL="*/5 * * * *"        # Every 5 minutes
-BACKUP_SCHEDULE="0 2 * * *"             # Daily 2 AM
-ANOMALY_DETECTION_INTERVAL="*/10 * * * *" # Every 10 min
-RETENTION_SCHEDULE="0 3 * * *"          # Daily 3 AM
+BACKUP_CRON_SCHEDULE="0 2 * * *"        # Daily 2 AM
+# ANOMALY_CHECK_INTERVAL & ENABLE_ML_ANOMALY  # Reserved (ML belum diimplementasikan)
 ```
 
 ### Key Constants (`src/lib/constants.ts`)

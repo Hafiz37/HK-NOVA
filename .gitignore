@@ -20,6 +20,10 @@
 # production
 /build
 
+# pm2 logs & database backups (hentikan: jangan pernah commit)
+/logs
+/backups
+
 # misc
 .DS_Store
 *.pem

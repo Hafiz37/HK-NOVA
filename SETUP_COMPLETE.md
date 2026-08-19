@@ -1,5 +1,10 @@
 # 🎉 HK-NOVA - Setup Complete!
 
+> **📌 Catatan status (19 Agustus 2026):** Dokumen ini adalah snapshot
+> saat setup awal (10 Agustus 2026). Project sudah jauh berkembang —
+> lihat [README.md](README.md) (fitur & status terkini) dan
+> [RUNBOOK.md](RUNBOOK.md) (operasi) sebagai referensi utama.
+
 ## ✅ Yang Sudah Dikerjakan
 
 ### 1. Environment Setup ✓

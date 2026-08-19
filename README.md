@@ -7,11 +7,15 @@ Platform web fullstack untuk Network Operations Center (NOC) ISP yang mengintegr
 | Fitur | Status | Keterangan |
 |-------|--------|------------|
 | **Monitoring ICMP & SNMP** | ✅ Selesai | Real-time polling UP/DOWN, latency, CPU/Mem, interface |
-| **Alert & Notification** | ✅ Selesai | Lifecycle ACTIVE/ACK/RESOLVE + Telegram (opsional) |
-| **Dashboard Real-time** | ✅ Selesai | Dark theme, grafik, worker status live |
-| **Autobackup Config** | 🚧 Planned | Schema DB & template siap; worker & UI belum dibangun |
-| **OLT Provisioning** | 🚧 Planned | Template Huawei/ZTE/Generic siap; service & UI belum |
-| **ML Anomaly Detection** | 🚧 Planned | Isolation Forest library & schema siap; worker belum |
+| **Alert & Notification** | ✅ Selesai | Lifecycle ACTIVE/ACK/RESOLVE + multi-channel (Telegram/Email/Webhook/SMS) |
+| **Dashboard Real-time** | ✅ Selesai | Dark theme, grafik, SSE realtime, worker status live |
+| **Autobackup Config** | ✅ Selesai | Backup scheduler via SSH, versioning + diff, worker & UI aktif |
+| **OLT Provisioning** | ✅ Selesai | Template Huawei/ZTE/Generic, dry-run & execute mode, log |
+| **ML Anomaly Detection** | 🚧 Planned | Isolation Forest library & schema siap; worker/API/UI belum dibangun |
+| **Device Management** | ✅ Selesai | CRUD, test koneksi, credential terenkripsi |
+| **Auth, RBAC & Audit** | ✅ Selesai | Login JWT, role-based access, audit log, user management |
+| **Reporting & Export** | ✅ Selesai | Export CSV/XLSX/PDF + server-side pagination |
+| **Demo Mode** | ✅ Selesai | 18 device sintetis + generator data + SNMP agent simulator |
 
 ## 🛠️ Tech Stack
 
@@ -19,7 +23,7 @@ Platform web fullstack untuk Network Operations Center (NOC) ISP yang mengintegr
 - **Backend:** Next.js API Routes, Prisma ORM
 - **Database:** MySQL 8.0
 - **Workers:** Node.js, PM2
-- **Libraries:** net-ping, net-snmp, ssh2, node-cron, isolation-forest
+- **Libraries:** net-ping, net-snmp, ssh2, node-cron, isolation-forest (reserved), nodemailer, exceljs, pdfkit
 - **UI Components:** Radix UI, Recharts
 
 ## 📋 Prerequisites
@@ -75,6 +79,7 @@ TELEGRAM_CHAT_ID="your-chat-id"
 
 # Features
 ENABLE_OLT_EXECUTION="false"  # Set true untuk enable real SSH execution
+# Catatan: ENABLE_ML_ANOMALY masih reserved (belum diimplementasikan)
 ENABLE_ML_ANOMALY="true"
 ```
 
@@ -96,17 +101,20 @@ pnpm dev
 ### Jalankan Workers (Terminal Terpisah)
 
 ```bash
-# ICMP Polling Worker
+# ICMP Polling Worker (real devices)
 pnpm worker:icmp
 
 # SNMP Polling Worker
 pnpm worker:snmp
 
-# Backup Scheduler Worker
+# Data Retention Worker (cleanup metrics > 30 hari)
+pnpm worker:retention
+
+# Backup Scheduler Worker (autobackup config via SSH)
 pnpm worker:backup
 
-# Anomaly Detector Worker
-pnpm worker:anomaly
+# Demo Generator (synthetic data untuk device isDemo: true)
+pnpm demo:generator
 ```
 
 ## 🎯 Production Deployment
@@ -167,17 +175,23 @@ pnpm prisma migrate status
 ```
 hk-nova/
 ├── src/
-│   ├── app/                  # Next.js pages & API routes
+│   ├── app/                  # Next.js pages & API routes (40+ endpoints)
+│   │   ├── api/              #   REST API (devices, alerts, backups, provisioning, export, ...)
+│   │   └── dashboard/        #   UI pages (devices, monitoring, snmp, alerts, backup, ...)
 │   ├── components/           # React components
-│   ├── lib/                  # Utilities (prisma, encryption, notifier, cooldown, telegram)
-│   ├── workers/              # Background workers (ICMP, SNMP, Retention)
+│   ├── hooks/                # Custom hooks (useSSE, useBaseline)
+│   ├── lib/                  # Utilities (prisma, auth, encryption, notifier, alert-engine, backup, provisioning, ...)
+│   │   └── channels/         #   Notifikasi channel (telegram/email/webhook/sms)
+│   ├── workers/              # Background workers (ICMP, SNMP, Backup, Retention, Demo)
 │   ├── types/                # TypeScript types
 │   └── config/               # Configuration files (OLT templates, SNMP OIDs)
 ├── prisma/
 │   ├── schema.prisma         # Database schema
+│   ├── migrations/           # Prisma migrations
 │   └── seed.ts               # Demo data
 ├── public/                   # Static assets
-├── scripts/                  # Utility scripts
+├── scripts/                  # Utility scripts (setup, test, backup-db, restore-db)
+├── tests/                    # Vitest unit & integration tests
 ├── docs/                     # Documentation
 ├── ecosystem.config.js       # PM2 configuration
 └── package.json
@@ -197,8 +211,11 @@ Password: admin123
 - [Architecture](docs/ARCHITECTURE.md) — Arsitektur sistem & data flow
 - [Quickstart](docs/QUICKSTART.md) — Panduan cepat menjalankan project
 - [Demo Mode](docs/DEMO_MODE.md) — Menjalankan tanpa perangkat fisik
+- [Runbook](RUNBOOK.md) — Operasi harian & troubleshooting
+- [Deployment](docs/DEPLOYMENT.md) — Panduan deploy ke produksi
 - [Known Issues](docs/KNOWN_ISSUES_AND_LIMITATIONS.md) — Batasan & workaround
 - [Testing Guide Phase 1](docs/TESTING_GUIDE_PHASE1.md) — Pengujian monitoring
+- [Ganti IP Real](docs/GANTI_IP_REAL.md) — Memakai device riil menggantikan demo
 
 ## 🛡️ Security Notes
 

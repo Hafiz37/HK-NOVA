@@ -56,6 +56,13 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(COOKIE_NAME)?.value;
   const authed = await verifyToken(token);
 
+  if (pathname.startsWith('/api')) {
+    if (!authed) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
   if (pathname.startsWith('/dashboard') && !authed) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';

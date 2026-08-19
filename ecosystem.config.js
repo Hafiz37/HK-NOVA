@@ -1,84 +1,49 @@
+/**
+ * Baris out_file/error_file/merge_logs/time menulis log setiap proses ke
+ * ./logs/<nama>.out.log & .err.log (dengan timestamp) agar rapi dibaca dan
+ * mudah dirotasi via pm2-logrotate.
+ */
+function app(name, script, args, opts = {}) {
+  return {
+    name,
+    script,
+    args,
+    cwd: './',
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '500M',
+    time: true,
+    merge_logs: true,
+    out_file: `./logs/${name}.out.log`,
+    error_file: `./logs/${name}.err.log`,
+    ...opts,
+  };
+}
+
 module.exports = {
   apps: [
-    {
-      name: 'hk-nova-web',
-      script: 'pnpm',
-      args: 'start',
-      cwd: './',
-      instances: 1,
-      autorestart: true,
-      watch: false,
+    app('hk-nova-web', 'pnpm', 'start', {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
         PORT: 3000,
       },
-    },
-    {
-      name: 'hk-nova-icmp-worker',
-      script: 'tsx',
-      args: 'src/workers/icmp-poller.ts',
-      cwd: './',
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '500M',
-      env: {
-        NODE_ENV: 'production',
-      },
-    },
-    {
-      name: 'hk-nova-snmp-worker',
-      script: 'tsx',
-      args: 'src/workers/snmp-poller.ts',
-      cwd: './',
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '500M',
-      env: {
-        NODE_ENV: 'production',
-      },
-    },
-    {
-      name: 'hk-nova-demo-generator',
-      script: 'tsx',
-      args: 'src/workers/demo-generator.ts',
-      cwd: './',
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '500M',
-      env: {
-        NODE_ENV: 'development',
-        APP_MODE: 'development',
-      },
-    },
-    {
-      name: 'hk-nova-retention-worker',
-      script: 'tsx',
-      args: 'src/workers/retention-worker.ts',
-      cwd: './',
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '500M',
-      env: {
-        NODE_ENV: 'production',
-      },
-    },
-    {
-      name: 'hk-nova-backup-worker',
-      script: 'tsx',
-      args: 'src/workers/backup-worker.ts',
-      cwd: './',
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '500M',
-      env: {
-        NODE_ENV: 'production',
-      },
-    },
+    }),
+    app('hk-nova-icmp-worker', 'tsx', 'src/workers/icmp-poller.ts', {
+      env: { NODE_ENV: 'production' },
+    }),
+    app('hk-nova-snmp-worker', 'tsx', 'src/workers/snmp-poller.ts', {
+      env: { NODE_ENV: 'production' },
+    }),
+    app('hk-nova-demo-generator', 'tsx', 'src/workers/demo-generator.ts', {
+      env: { NODE_ENV: 'development', APP_MODE: 'development' },
+    }),
+    app('hk-nova-retention-worker', 'tsx', 'src/workers/retention-worker.ts', {
+      env: { NODE_ENV: 'production' },
+    }),
+    app('hk-nova-backup-worker', 'tsx', 'src/workers/backup-worker.ts', {
+      env: { NODE_ENV: 'production' },
+    }),
   ],
 };

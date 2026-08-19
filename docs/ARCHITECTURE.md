@@ -13,15 +13,16 @@ HK-NOVA adalah platform NOC (Network Operations Center) yang terdiri dari 3 komp
 - **ICMP Poller**: Monitoring ping status devices (✅ running)
 - **SNMP Poller**: Monitoring traffic & interface statistics (✅ running)
 - **Retention Worker**: Cleanup metric data >30 hari (✅ running)
+- **Backup Scheduler**: Automated config backup via SSH + diff (✅ running)
 
 ### 3. Background Workers (Node.js) — **Planned / Not Yet Implemented**
-- **Backup Scheduler**: Automated config backup via SSH
-- **Anomaly Detector**: ML-based anomaly detection (Isolation Forest)
+- **Anomaly Detector**: ML-based anomaly detection (Isolation Forest) — schema `Anomaly`, enum `AnomalySeverity`, konstanta `ANOMALY_THRESHOLD`, dan paket `isolation-forest` sudah siap, namun worker/API/UI belum dibangun.
 
 ### 4. External Integrations
 - **Telegram Bot**: Alert notifications (✅ implemented, optional)
+- **Email / Webhook / SMS**: Alert channels (✅ implemented, optional, lihat `src/lib/channels/*`)
 - **Network Devices**: SSH, SNMP connections
-- **OLT Equipment**: Provisioning via SSH (Huawei/ZTE/Generic) — *template only, execution planned*
+- **OLT Equipment**: Provisioning via SSH (Huawei/ZTE/Generic) — ✅ template + dry-run + execute mode (feature flag `ENABLE_OLT_EXECUTION`)
 
 ## Architecture Diagram
 
@@ -97,21 +98,21 @@ Device → Worker (ping/SNMP) → Database → API → UI
         Alert System → Telegram
 ```
 
-### 2. Provisioning Flow (Planned — Dual Mode)
+### 2. Provisioning Flow (Implemented — Dual Mode)
 ```
 UI Form → API → Provisioning Service
                       ↓
              ┌────────┴────────┐
              ▼                 ▼
        Dry-Run Mode      Execution Mode
-     (Preview Only)      (Real SSH)
+     (Preview Only)      (Real SSH, ENABLE_OLT_EXECUTION=true)
              ↓                 ↓
         Show Commands    Execute on OLT
              ↓                 ↓
           Log DB          Log DB + Device
 ```
 
-### 3. Backup Flow (Planned)
+### 3. Backup Flow (Implemented)
 ```
 Scheduler (cron) → SSH Connection → Device
                          ↓
@@ -124,7 +125,7 @@ Scheduler (cron) → SSH Connection → Device
      Changed: Save to DB       Unchanged: Skip
             ↓
      Store with timestamp
-     (version control)
+     (version control + diff)
 ```
 
 ### 4. Anomaly Detection Flow (Planned)
@@ -200,7 +201,7 @@ pm2 ecosystem.config.js
 ├── hk-nova-icmp-worker
 ├── hk-nova-snmp-worker
 ├── hk-nova-retention-worker
-├── hk-nova-backup-worker      # planned (not implemented)
+├── hk-nova-backup-worker      # ✅ implemented
 ├── hk-nova-anomaly-worker     # planned (not implemented)
 └── hk-nova-demo-generator     # dev only
 ```
