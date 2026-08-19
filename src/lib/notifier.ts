@@ -159,14 +159,3 @@ async function sendToChannel(
     return false;
   }
 }
-
-/**
- * Convenience wrapper matching the old worker API: builds the payload and
- * dispatches. Returns the dispatch result.
- */
-export async function sendNotificationWithCooldown(
-  prisma: PrismaClient,
-  args: Omit<NotificationPayload, 'timestamp'> & { deviceIp?: string }
-): Promise<DispatchResult> {
-  return dispatchNotifications(prisma, args);
-}

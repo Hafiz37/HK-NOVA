@@ -157,9 +157,9 @@ export default function AlertsPage() {
     return `/api/export/alerts?${params.toString()}`;
   };
 
-  // counts per tab for badges (dari halaman saat ini)
+  // counts per tab for badges (server-side total saat tab ACTIVE)
   const counts = {
-    ACTIVE: alerts.filter(a => a.status === "ACTIVE").length,
+    ACTIVE: tab === "ACTIVE" ? total : alerts.filter(a => a.status === "ACTIVE").length,
   };
 
   return (

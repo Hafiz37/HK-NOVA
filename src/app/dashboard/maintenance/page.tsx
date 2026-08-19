@@ -42,11 +42,11 @@ export default function MaintenancePage() {
         fetch("/api/devices"),
       ]);
 
-      const dataWin = await resWin.json();
-      const dataDev = await resDev.json();
+      const dataWin = resWin.ok ? await resWin.json() : null;
+      const dataDev = resDev.ok ? await resDev.json() : null;
 
-      if (dataWin.success) setWindows(dataWin.data);
-      if (dataDev.success) setDevices(dataDev.data || dataDev.devices || []);
+      if (dataWin?.success) setWindows(dataWin.data);
+      if (dataDev && Array.isArray(dataDev.data)) setDevices(dataDev.data);
     } catch (err) {
       console.error("Gagal load data:", err);
     } finally {
