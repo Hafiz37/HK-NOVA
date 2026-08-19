@@ -105,6 +105,16 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               🔔 Alerts
             </Link>
             <Link
+              href="/dashboard/anomalies"
+              className={`block px-3 py-2 text-sm rounded-md transition-colors ${
+                pathname.startsWith("/dashboard/anomalies")
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              🔍 Anomalies
+            </Link>
+            <Link
               href="/dashboard/maintenance"
               className={`block px-3 py-2 text-sm rounded-md transition-colors ${
                 pathname.startsWith("/dashboard/maintenance")

@@ -11,7 +11,7 @@ Platform web fullstack untuk Network Operations Center (NOC) ISP yang mengintegr
 | **Dashboard Real-time** | ✅ Selesai | Dark theme, grafik, SSE realtime, worker status live |
 | **Autobackup Config** | ✅ Selesai | Backup scheduler via SSH, versioning + diff, worker & UI aktif |
 | **OLT Provisioning** | ✅ Selesai | Template Huawei/ZTE/Generic, dry-run & execute mode, log |
-| **ML Anomaly Detection** | 🚧 Planned | Isolation Forest library & schema siap; worker/API/UI belum dibangun |
+| **ML Anomaly Detection** | ✅ Selesai | Isolation Forest, 7 hari training, auto-alert HIGH/CRITICAL, worker/API/UI lengkap |
 | **Device Management** | ✅ Selesai | CRUD, test koneksi, credential terenkripsi |
 | **Auth, RBAC & Audit** | ✅ Selesai | Login JWT, role-based access, audit log, user management |
 | **Reporting & Export** | ✅ Selesai | Export CSV/XLSX/PDF + server-side pagination |
@@ -79,8 +79,12 @@ TELEGRAM_CHAT_ID="your-chat-id"
 
 # Features
 ENABLE_OLT_EXECUTION="false"  # Set true untuk enable real SSH execution
-# Catatan: ENABLE_ML_ANOMALY masih reserved (belum diimplementasikan)
-ENABLE_ML_ANOMALY="true"
+
+# ML Anomaly Detection (optional tuning)
+ANOMALY_TRAINING_DAYS="7"              # Minimum historical data days
+ANOMALY_MIN_SAMPLES="50"               # Minimum samples untuk training
+ANOMALY_SCORE_THRESHOLD_HIGH="0.7"     # Fallback HIGH (ketika model tak ada)
+ANOMALY_SCORE_THRESHOLD_CRITICAL="0.85" # Fallback CRITICAL (ketika model tak ada)
 ```
 
 ### 4. Generate Encryption Key
@@ -112,6 +116,9 @@ pnpm worker:retention
 
 # Backup Scheduler Worker (autobackup config via SSH)
 pnpm worker:backup
+
+# Anomaly Detector Worker (ML-based anomaly detection)
+pnpm worker:anomaly
 
 # Demo Generator (synthetic data untuk device isDemo: true)
 pnpm demo:generator
@@ -211,6 +218,7 @@ Password: admin123
 - [Architecture](docs/ARCHITECTURE.md) — Arsitektur sistem & data flow
 - [Quickstart](docs/QUICKSTART.md) — Panduan cepat menjalankan project
 - [Demo Mode](docs/DEMO_MODE.md) — Menjalankan tanpa perangkat fisik
+- [ML Anomaly Detection](docs/ML_ANOMALY_DETECTION.md) — Isolation Forest untuk deteksi anomali
 - [Runbook](RUNBOOK.md) — Operasi harian & troubleshooting
 - [Deployment](docs/DEPLOYMENT.md) — Panduan deploy ke produksi
 - [Known Issues](docs/KNOWN_ISSUES_AND_LIMITATIONS.md) — Batasan & workaround

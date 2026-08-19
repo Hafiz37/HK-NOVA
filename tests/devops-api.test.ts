@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, createTestDevice } from './setup';
 import { createTestAgent, loginAndGetToken, expectErrorResponse } from './utils';
+import { isServerUp } from './server-probe';
 
-describe('Backup & Provisioning API Integration Tests', () => {
+const serverUp = await isServerUp();
+
+describe.skipIf(!serverUp)('Backup & Provisioning API Integration Tests', () => {
   let adminToken: string;
   let operatorToken: string;
   let operatorUsername: string;
@@ -49,7 +52,10 @@ describe('Backup & Provisioning API Integration Tests', () => {
 
   afterAll(async () => {
     await prisma.device.deleteMany({ where: { id: { in: cleanupDeviceIds } } });
-    await prisma.user.deleteMany({ where: { username: { in: [operatorUsername, viewerUsername] } } });
+    const usernames = [operatorUsername, viewerUsername].filter((u): u is string => Boolean(u));
+    if (usernames.length > 0) {
+      await prisma.user.deleteMany({ where: { username: { in: usernames } } });
+    }
   });
 
   // ── Backups ────────────────────────────────────────────────────────────

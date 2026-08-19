@@ -50,3 +50,14 @@ export const BASELINE_WINDOW_HOURS = Number(process.env.BASELINE_WINDOW_HOURS ??
 export const BASELINE_MIN_SAMPLES = 3;
 export const BASELINE_WARN_SIGMA = 2;
 export const BASELINE_CRIT_SIGMA = 3;
+
+// Anomaly Detection (ML) constants
+export const ANOMALY_TRAINING_DAYS = Number(process.env.ANOMALY_TRAINING_DAYS ?? '7');
+export const ANOMALY_MIN_SAMPLES = Number(process.env.ANOMALY_MIN_SAMPLES ?? '50');
+export const ANOMALY_POLL_INTERVAL = process.env.ANOMALY_POLL_INTERVAL ?? '*/5 * * * *';
+// Threshold fallback (tanpa model): nilai 0-1 skor absolut. Saat model tersedia,
+// klasifikasi memakai persentil distribusi skor training (p90/p95/p99).
+export const ANOMALY_SCORE_THRESHOLD_HIGH = Number(process.env.ANOMALY_SCORE_THRESHOLD_HIGH ?? '0.7');
+export const ANOMALY_SCORE_THRESHOLD_CRITICAL = Number(process.env.ANOMALY_SCORE_THRESHOLD_CRITICAL ?? '0.85');
+export const ANOMALY_ALERT_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+export const ANOMALY_MODEL_RETRAIN_HOURS = 24; // Re-train model every 24 hours

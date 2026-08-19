@@ -53,6 +53,7 @@ enum AnomalySeverity {
   LOW
   MEDIUM
   HIGH
+  CRITICAL
 }
 
 enum ProvisioningAction {

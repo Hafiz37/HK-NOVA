@@ -12,7 +12,7 @@ export PATH=~/.npm-global/bin:$PATH
 cd /home/gopal-ichiro/Documents/magang/hk-nova
 
 echo "1. Pushing database schema..."
-pnpm db:push
+pnpm db:migrate dev
 
 if [ $? -ne 0 ]; then
     echo "❌ Error pushing schema. Periksa DATABASE_URL di .env"

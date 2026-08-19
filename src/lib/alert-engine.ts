@@ -30,6 +30,7 @@ export const dedupKeyDown = (deviceId: string): string => `icmp:down:${deviceId}
 export const dedupKeyUp = (deviceId: string): string => `icmp:up:${deviceId}`;
 export const dedupKeyCpu = (deviceId: string): string => `snmp:cpu:${deviceId}`;
 export const dedupKeyMem = (deviceId: string): string => `snmp:mem:${deviceId}`;
+export const dedupKeyAnomaly = (deviceId: string, metricType: string): string => `anomaly:${metricType}:${deviceId}`;
 export const correlationKeyFor = (deviceId: string): string => `device:${deviceId}`;
 
 // ─── Helper query ─────────────────────────────────────────────────────────────
@@ -303,4 +304,59 @@ export async function resolveDeviceDownAlert(
   });
 
   return { downResolved: downResolved.count, childrenResolved: childrenResolved.count };
+}
+
+// ─── ANOMALY_DETECTED: dedupe + auto-create alert for HIGH/CRITICAL ──────────
+export async function processAnomalyAlert(
+  prisma: PrismaClient,
+  device: AlertDevice,
+  anomaly: {
+    id: string;
+    metricType: string;
+    anomalyScore: number;
+    severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  }
+): Promise<{ created: boolean; alert: { id: string; severity: AlertSeverity; message: string } | null }> {
+  if (anomaly.severity !== 'HIGH' && anomaly.severity !== 'CRITICAL') {
+    return { created: false, alert: null };
+  }
+
+  const dedupKey = dedupKeyAnomaly(device.id, anomaly.metricType);
+  const correlationKey = correlationKeyFor(device.id);
+
+  const message = `Anomaly detected on ${device.name} (${device.ip}): ${anomaly.metricType} ` +
+    `with score ${anomaly.anomalyScore.toFixed(3)} (${anomaly.severity})`;
+
+  const result = await createAlertIfNotDuplicate(prisma, {
+    type: 'ANOMALY_DETECTED',
+    deviceId: device.id,
+    message,
+    severity: anomaly.severity as AlertSeverity,
+    dedupKey,
+    correlationKey,
+  });
+
+  return { created: result.created, alert: result.alert };
+}
+
+// ─── Resolve ANOMALY alerts when score drops ──────────────────────────────────
+export async function resolveAnomalyAlert(
+  prisma: PrismaClient,
+  deviceId: string,
+  metricType: string
+): Promise<number> {
+  const dedupKey = dedupKeyAnomaly(deviceId, metricType);
+
+  const resolved = await prisma.alert.updateMany({
+    where: {
+      dedupKey,
+      status: { in: OPEN_STATUSES },
+    },
+    data: {
+      status: 'RESOLVED',
+      resolvedAt: new Date(),
+    },
+  });
+
+  return resolved.count;
 }

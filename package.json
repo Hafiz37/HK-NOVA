@@ -19,6 +19,7 @@
     "worker:snmp": "tsx watch src/workers/snmp-poller.ts",
     "worker:retention": "tsx watch src/workers/retention-worker.ts",
     "worker:backup": "tsx watch src/workers/backup-worker.ts",
+    "worker:anomaly": "tsx watch src/workers/anomaly-detector.ts",
     "demo:generator": "tsx watch src/workers/demo-generator.ts",
     "demo:seed": "tsx scripts/demo-seed.ts",
     "demo:agents": "bash scripts/demo/snmp-agents.sh",
@@ -31,6 +32,7 @@
     "pm2:status": "pm2 status",
     "test:phase1": "tsx scripts/test-phase1.ts",
     "test:phase2": "tsx scripts/test-phase2-snmp.ts",
+    "test:anomaly": "tsx scripts/test-anomaly.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

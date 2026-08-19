@@ -461,7 +461,7 @@ export default function DashboardPage() {
             </div>
           </Link>
 
-<Link
+          <Link
             href="/dashboard/alerts"
             className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-rose-500/30 rounded-xl transition-all group"
           >
@@ -474,6 +474,23 @@ export default function DashboardPage() {
               </p>
               <p className="text-xs text-slate-400">
                 Acknowledge & Resolve
+              </p>
+            </div>
+          </Link>
+
+          <Link
+            href="/dashboard/anomalies"
+            className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-amber-500/30 rounded-xl transition-all group"
+          >
+            <span className="text-xl p-2 bg-amber-500/10 rounded-lg group-hover:scale-110 transition-transform">
+              🔍
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-white group-hover:text-amber-400 transition-colors">
+                ML Anomalies
+              </p>
+              <p className="text-xs text-slate-400">
+                Isolation Forest Detection
               </p>
             </div>
           </Link>
