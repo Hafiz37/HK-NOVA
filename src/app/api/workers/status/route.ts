@@ -210,7 +210,7 @@ export async function GET(): Promise<NextResponse> {
         health: null,
         detail: isBackupActive
           ? 'Active — config backup berjalan'
-          : 'Phase 3 — belum diimplementasi',
+          : 'Stopped — Run: pnpm worker:backup',
         command: 'pnpm worker:backup',
       },
       {

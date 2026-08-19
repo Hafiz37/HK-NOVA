@@ -8,7 +8,9 @@ export type AuditAction =
   | 'DELETE'
   | 'ACKNOWLEDGE'
   | 'RESOLVE'
-  | 'EXPORT';
+  | 'EXPORT'
+  | 'EXECUTE'
+  | 'BACKUP';
 
 export type AuditEntity =
   | 'User'
@@ -17,7 +19,9 @@ export type AuditEntity =
   | 'Setting'
   | 'MaintenanceWindow'
   | 'Metric'
-  | 'AuditLog';
+  | 'AuditLog'
+  | 'Backup'
+  | 'ProvisioningLog';
 
 export interface AuditDetails {
   before?: Record<string, unknown>;

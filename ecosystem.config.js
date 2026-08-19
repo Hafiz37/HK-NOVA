@@ -67,5 +67,18 @@ module.exports = {
         NODE_ENV: 'production',
       },
     },
+    {
+      name: 'hk-nova-backup-worker',
+      script: 'tsx',
+      args: 'src/workers/backup-worker.ts',
+      cwd: './',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
   ],
 };

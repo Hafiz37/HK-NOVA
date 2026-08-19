@@ -114,6 +114,26 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             >
               🛠️ Maintenance
             </Link>
+            <Link
+              href="/dashboard/backup"
+              className={`block px-3 py-2 text-sm rounded-md transition-colors ${
+                pathname.startsWith("/dashboard/backup")
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              💾 Backup
+            </Link>
+            <Link
+              href="/dashboard/provisioning"
+              className={`block px-3 py-2 text-sm rounded-md transition-colors ${
+                pathname.startsWith("/dashboard/provisioning")
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              📡 Provisi OLT
+            </Link>
             {user?.role === "ADMIN" && (
               <Link
                 href="/dashboard/users"
