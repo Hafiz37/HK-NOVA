@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import TopListCard, { type TopItem } from "@/components/dashboard/top-list-card";
+import { Server, Bell, Zap, Activity, BarChart3, Database, Bot, RefreshCw, Settings, Users, FileText, Search, HardDrive, AlertTriangle, TrendingUp } from "lucide-react";
 
 interface WorkerHealth {
   expectedCycles: number;
@@ -43,11 +44,11 @@ interface TopData {
   topMem: TopItem[];
 }
 
-const WORKER_ICONS: Record<string, string> = {
-  "icmp-worker": "📡",
-  "snmp-worker": "📊",
-  "backup-worker": "💾",
-  "anomaly-detector": "🤖",
+const WORKER_ICONS: Record<string, React.ReactNode> = {
+  "icmp-worker": <Activity className="w-4 h-4" />,
+  "snmp-worker": <BarChart3 className="w-4 h-4" />,
+  "backup-worker": <Database className="w-4 h-4" />,
+  "anomaly-detector": <Bot className="w-4 h-4" />,
 };
 
 export default function DashboardPage() {
@@ -173,8 +174,8 @@ export default function DashboardPage() {
                 </p>
               )}
             </div>
-            <div className="w-11 h-11 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center text-xl shrink-0">
-              🖥️
+            <div className="w-11 h-11 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center shrink-0">
+              <Server className="w-5 h-5 text-blue-400" />
             </div>
           </div>
           <div className="mt-4 space-y-1">
@@ -229,8 +230,8 @@ export default function DashboardPage() {
                 </p>
               )}
             </div>
-            <div className="w-11 h-11 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center justify-center text-xl shrink-0">
-              🔔
+            <div className="w-11 h-11 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center justify-center shrink-0">
+              <Bell className="w-5 h-5 text-rose-400" />
             </div>
           </div>
           <div className="mt-4 text-xs">
@@ -239,13 +240,15 @@ export default function DashboardPage() {
             ) : (summary?.activeAlerts ?? 0) > 0 ? (
               <div className="space-y-0.5">
                 {(summary?.criticalAlerts ?? 0) > 0 && (
-                  <p className="text-rose-400">
-                    🔴 {summary?.criticalAlerts} Critical
+                  <p className="text-rose-400 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                    {summary?.criticalAlerts} Critical
                   </p>
                 )}
                 {(summary?.highAlerts ?? 0) > 0 && (
-                  <p className="text-orange-400">
-                    🟠 {summary?.highAlerts} High
+                  <p className="text-orange-400 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-orange-400"></span>
+                    {summary?.highAlerts} High
                   </p>
                 )}
                 <Link
@@ -285,8 +288,8 @@ export default function DashboardPage() {
                 </p>
               )}
             </div>
-            <div className="w-11 h-11 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-center text-xl shrink-0">
-              ⚡
+            <div className="w-11 h-11 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-center shrink-0">
+              <Zap className="w-5 h-5 text-amber-400" />
             </div>
           </div>
           <div className="mt-4 text-xs text-slate-500">
@@ -339,8 +342,8 @@ export default function DashboardPage() {
                 </p>
               )}
             </div>
-            <div className="w-11 h-11 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center text-xl shrink-0">
-              📡
+            <div className="w-11 h-11 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center shrink-0">
+              <Activity className="w-5 h-5 text-purple-400" />
             </div>
           </div>
           <div className="mt-4 text-xs text-slate-500">
@@ -364,8 +367,9 @@ export default function DashboardPage() {
       {/* ── Top-N Widgets ── */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-            🏆 Top-N (5 besar)
+          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" />
+            Top-N (5 besar)
           </h3>
           <span className="text-[11px] text-slate-600">berdasarkan data terbaru</span>
         </div>
@@ -410,16 +414,17 @@ export default function DashboardPage() {
 
       {/* ── Quick Actions ── */}
       <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-6">
-        <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
-          🚀 Quick Actions
+        <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <Zap className="w-4 h-4" />
+          Quick Actions
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Link
             href="/dashboard/devices"
             className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-blue-500/30 rounded-xl transition-all group"
           >
-            <span className="text-xl p-2 bg-blue-500/10 rounded-lg group-hover:scale-110 transition-transform">
-              🖥️
+            <span className="p-2 bg-blue-500/10 rounded-lg group-hover:scale-110 transition-transform">
+              <Server className="w-5 h-5 text-blue-400" />
             </span>
             <div>
               <p className="text-sm font-semibold text-white group-hover:text-blue-400 transition-colors">
@@ -435,8 +440,8 @@ export default function DashboardPage() {
             href="/dashboard/monitoring"
             className="flex items-center gap-3 p-4 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-emerald-500/30 rounded-xl transition-all group"
           >
-            <span className="text-xl p-2 bg-emerald-500/10 rounded-lg group-hover:scale-110 transition-transform">
-              📡
+            <span className="p-2 bg-emerald-500/10 rounded-lg group-hover:scale-110 transition-transform">
+              <Activity className="w-5 h-5 text-emerald-400" />
             </span>
             <div>
               <p className="text-sm font-semibold text-white group-hover:text-emerald-400 transition-colors">
