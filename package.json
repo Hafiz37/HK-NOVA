@@ -21,6 +21,8 @@
     "worker:backup": "tsx watch src/workers/backup-worker.ts",
     "worker:anomaly": "tsx watch src/workers/anomaly-detector.ts",
     "worker:escalator": "tsx watch src/workers/alert-escalator.ts",
+    "worker:digest": "tsx watch src/workers/digest-worker.ts",
+    "worker:retry": "tsx watch src/workers/delivery-retry.ts",
     "demo:generator": "tsx watch src/workers/demo-generator.ts",
     "demo:seed": "tsx scripts/demo-seed.ts",
     "demo:agents": "bash scripts/demo/snmp-agents.sh",

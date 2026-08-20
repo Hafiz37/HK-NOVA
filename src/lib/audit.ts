@@ -16,6 +16,7 @@ export type AuditEntity =
   | 'User'
   | 'Device'
   | 'Alert'
+  | 'AlertRule'
   | 'Setting'
   | 'MaintenanceWindow'
   | 'Metric'

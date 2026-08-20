@@ -3,6 +3,15 @@
 import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { useRealtimeMonitoring } from '@/hooks/useSSE';
 import { ExportMenu } from '@/components/dashboard/export-menu';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from 'recharts';
 
 interface AlertItem {
   id: string;
@@ -24,6 +33,14 @@ interface AlertItem {
   escalations?: { id: string; level: number; triggeredAt: string }[];
   assignee?: { id: string; username: string; fullName: string | null } | null;
   activities?: AlertActivityItem[];
+  deliveries?: {
+    id: string;
+    channel: string;
+    status: string;
+    attempts: number;
+    createdAt: string;
+    nextRetryAt?: string | null;
+  }[];
   _count?: { deliveries?: number };
   device: {
     id: string;
@@ -145,6 +162,25 @@ export default function AlertsPage() {
   const [policy, setPolicy] = useState<{ ackSlaMinutes: number; resolveSlaMinutes: number } | null>(
     null
   );
+  const [sla, setSla] = useState<{
+    count: number;
+    avgAckMinutes: number;
+    avgResolveMinutes: number;
+  } | null>(null);
+  const [metricsData, setMetricsData] = useState<Array<Record<string, unknown>>>([]);
+  const [metricsKey, setMetricsKey] = useState<'cpu' | 'mem' | 'latency'>('latency');
+
+  // Ringkasan MTTR/SLA (WP7)
+  useEffect(() => {
+    fetch('/api/reporting/alerts-sla?days=7')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j?.data?.summary) setSla(j.data.summary);
+      })
+      .catch(() => {
+        /* abaikan */
+      });
+  }, []);
 
   // Ambil daftar user untuk dropdown assignee (OPERATOR + ADMIN)
   useEffect(() => {
@@ -343,6 +379,48 @@ export default function AlertsPage() {
     setAssigneeDraft(alert.assignee?.id ?? '');
     setNoteDraft(alert.note ?? '');
     setDetail(alert);
+
+    // Muat data metrik penyebab untuk mini-chart (WP2 / incident view)
+    setMetricsData([]);
+    if (alert.device && alert.valueSnapshot) {
+      const wantSnmp = ['HIGH_UTILIZATION', 'CUSTOM_OID_OUT_OF_RANGE', 'RULE_BREACH'].some((t) =>
+        alert.type.includes(t)
+      );
+      const metricType =
+        wantSnmp && 'cpu' in alert.valueSnapshot
+          ? alert.type === 'RULE_BREACH' && alert.valueSnapshot.metric
+            ? alert.valueSnapshot.metric
+            : 'cpu'
+          : wantSnmp
+            ? 'SNMP'
+            : 'ICMP';
+      const key = (alert.valueSnapshot.metric as string) ?? (wantSnmp ? 'cpu' : 'latency');
+      let metricKey: 'cpu' | 'mem' | 'latency';
+      if (key === 'mem' || key === 'memory') metricKey = 'mem';
+      else if (key === 'latency' || key === 'packetLoss' || key === 'jitter') metricKey = 'latency';
+      else metricKey = 'cpu';
+      setMetricsKey(metricKey);
+      fetch(
+        `/api/devices/${alert.device.id}/metrics?hours=1&type=${metricType === 'SNMP' ? 'SNMP' : 'ICMP'}`
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          const keyField =
+            metricKey === 'mem' ? 'memUtil' : metricKey === 'latency' ? 'latency' : 'cpuUtil';
+          const rows = (j?.data ?? [])
+            .filter((m: Record<string, unknown>) => m[keyField] != null)
+            .slice(-40)
+            .map((m: Record<string, unknown>) => ({
+              t: new Date(m.timestamp as string).toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+              v: Number(m[keyField]),
+            }));
+          setMetricsData(rows);
+        })
+        .catch(() => setMetricsData([]));
+    }
   };
 
   // counts per tab for badges (server-side total saat tab ACTIVE)
@@ -363,6 +441,12 @@ export default function AlertsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <a
+            href="/dashboard/alerts/rules"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-xl border border-slate-700 transition-colors"
+          >
+            ⚙️ Kelola Rules
+          </a>
           <ExportMenu buildUrl={buildExportUrl} />
           <select
             value={limit}
@@ -382,6 +466,32 @@ export default function AlertsPage() {
           </button>
         </div>
       </div>
+
+      {/* Ringkasan MTTR/SLA */}
+      {sla && sla.count > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div className="bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3">
+            <p className="text-xs text-slate-500">Alert diselesaikan (7 hari)</p>
+            <p className="text-xl font-bold text-white">{sla.count}</p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3">
+            <p className="text-xs text-slate-500">Rata-rata Time-to-Ack</p>
+            <p className="text-xl font-bold text-amber-400">{sla.avgAckMinutes.toFixed(1)} mnt</p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3">
+            <p className="text-xs text-slate-500">Rata-rata Time-to-Resolve (MTTR)</p>
+            <p className="text-xl font-bold text-emerald-400">
+              {sla.avgResolveMinutes.toFixed(1)} mnt
+            </p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3">
+            <p className="text-xs text-slate-500">SLA Acknowledge / Resolve</p>
+            <p className="text-sm font-bold text-slate-300">
+              {policy ? `${policy.ackSlaMinutes} / ${policy.resolveSlaMinutes} mnt` : '—'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (
@@ -802,6 +912,48 @@ export default function AlertsPage() {
                 </div>
               )}
 
+              {/* Mini-chart metrik penyebab (WP2) */}
+              {metricsData.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase mb-2">
+                    📈 Metrik penyebab (1 jam · {metricsKey})
+                  </p>
+                  <div className="bg-slate-950 rounded-lg border border-slate-800 p-2">
+                    <ResponsiveContainer width="100%" height={160}>
+                      <AreaChart
+                        data={metricsData}
+                        margin={{ top: 5, right: 5, left: -18, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="gMetric" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.6} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="t" tick={{ fill: '#64748b', fontSize: 10 }} />
+                        <YAxis tick={{ fill: '#64748b', fontSize: 10 }} />
+                        <Tooltip
+                          contentStyle={{
+                            background: '#0f172a',
+                            border: '1px solid #334155',
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="v"
+                          name={metricsKey}
+                          stroke="#3b82f6"
+                          fill="url(#gMetric)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
               {/* Penanggung jawab & catatan */}
               <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800/60 space-y-3">
                 <div>
@@ -909,6 +1061,41 @@ export default function AlertsPage() {
                             {new Date(child.createdAt).toLocaleString('id-ID')} · {child.status}
                           </p>
                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Riwayat pengiriman notifikasi (WP2) */}
+              {detail.deliveries && detail.deliveries.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase mb-2">
+                    📨 Riwayat Notifikasi ({detail.deliveries.length})
+                  </p>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {detail.deliveries.map((d) => (
+                      <div
+                        key={d.id}
+                        className="flex items-center gap-2 bg-slate-950 p-2 rounded-lg border border-slate-800/80 text-xs"
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{
+                            background:
+                              d.status === 'SENT'
+                                ? '#10b981'
+                                : d.status === 'FAILED'
+                                  ? '#f43f5e'
+                                  : '#64748b',
+                          }}
+                        />
+                        <span className="font-mono text-slate-300 uppercase">{d.channel}</span>
+                        <span className="text-slate-400">{d.status}</span>
+                        <span className="text-[10px] text-slate-600">attempts {d.attempts}</span>
+                        <span className="ml-auto text-[10px] text-slate-600">
+                          {new Date(d.createdAt).toLocaleString('id-ID')}
+                        </span>
                       </div>
                     ))}
                   </div>

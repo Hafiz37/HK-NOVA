@@ -42,11 +42,15 @@ describe('Alert Policy — SLA & Eskalasi', () => {
       resolveSlaMinutes: 60,
       renotifyIntervalMinutes: 10,
       escalationStages: [{ afterMinutes: 15, severity: 'HIGH' }],
+      digestEnabled: true,
+      digestWindowMinutes: 20,
     });
     const policy = await getAlertPolicy(prisma);
     expect(policy.ackSlaMinutes).toBe(15);
     expect(policy.resolveSlaMinutes).toBe(60);
     expect(policy.escalationStages).toEqual([{ afterMinutes: 15, severity: 'HIGH' }]);
+    expect(policy.digestEnabled).toBe(true);
+    expect(policy.digestWindowMinutes).toBe(20);
   });
 
   it('maxSeverity memilih tingkat lebih parah', () => {

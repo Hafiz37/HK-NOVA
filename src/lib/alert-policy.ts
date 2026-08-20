@@ -29,6 +29,8 @@ export interface AlertPolicy {
   resolveSlaMinutes: number;
   renotifyIntervalMinutes: number;
   escalationStages: EscalationStage[];
+  digestEnabled: boolean;
+  digestWindowMinutes: number;
 }
 
 export const DEFAULT_ALERT_POLICY: AlertPolicy = {
@@ -39,6 +41,8 @@ export const DEFAULT_ALERT_POLICY: AlertPolicy = {
     { afterMinutes: 30, severity: 'HIGH' },
     { afterMinutes: 90, severity: 'CRITICAL' },
   ],
+  digestEnabled: false,
+  digestWindowMinutes: 15,
 };
 
 export const SEVERITY_RANK: Record<PolicySeverity, number> = {
@@ -81,6 +85,8 @@ export function normalizePolicy(p: unknown): AlertPolicy {
       DEFAULT_ALERT_POLICY.renotifyIntervalMinutes
     ),
     escalationStages: stages.length > 0 ? stages : DEFAULT_ALERT_POLICY.escalationStages,
+    digestEnabled: Boolean(src.digestEnabled),
+    digestWindowMinutes: clampPosInt(src.digestWindowMinutes, DEFAULT_ALERT_POLICY.digestWindowMinutes),
   };
 }
 

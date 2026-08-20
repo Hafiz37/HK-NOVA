@@ -10,6 +10,7 @@ import {
   toPublicNotificationConfig,
   type NotificationConfig,
   type SeverityGate,
+  type QuietHours,
 } from '@/lib/notify-config';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -83,6 +84,46 @@ function parseConfig(body: unknown): ValidationResult {
   const smsGate = severityOf(sms, 'sms');
   const siemGate = severityOf(siem, 'siem');
 
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const quietHoursOf = (ch: Record<string, unknown>, name: string): QuietHours | undefined => {
+    const q = ch.quietHours;
+    if (q === undefined || q === null) return undefined;
+    if (typeof q !== 'object') {
+      errors.push(`${name}.quietHours harus berupa objek`);
+      return undefined;
+    }
+    const qq = q as Record<string, unknown>;
+    const start = qq.start;
+    const end = qq.end;
+    const timezone = qq.timezone;
+    if (start && (typeof start !== 'string' || !TIME_RE.test(start))) {
+      errors.push(`${name}.quietHours.start harus format HH:MM`);
+      return undefined;
+    }
+    if (end && (typeof end !== 'string' || !TIME_RE.test(end))) {
+      errors.push(`${name}.quietHours.end harus format HH:MM`);
+      return undefined;
+    }
+    const trueStart = typeof start === 'string' ? start : undefined;
+    const trueEnd = typeof end === 'string' ? end : undefined;
+    const validSeverities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+    const bypass = Array.isArray(qq.bypassFor)
+      ? qq.bypassFor.filter((s) => typeof s === 'string' && validSeverities.includes(s) && !errors.includes(`${name}.quietHours.bypassFor tidak valid`))
+      : [];
+    return {
+      enabled: Boolean(qq.enabled),
+      start: trueStart ?? '22:00',
+      end: trueEnd ?? '06:00',
+      timezone: typeof timezone === 'string' && timezone.trim() ? timezone.trim() : 'Asia/Jakarta',
+      bypassFor: bypass as SeverityGate[],
+    };
+  };
+  const telegramQuiet = quietHoursOf(telegram, 'telegram');
+  const emailQuiet = quietHoursOf(email, 'email');
+  const webhookQuiet = quietHoursOf(webhook, 'webhook');
+  const smsQuiet = quietHoursOf(sms, 'sms');
+  const siemQuiet = quietHoursOf(siem, 'siem');
+
   if (siem.format !== undefined && !['generic', 'splunk'].includes(siem.format as string)) {
     errors.push('siem.format harus "generic" atau "splunk"');
   }
@@ -105,6 +146,7 @@ function parseConfig(body: unknown): ValidationResult {
       botToken: typeof telegram.botToken === 'string' ? telegram.botToken : '',
       chatIds,
       minSeverity: telegramGate,
+      quietHours: telegramQuiet,
     },
     email: {
       enabled: Boolean(email.enabled),
@@ -116,11 +158,18 @@ function parseConfig(body: unknown): ValidationResult {
       from: typeof email.from === 'string' ? email.from.trim() : '',
       recipients,
       minSeverity: emailGate,
+      quietHours: emailQuiet,
     },
     webhook: {
       enabled: Boolean(webhook.enabled),
       urls,
       minSeverity: webhookGate,
+      quietHours: webhookQuiet,
+      format: webhook.format && ['slack', 'discord', 'teams', 'generic'].includes(webhook.format as string)
+        ? (webhook.format as 'slack' | 'discord' | 'teams' | 'generic')
+        : 'slack',
+      signatureSecret: typeof webhook.signatureSecret === 'string' ? webhook.signatureSecret : '',
+      headers: webhook.headers && typeof webhook.headers === 'object' ? (webhook.headers as Record<string, string>) : null,
     },
     sms: {
       enabled: Boolean(sms.enabled),
@@ -131,6 +180,7 @@ function parseConfig(body: unknown): ValidationResult {
       senderId: typeof sms.senderId === 'string' ? sms.senderId.trim() : '',
       toNumbers,
       minSeverity: smsGate,
+      quietHours: smsQuiet,
     },
     siem: {
       enabled: Boolean(siem.enabled),
@@ -138,6 +188,7 @@ function parseConfig(body: unknown): ValidationResult {
       token: typeof siem.token === 'string' ? siem.token : '',
       format: siem.format === 'splunk' ? 'splunk' : 'generic',
       minSeverity: siemGate,
+      quietHours: siemQuiet,
     },
   };
 

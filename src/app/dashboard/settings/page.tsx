@@ -6,12 +6,29 @@ import { POLL_INTERVAL_OPTIONS, intervalToLabel } from '@/lib/polling-config';
 
 type Toast = { ok: boolean; msg: string } | null;
 
+type QuietLocal = {
+  enabled: boolean;
+  start: string;
+  end: string;
+  timezone: string;
+  bypass: string;
+};
+
+const emptyQuiet = (): QuietLocal => ({
+  enabled: false,
+  start: '22:00',
+  end: '06:00',
+  timezone: 'Asia/Jakarta',
+  bypass: 'CRITICAL',
+});
+
 interface NotificationSettings {
   telegram: {
     enabled: boolean;
     botToken: string;
     chatIds: string;
     minSeverity: string;
+    quietHours: QuietLocal;
     configured: boolean;
   };
   email: {
@@ -24,9 +41,19 @@ interface NotificationSettings {
     from: string;
     recipients: string;
     minSeverity: string;
+    quietHours: QuietLocal;
     configured: boolean;
   };
-  webhook: { enabled: boolean; urls: string; minSeverity: string; configured: boolean };
+  webhook: {
+    enabled: boolean;
+    urls: string;
+    minSeverity: string;
+    format: 'slack' | 'discord' | 'teams' | 'generic';
+    signatureSecret: string;
+    headers: string;
+    quietHours: QuietLocal;
+    configured: boolean;
+  };
   sms: {
     enabled: boolean;
     provider: 'generic' | 'twilio';
@@ -36,6 +63,7 @@ interface NotificationSettings {
     senderId: string;
     toNumbers: string;
     minSeverity: string;
+    quietHours: QuietLocal;
     configured: boolean;
   };
   siem: {
@@ -44,6 +72,7 @@ interface NotificationSettings {
     token: string;
     format: 'generic' | 'splunk';
     minSeverity: string;
+    quietHours: QuietLocal;
     configured: boolean;
   };
 }
@@ -52,7 +81,14 @@ const MASK = '***MASKED***';
 
 function EmptySettings(): NotificationSettings {
   return {
-    telegram: { enabled: false, botToken: '', chatIds: '', minSeverity: 'LOW', configured: false },
+    telegram: {
+      enabled: false,
+      botToken: '',
+      chatIds: '',
+      minSeverity: 'LOW',
+      quietHours: emptyQuiet(),
+      configured: false,
+    },
     email: {
       enabled: false,
       host: '',
@@ -63,9 +99,19 @@ function EmptySettings(): NotificationSettings {
       from: '',
       recipients: '',
       minSeverity: 'LOW',
+      quietHours: emptyQuiet(),
       configured: false,
     },
-    webhook: { enabled: false, urls: '', minSeverity: 'LOW', configured: false },
+    webhook: {
+      enabled: false,
+      urls: '',
+      minSeverity: 'LOW',
+      format: 'slack',
+      signatureSecret: '',
+      headers: '',
+      quietHours: emptyQuiet(),
+      configured: false,
+    },
     sms: {
       enabled: false,
       provider: 'generic',
@@ -75,6 +121,7 @@ function EmptySettings(): NotificationSettings {
       senderId: '',
       toNumbers: '',
       minSeverity: 'LOW',
+      quietHours: emptyQuiet(),
       configured: false,
     },
     siem: {
@@ -83,6 +130,7 @@ function EmptySettings(): NotificationSettings {
       token: '',
       format: 'generic',
       minSeverity: 'LOW',
+      quietHours: emptyQuiet(),
       configured: false,
     },
   };
@@ -93,6 +141,46 @@ function toList(value: string): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function parseJsonHeaders(value: string): Record<string, string> | null {
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function apiQuietToLocal(
+  q?: {
+    enabled?: boolean;
+    start?: string;
+    end?: string;
+    timezone?: string;
+    bypassFor?: string[];
+  } | null
+): QuietLocal {
+  return {
+    enabled: Boolean(q?.enabled),
+    start: q?.start || '22:00',
+    end: q?.end || '06:00',
+    timezone: q?.timezone || 'Asia/Jakarta',
+    bypass: (q?.bypassFor && q.bypassFor[0]) || 'CRITICAL',
+  };
+}
+
+function localQuietToApi(q: QuietLocal) {
+  return {
+    enabled: q.enabled,
+    start: q.start,
+    end: q.end,
+    timezone: q.timezone,
+    bypassFor: [q.bypass],
+  };
 }
 
 /** Keep the stored secret when the field was left empty / masked. */
@@ -119,6 +207,8 @@ export default function SettingsPage() {
     ackSlaMinutes: number;
     resolveSlaMinutes: number;
     renotifyIntervalMinutes: number;
+    digestEnabled: boolean;
+    digestWindowMinutes: number;
     stages: { afterMinutes: number; severity: string }[];
   } | null>(null);
   const [savingPolicy, setSavingPolicy] = useState(false);
@@ -133,6 +223,8 @@ export default function SettingsPage() {
             ackSlaMinutes: j.data.ackSlaMinutes ?? 30,
             resolveSlaMinutes: j.data.resolveSlaMinutes ?? 120,
             renotifyIntervalMinutes: j.data.renotifyIntervalMinutes ?? 30,
+            digestEnabled: Boolean(j.data.digestEnabled),
+            digestWindowMinutes: j.data.digestWindowMinutes ?? 15,
             stages: (j.data.escalationStages ?? []).map(
               (s: { afterMinutes?: number; severity?: string }) => ({
                 afterMinutes: Number(s.afterMinutes) || 0,
@@ -159,6 +251,8 @@ export default function SettingsPage() {
           ackSlaMinutes: Number(policy.ackSlaMinutes),
           resolveSlaMinutes: Number(policy.resolveSlaMinutes),
           renotifyIntervalMinutes: Number(policy.renotifyIntervalMinutes),
+          digestEnabled: policy.digestEnabled,
+          digestWindowMinutes: Number(policy.digestWindowMinutes),
           escalationStages: policy.stages.map((s) => ({
             afterMinutes: Number(s.afterMinutes),
             severity: s.severity,
@@ -223,6 +317,7 @@ export default function SettingsPage() {
               botToken: t.botToken === MASK ? MASK : '',
               chatIds: t.chatIds.join(', '),
               minSeverity: t.minSeverity || 'LOW',
+              quietHours: apiQuietToLocal(t.quietHours),
               configured: t.configured,
             },
             email: {
@@ -235,12 +330,18 @@ export default function SettingsPage() {
               from: e.from,
               recipients: e.recipients.join(', '),
               minSeverity: e.minSeverity || 'LOW',
+              quietHours: apiQuietToLocal(e.quietHours),
               configured: e.configured,
             },
             webhook: {
               enabled: w.enabled,
               urls: w.urls.join(', '),
               minSeverity: w.minSeverity || 'LOW',
+              format: w.format || 'slack',
+              signatureSecret: w.signatureSecret === MASK ? MASK : '',
+              headers:
+                w.headers && Object.keys(w.headers).length > 0 ? JSON.stringify(w.headers) : '',
+              quietHours: apiQuietToLocal(w.quietHours),
               configured: w.configured,
             },
             sms: {
@@ -252,6 +353,7 @@ export default function SettingsPage() {
               senderId: s.senderId,
               toNumbers: s.toNumbers.join(', '),
               minSeverity: s.minSeverity || 'LOW',
+              quietHours: apiQuietToLocal(s.quietHours),
               configured: s.configured,
             },
             siem: {
@@ -260,6 +362,7 @@ export default function SettingsPage() {
               token: si.token === MASK ? MASK : '',
               format: si.format,
               minSeverity: si.minSeverity || 'LOW',
+              quietHours: apiQuietToLocal(si.quietHours),
               configured: si.configured,
             },
           });
@@ -315,6 +418,7 @@ export default function SettingsPage() {
           botToken: secretValue(t.configured, t.botToken),
           chatIds: toList(t.chatIds),
           minSeverity: t.minSeverity,
+          quietHours: localQuietToApi(t.quietHours),
         },
         email: {
           enabled: e.enabled,
@@ -326,11 +430,16 @@ export default function SettingsPage() {
           from: e.from,
           recipients: toList(e.recipients),
           minSeverity: e.minSeverity,
+          quietHours: localQuietToApi(e.quietHours),
         },
         webhook: {
           enabled: w.enabled,
           urls: toList(w.urls),
           minSeverity: w.minSeverity,
+          format: w.format,
+          signatureSecret: secretValue(w.configured, w.signatureSecret),
+          headers: w.headers.length > 0 ? parseJsonHeaders(w.headers) : null,
+          quietHours: localQuietToApi(w.quietHours),
         },
         sms: {
           enabled: s.enabled,
@@ -341,6 +450,7 @@ export default function SettingsPage() {
           senderId: s.senderId,
           toNumbers: toList(s.toNumbers),
           minSeverity: s.minSeverity,
+          quietHours: localQuietToApi(s.quietHours),
         },
         siem: {
           enabled: si.enabled,
@@ -348,6 +458,7 @@ export default function SettingsPage() {
           token: secretValue(si.configured, si.token),
           format: si.format,
           minSeverity: si.minSeverity,
+          quietHours: localQuietToApi(si.quietHours),
         },
       };
 
@@ -374,6 +485,7 @@ export default function SettingsPage() {
           botToken: nt.botToken === MASK ? MASK : nt.botToken,
           chatIds: nt.chatIds.join(', '),
           minSeverity: nt.minSeverity || 'LOW',
+          quietHours: apiQuietToLocal(nt.quietHours),
           configured: nt.configured,
         },
         email: {
@@ -386,12 +498,18 @@ export default function SettingsPage() {
           from: ne.from,
           recipients: ne.recipients.join(', '),
           minSeverity: ne.minSeverity || 'LOW',
+          quietHours: apiQuietToLocal(ne.quietHours),
           configured: ne.configured,
         },
         webhook: {
           enabled: nw.enabled,
           urls: nw.urls.join(', '),
           minSeverity: nw.minSeverity || 'LOW',
+          format: nw.format || 'slack',
+          signatureSecret: nw.signatureSecret === MASK ? MASK : nw.signatureSecret,
+          headers:
+            nw.headers && Object.keys(nw.headers).length > 0 ? JSON.stringify(nw.headers) : '',
+          quietHours: apiQuietToLocal(nw.quietHours),
           configured: nw.configured,
         },
         sms: {
@@ -403,6 +521,7 @@ export default function SettingsPage() {
           senderId: ns.senderId,
           toNumbers: ns.toNumbers.join(', '),
           minSeverity: ns.minSeverity || 'LOW',
+          quietHours: apiQuietToLocal(ns.quietHours),
           configured: ns.configured,
         },
         siem: {
@@ -411,6 +530,7 @@ export default function SettingsPage() {
           token: nsi.token === MASK ? MASK : nsi.token,
           format: nsi.format,
           minSeverity: nsi.minSeverity || 'LOW',
+          quietHours: apiQuietToLocal(nsi.quietHours),
           configured: nsi.configured,
         },
       });
@@ -530,6 +650,13 @@ export default function SettingsPage() {
               }
               disabled={!notif.telegram.enabled}
             />
+            <QuietHoursInput
+              value={notif.telegram.quietHours}
+              onChange={(q) =>
+                setNotif((p) => ({ ...p, telegram: { ...p.telegram, quietHours: q } }))
+              }
+              disabled={!notif.telegram.enabled}
+            />
           </Section>
 
           {/* Email */}
@@ -605,6 +732,11 @@ export default function SettingsPage() {
               onChange={(v) => setNotif((p) => ({ ...p, email: { ...p.email, minSeverity: v } }))}
               disabled={!notif.email.enabled}
             />
+            <QuietHoursInput
+              value={notif.email.quietHours}
+              onChange={(q) => setNotif((p) => ({ ...p, email: { ...p.email, quietHours: q } }))}
+              disabled={!notif.email.enabled}
+            />
           </Section>
 
           {/* Webhook */}
@@ -626,10 +758,57 @@ export default function SettingsPage() {
               value={notif.webhook.urls}
               onChange={(v) => setNotif((p) => ({ ...p, webhook: { ...p.webhook, urls: v } }))}
             />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                  Format Payload
+                </label>
+                <select
+                  value={notif.webhook.format}
+                  onChange={(e) =>
+                    setNotif((p) => ({
+                      ...p,
+                      webhook: {
+                        ...p.webhook,
+                        format: e.target.value as 'slack' | 'discord' | 'teams' | 'generic',
+                      },
+                    }))
+                  }
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-blue-500"
+                >
+                  <option value="slack">Slack (text)</option>
+                  <option value="discord">Discord (content)</option>
+                  <option value="teams">Teams MessageCard</option>
+                  <option value="generic">Generic JSON (payload penuh)</option>
+                </select>
+              </div>
+              <Field
+                label="Signature Secret (signing HMAC-SHA256) — opsional"
+                type="password"
+                value={notif.webhook.signatureSecret}
+                placeholder="Kosongkan bila tidak perlu"
+                onChange={(v) =>
+                  setNotif((p) => ({ ...p, webhook: { ...p.webhook, signatureSecret: v } }))
+                }
+              />
+            </div>
+            <Field
+              label={'Headers tambahan (JSON, mis. {"Authorization":"Bearer ..."}) — opsional'}
+              value={notif.webhook.headers}
+              placeholder='{"Authorization":"Bearer xxx"}'
+              onChange={(v) => setNotif((p) => ({ ...p, webhook: { ...p.webhook, headers: v } }))}
+            />
             <SeveritySelect
               value={notif.webhook.minSeverity}
               onChange={(v) =>
                 setNotif((p) => ({ ...p, webhook: { ...p.webhook, minSeverity: v } }))
+              }
+              disabled={!notif.webhook.enabled}
+            />
+            <QuietHoursInput
+              value={notif.webhook.quietHours}
+              onChange={(q) =>
+                setNotif((p) => ({ ...p, webhook: { ...p.webhook, quietHours: q } }))
               }
               disabled={!notif.webhook.enabled}
             />
@@ -701,6 +880,11 @@ export default function SettingsPage() {
               onChange={(v) => setNotif((p) => ({ ...p, sms: { ...p.sms, minSeverity: v } }))}
               disabled={!notif.sms.enabled}
             />
+            <QuietHoursInput
+              value={notif.sms.quietHours}
+              onChange={(q) => setNotif((p) => ({ ...p, sms: { ...p.sms, quietHours: q } }))}
+              disabled={!notif.sms.enabled}
+            />
           </Section>
 
           {/* SIEM */}
@@ -753,6 +937,11 @@ export default function SettingsPage() {
             <SeveritySelect
               value={notif.siem.minSeverity}
               onChange={(v) => setNotif((p) => ({ ...p, siem: { ...p.siem, minSeverity: v } }))}
+              disabled={!notif.siem.enabled}
+            />
+            <QuietHoursInput
+              value={notif.siem.quietHours}
+              onChange={(q) => setNotif((p) => ({ ...p, siem: { ...p.siem, quietHours: q } }))}
               disabled={!notif.siem.enabled}
             />
           </Section>
@@ -820,6 +1009,32 @@ export default function SettingsPage() {
                   setPolicyForm((p) => (p ? { ...p, renotifyIntervalMinutes: Number(v) || 0 } : p))
                 }
               />
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3 border border-slate-800 rounded-xl p-3">
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={policy.digestEnabled}
+                  onChange={(e) =>
+                    setPolicyForm((p) => (p ? { ...p, digestEnabled: e.target.checked } : p))
+                  }
+                  className="w-4 h-4 accent-blue-600"
+                />
+                Mode Digest (anti-spam)
+              </label>
+              <Field
+                label="Window Digest (menit)"
+                type="number"
+                value={String(policy.digestWindowMinutes)}
+                onChange={(v) =>
+                  setPolicyForm((p) => (p ? { ...p, digestWindowMinutes: Number(v) || 0 } : p))
+                }
+              />
+              <p className="w-full text-[11px] text-slate-500 -mt-1">
+                Bila aktif, alert tidak langsung dikirim; dikumpulkan dan disampaikan ringkas tiap
+                window oleh worker digest.
+              </p>
             </div>
 
             <div>
@@ -947,6 +1162,75 @@ export default function SettingsPage() {
 }
 
 const SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+
+function QuietHoursInput({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: QuietLocal;
+  onChange: (q: QuietLocal) => void;
+  disabled?: boolean;
+}) {
+  const set = (patch: Partial<QuietLocal>) => onChange({ ...value, ...patch });
+  return (
+    <div className="border border-slate-800/70 rounded-xl p-3 space-y-2">
+      <label className="flex items-center gap-2 text-xs font-medium text-slate-400 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={value.enabled}
+          disabled={disabled}
+          onChange={(e) => set({ enabled: e.target.checked })}
+          className="w-4 h-4 accent-blue-600"
+        />
+        Jadwal Senyap (Silent Hours)
+      </label>
+      <div
+        className={`grid grid-cols-2 sm:grid-cols-4 gap-2 ${value.enabled ? '' : 'opacity-50 pointer-events-none'}`}
+      >
+        <input
+          type="text"
+          value={value.start}
+          onChange={(e) => set({ start: e.target.value })}
+          placeholder="22:00"
+          title="Mulai (HH:MM)"
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        />
+        <input
+          type="text"
+          value={value.end}
+          onChange={(e) => set({ end: e.target.value })}
+          placeholder="06:00"
+          title="Selesai (HH:MM)"
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        />
+        <input
+          type="text"
+          value={value.timezone}
+          onChange={(e) => set({ timezone: e.target.value })}
+          placeholder="Asia/Jakarta"
+          title="Timezone (IANA)"
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        />
+        <select
+          value={value.bypass}
+          onChange={(e) => set({ bypass: e.target.value })}
+          title="Severity yang tetap terkirim"
+          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        >
+          {SEVERITIES.map((s) => (
+            <option key={s} value={s}>
+              Bypass ≥ {s}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="text-[11px] text-slate-500">
+        Notifikasi channel diredam pada jendela quiet; severity &ge; bypass tetap terkirim.
+      </p>
+    </div>
+  );
+}
 
 function SeveritySelect({
   value,

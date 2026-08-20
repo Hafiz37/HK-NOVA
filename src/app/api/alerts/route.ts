@@ -76,6 +76,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             orderBy: { triggeredAt: 'desc' },
             take: 5,
           },
+          deliveries: {
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+          },
           _count: {
             select: { deliveries: true },
           },

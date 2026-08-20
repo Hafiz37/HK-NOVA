@@ -61,5 +61,11 @@ module.exports = {
     app('hk-nova-escalator-worker', 'tsx', 'src/workers/alert-escalator.ts', {
       env: { NODE_ENV: 'production', ESCALATOR_INTERVAL: '* * * * *' },
     }),
+    app('hk-nova-digest-worker', 'tsx', 'src/workers/digest-worker.ts', {
+      env: { NODE_ENV: 'production', DIGEST_INTERVAL: '* * * * *' },
+    }),
+    app('hk-nova-retry-worker', 'tsx', 'src/workers/delivery-retry.ts', {
+      env: { NODE_ENV: 'production', RETRY_INTERVAL: '*/2 * * * *' },
+    }),
   ],
 };

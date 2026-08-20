@@ -32,6 +32,7 @@ import {
   dedupKeyUp,
   correlationKeyFor,
 } from '../lib/alert-engine';
+import { fetchEnabledRules, evaluateRuleForDevice } from '../lib/alert-rules';
 import {
   enqueueDevices,
   dequeueDevices,
@@ -70,17 +71,24 @@ interface NetPingSession {
 interface PingResult {
   deviceId: string;
   ip: string;
-  latency: number | null;    // median RTT (ms)
-  rttMin: number | null;     // minimum RTT dari multi-probe
-  rttMax: number | null;     // maximum RTT dari multi-probe
-  jitter: number | null;     // variasi RTT (stddev antar probe, ms)
-  packetLoss: number;        // 0–100
+  latency: number | null; // median RTT (ms)
+  rttMin: number | null; // minimum RTT dari multi-probe
+  rttMax: number | null; // maximum RTT dari multi-probe
+  jitter: number | null; // variasi RTT (stddev antar probe, ms)
+  packetLoss: number; // 0–100
   isIPv6: boolean;
   success: boolean;
   error?: string;
 }
 
-type DeviceRecord = { id: string; name: string; ip: string; status: string; isDemo?: boolean };
+type DeviceRecord = {
+  id: string;
+  name: string;
+  ip: string;
+  type: string;
+  status: string;
+  isDemo?: boolean;
+};
 
 // ─── Logging helper ──────────────────────────────────────────────────────────
 function log(level: 'INFO' | 'WARN' | 'ERROR', message: string, meta?: unknown): void {
@@ -101,7 +109,14 @@ async function pingSystemMultiProbe(
   timeoutMs: number,
   probes: number = 3
 ): Promise<
-  | { success: true; latencies: number[]; avgLatency: number; jitter: number; rttMin: number; rttMax: number }
+  | {
+      success: true;
+      latencies: number[];
+      avgLatency: number;
+      jitter: number;
+      rttMin: number;
+      rttMax: number;
+    }
   | { success: false; error: string }
 > {
   return new Promise((resolve) => {
@@ -118,8 +133,12 @@ async function pingSystemMultiProbe(
     const child = spawn(cmd, args);
     let output = '';
 
-    child.stdout.on('data', (data: Buffer) => { output += data.toString(); });
-    child.stderr.on('data', (data: Buffer) => { output += data.toString(); });
+    child.stdout.on('data', (data: Buffer) => {
+      output += data.toString();
+    });
+    child.stderr.on('data', (data: Buffer) => {
+      output += data.toString();
+    });
 
     child.on('close', (code: number | null) => {
       if (code === 0) {
@@ -152,8 +171,12 @@ async function pingSystemMultiProbe(
       if (ipv6 && err.message.includes('ENOENT')) {
         const child2 = spawn('ping', ['-6', '-c', String(probes), '-W', String(timeoutSec), ip]);
         let out2 = '';
-        child2.stdout.on('data', (d: Buffer) => { out2 += d.toString(); });
-        child2.stderr.on('data', (d: Buffer) => { out2 += d.toString(); });
+        child2.stdout.on('data', (d: Buffer) => {
+          out2 += d.toString();
+        });
+        child2.stderr.on('data', (d: Buffer) => {
+          out2 += d.toString();
+        });
         child2.on('close', (code2: number | null) => {
           if (code2 === 0) {
             const rtts2: number[] = [];
@@ -162,8 +185,17 @@ async function pingSystemMultiProbe(
             while ((m2 = re2.exec(out2)) !== null) rtts2.push(parseFloat(m2[1]));
             if (rtts2.length > 0) {
               const avg2 = rtts2.reduce((s, v) => s + v, 0) / rtts2.length;
-              const jitter2 = Math.sqrt(rtts2.reduce((s, v) => s + (v - avg2) ** 2, 0) / rtts2.length);
-              resolve({ success: true, latencies: rtts2, avgLatency: avg2, jitter: jitter2, rttMin: Math.min(...rtts2), rttMax: Math.max(...rtts2) });
+              const jitter2 = Math.sqrt(
+                rtts2.reduce((s, v) => s + (v - avg2) ** 2, 0) / rtts2.length
+              );
+              resolve({
+                success: true,
+                latencies: rtts2,
+                avgLatency: avg2,
+                jitter: jitter2,
+                rttMin: Math.min(...rtts2),
+                rttMax: Math.max(...rtts2),
+              });
             } else {
               resolve({ success: false, error: 'ping -6 succeeded but no RTT parsed' });
             }
@@ -177,10 +209,13 @@ async function pingSystemMultiProbe(
       }
     });
 
-    setTimeout(() => {
-      child.kill('SIGKILL');
-      resolve({ success: false, error: 'ping command timeout' });
-    }, timeoutMs * probes + 2000);
+    setTimeout(
+      () => {
+        child.kill('SIGKILL');
+        resolve({ success: false, error: 'ping command timeout' });
+      },
+      timeoutMs * probes + 2000
+    );
   });
 }
 
@@ -202,7 +237,9 @@ async function pingHost(
   if (session) {
     let attempt = 0;
     while (attempt <= ICMP_PING_RETRIES) {
-      const result = await new Promise<{ latency: number; success: true } | { success: false; error: string }>((resolve) => {
+      const result = await new Promise<
+        { latency: number; success: true } | { success: false; error: string }
+      >((resolve) => {
         const sent = Date.now();
         session!.pingHost(ip, (err, _target, _sent, rcvd) => {
           if (err) {
@@ -215,7 +252,11 @@ async function pingHost(
 
       if (result.success) return result;
 
-      if (result.error.includes('Operation not permitted') || result.error.includes('EPERM') || result.error.includes('EACCES')) {
+      if (
+        result.error.includes('Operation not permitted') ||
+        result.error.includes('EPERM') ||
+        result.error.includes('EACCES')
+      ) {
         log('WARN', `net-ping permission error for ${ip}, falling back to system ping`);
         break;
       }
@@ -240,26 +281,48 @@ async function pingHost(
 }
 
 // ─── Poll a single device (multi-probe, ICMPv6-aware) ───────────────────────
-async function pollDevice(session: NetPingSession | null, device: DeviceRecord): Promise<PingResult> {
+async function pollDevice(
+  session: NetPingSession | null,
+  device: DeviceRecord
+): Promise<PingResult> {
   const ipv6 = isIPv6Address(device.ip);
   // ICMPv6: langsung ke system ping (net-ping biasanya IPv4 only)
   if (ipv6) {
     const r = await pingSystemMultiProbe(device.ip, DEFAULT_PING_TIMEOUT, 3);
     if (r.success) {
       return {
-        deviceId: device.id, ip: device.ip,
-        latency: r.avgLatency, rttMin: r.rttMin, rttMax: r.rttMax, jitter: r.jitter,
-        packetLoss: 0, isIPv6: true, success: true,
+        deviceId: device.id,
+        ip: device.ip,
+        latency: r.avgLatency,
+        rttMin: r.rttMin,
+        rttMax: r.rttMax,
+        jitter: r.jitter,
+        packetLoss: 0,
+        isIPv6: true,
+        success: true,
       };
     }
-    return { deviceId: device.id, ip: device.ip, latency: null, rttMin: null, rttMax: null, jitter: null, packetLoss: 100, isIPv6: true, success: false, error: r.error };
+    return {
+      deviceId: device.id,
+      ip: device.ip,
+      latency: null,
+      rttMin: null,
+      rttMax: null,
+      jitter: null,
+      packetLoss: 100,
+      isIPv6: true,
+      success: false,
+      error: r.error,
+    };
   }
 
   try {
     // IPv4: coba net-ping dulu untuk latensi akurat, lalu fallback
     let netPingOk = false;
     if (session) {
-      const singleResult = await new Promise<{ latency: number; success: true } | { success: false; error: string }>((resolve) => {
+      const singleResult = await new Promise<
+        { latency: number; success: true } | { success: false; error: string }
+      >((resolve) => {
         const sent = Date.now();
         session!.pingHost(device.ip, (err, _t, _s, rcvd) => {
           if (err) resolve({ success: false, error: err.message });
@@ -276,9 +339,15 @@ async function pollDevice(session: NetPingSession | null, device: DeviceRecord):
       const r = await pingSystemMultiProbe(device.ip, DEFAULT_PING_TIMEOUT, 3);
       if (r.success) {
         return {
-          deviceId: device.id, ip: device.ip,
-          latency: r.avgLatency, rttMin: r.rttMin, rttMax: r.rttMax, jitter: r.jitter,
-          packetLoss: 0, isIPv6: false, success: true,
+          deviceId: device.id,
+          ip: device.ip,
+          latency: r.avgLatency,
+          rttMin: r.rttMin,
+          rttMax: r.rttMax,
+          jitter: r.jitter,
+          packetLoss: 0,
+          isIPv6: false,
+          success: true,
         };
       }
     }
@@ -287,19 +356,56 @@ async function pollDevice(session: NetPingSession | null, device: DeviceRecord):
     if (session) {
       for (let attempt = 0; attempt <= ICMP_PING_RETRIES; attempt++) {
         const r = await pingHostSystem(device.ip, DEFAULT_PING_TIMEOUT);
-        if (r.success) return { deviceId: device.id, ip: device.ip, latency: r.latency, rttMin: r.latency, rttMax: r.latency, jitter: 0, packetLoss: 0, isIPv6: false, success: true };
-        if (attempt < ICMP_PING_RETRIES) await new Promise((res) => setTimeout(res, 500 * Math.pow(2, attempt)));
+        if (r.success)
+          return {
+            deviceId: device.id,
+            ip: device.ip,
+            latency: r.latency,
+            rttMin: r.latency,
+            rttMax: r.latency,
+            jitter: 0,
+            packetLoss: 0,
+            isIPv6: false,
+            success: true,
+          };
+        if (attempt < ICMP_PING_RETRIES)
+          await new Promise((res) => setTimeout(res, 500 * Math.pow(2, attempt)));
       }
     }
 
-    return { deviceId: device.id, ip: device.ip, latency: null, rttMin: null, rttMax: null, jitter: null, packetLoss: 100, isIPv6: false, success: false, error: 'All ping attempts failed' };
+    return {
+      deviceId: device.id,
+      ip: device.ip,
+      latency: null,
+      rttMin: null,
+      rttMax: null,
+      jitter: null,
+      packetLoss: 100,
+      isIPv6: false,
+      success: false,
+      error: 'All ping attempts failed',
+    };
   } catch (err) {
-    return { deviceId: device.id, ip: device.ip, latency: null, rttMin: null, rttMax: null, jitter: null, packetLoss: 100, isIPv6: false, success: false, error: err instanceof Error ? err.message : String(err) };
+    return {
+      deviceId: device.id,
+      ip: device.ip,
+      latency: null,
+      rttMin: null,
+      rttMax: null,
+      jitter: null,
+      packetLoss: 100,
+      isIPv6: false,
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
 // ─── Alert transitions ────────────────────────────────────────────────────────
-async function handleAlertTransition(device: DeviceRecord, newStatus: 'UP' | 'DOWN' | 'UNKNOWN'): Promise<void> {
+async function handleAlertTransition(
+  device: DeviceRecord,
+  newStatus: 'UP' | 'DOWN' | 'UNKNOWN'
+): Promise<void> {
   const previousStatus = device.status;
 
   if (await isDeviceInMaintenance(device.id)) {
@@ -312,7 +418,10 @@ async function handleAlertTransition(device: DeviceRecord, newStatus: 'UP' | 'DO
     const result = await processDeviceDownAlert(prisma, device, baseMessage);
 
     if (result.created) {
-      log('WARN', `Alert DEVICE_DOWN created for ${device.name} (${device.ip}) severity=${result.alert.severity}`);
+      log(
+        'WARN',
+        `Alert DEVICE_DOWN created for ${device.name} (${device.ip}) severity=${result.alert.severity}`
+      );
       await dispatchNotifications(prisma, {
         type: 'DEVICE_DOWN',
         severity: result.alert.severity,
@@ -344,7 +453,10 @@ async function handleAlertTransition(device: DeviceRecord, newStatus: 'UP' | 'DO
       correlationKey: correlationKeyFor(device.id),
     });
 
-    log('INFO', `Device recovered: ${device.name} (${device.ip}) (${downResolved} DEVICE_DOWN resolved, ${childrenResolved} children resolved)`);
+    log(
+      'INFO',
+      `Device recovered: ${device.name} (${device.ip}) (${downResolved} DEVICE_DOWN resolved, ${childrenResolved} children resolved)`
+    );
 
     await dispatchNotifications(prisma, {
       type: 'DEVICE_UP',
@@ -359,8 +471,56 @@ async function handleAlertTransition(device: DeviceRecord, newStatus: 'UP' | 'DO
   }
 }
 
+// ─── Rule evaluasi (Tahap 3) — nilai ICMP segar ───────────────────────────────
+async function handleIcmpRules(
+  device: DeviceRecord,
+  result: PingResult,
+  rules: Awaited<ReturnType<typeof fetchEnabledRules>>
+): Promise<void> {
+  if (rules.length === 0) return;
+  if (await isDeviceInMaintenance(device.id)) return;
+
+  const ruleDevice = { id: device.id, name: device.name, ip: device.ip, type: device.type };
+
+  const dispatchRule = async (
+    rule: Awaited<ReturnType<typeof fetchEnabledRules>>[number],
+    metric: string,
+    value: number
+  ) => {
+    const res = await evaluateRuleForDevice(prisma, rule, ruleDevice, value);
+    if (res?.created && res.alert) {
+      await dispatchNotifications(prisma, {
+        type: 'RULE_BREACH',
+        severity: res.alert.severity,
+        deviceId: device.id,
+        deviceName: device.name,
+        deviceIp: device.ip,
+        message: res.alert.message,
+        cooldownKey: `rule:${rule.id}`,
+        cooldownMs: rule.cooldownMs || ICMP_ALERT_COOLDOWN_MS,
+        alertId: res.alert.id,
+        valueSnapshot: { ruleId: rule.id, metric, value },
+      });
+      log('WARN', `RULE_BREACH untuk ${device.name} (${metric}=${value}) — rule ${rule.name}`);
+    }
+  };
+
+  for (const rule of rules) {
+    if (rule.metric === 'latency' && result.latency != null)
+      await dispatchRule(rule, 'latency', result.latency);
+    if (rule.metric === 'packetLoss' && result.packetLoss != null)
+      await dispatchRule(rule, 'packetLoss', result.packetLoss);
+    if (rule.metric === 'jitter' && result.jitter != null)
+      await dispatchRule(rule, 'jitter', result.jitter);
+  }
+}
+
 // ─── Persist results + recompute dynamic threshold ───────────────────────────
-async function persistResults(results: PingResult[], deviceMap: Map<string, DeviceRecord>): Promise<void> {
+async function persistResults(
+  results: PingResult[],
+  deviceMap: Map<string, DeviceRecord>,
+  rules: Awaited<ReturnType<typeof fetchEnabledRules>>
+): Promise<void> {
   const settled = await Promise.allSettled(
     results.map(async (result) => {
       const device = deviceMap.get(result.deviceId);
@@ -405,6 +565,9 @@ async function persistResults(results: PingResult[], deviceMap: Map<string, Devi
 
       await handleAlertTransition(device, newStatus);
 
+      // Evaluasi rule user-defined berbasis nilai segar (latency/packetLoss/jitter)
+      await handleIcmpRules(device, result, rules);
+
       await prisma.device.update({
         where: { id: result.deviceId },
         data: { status: newStatus },
@@ -420,14 +583,21 @@ async function persistResults(results: PingResult[], deviceMap: Map<string, Devi
 }
 
 // ─── Process batch dengan concurrency limit ───────────────────────────────────
-async function processBatch(devices: DeviceRecord[], deviceMap: Map<string, DeviceRecord>): Promise<void> {
+async function processBatch(
+  devices: DeviceRecord[],
+  deviceMap: Map<string, DeviceRecord>,
+  rules: Awaited<ReturnType<typeof fetchEnabledRules>>
+): Promise<void> {
   let session: NetPingSession | null = null;
 
   try {
     try {
       session = ping.createSession({ timeout: DEFAULT_PING_TIMEOUT, retries: 0, packetSize: 64 });
     } catch (sessionErr) {
-      log('WARN', `Failed to create net-ping session, using system ping fallback: ${sessionErr instanceof Error ? sessionErr.message : sessionErr}`);
+      log(
+        'WARN',
+        `Failed to create net-ping session, using system ping fallback: ${sessionErr instanceof Error ? sessionErr.message : sessionErr}`
+      );
       session = null;
     }
 
@@ -451,14 +621,20 @@ async function processBatch(devices: DeviceRecord[], deviceMap: Map<string, Devi
       } satisfies PingResult;
     });
 
-    await persistResults(results, deviceMap);
-
-    const upCount   = results.filter((r) => r.success).length;
+    await persistResults(results, deviceMap, rules);
+    const upCount = results.filter((r) => r.success).length;
     const downCount = results.filter((r) => !r.success).length;
-    log('INFO', `Batch complete: ${upCount} UP, ${downCount} DOWN / ${results.length} devices (concurrency=${ICMP_CONCURRENCY_LIMIT})`);
+    log(
+      'INFO',
+      `Batch complete: ${upCount} UP, ${downCount} DOWN / ${results.length} devices (concurrency=${ICMP_CONCURRENCY_LIMIT})`
+    );
   } finally {
     if (session) {
-      try { session.close(); } catch { /* ignore */ }
+      try {
+        session.close();
+      } catch {
+        /* ignore */
+      }
     }
   }
 }
@@ -481,7 +657,7 @@ async function runPollCycle(): Promise<void> {
   try {
     const devices = await prisma.device.findMany({
       where: { status: { not: 'MAINTENANCE' }, deletedAt: null, isDemo: false },
-      select: { id: true, name: true, ip: true, status: true, isDemo: true },
+      select: { id: true, name: true, ip: true, type: true, status: true, isDemo: true },
     });
 
     const demoCount = await prisma.device.count({
@@ -497,10 +673,20 @@ async function runPollCycle(): Promise<void> {
     const deviceMap = new Map(devices.map((d) => [d.id, d]));
 
     // ── Enqueue ke Redis (atau in-memory fallback) ────────────────────────────
-    await enqueueDevices('icmp', devices.map((d) => d.id), REDIS_QUEUE_TTL_SECONDS);
+    await enqueueDevices(
+      'icmp',
+      devices.map((d) => d.id),
+      REDIS_QUEUE_TTL_SECONDS
+    );
     const queueStatus = await getQueueStatus('icmp');
 
-    log('INFO', `Queue [${queueStatus.backend}] ${devices.length} REAL devices (+ ${demoCount} demo by demo-generator), batch=${ICMP_BATCH_SIZE}, concurrency=${ICMP_CONCURRENCY_LIMIT}`);
+    log(
+      'INFO',
+      `Queue [${queueStatus.backend}] ${devices.length} REAL devices (+ ${demoCount} demo by demo-generator), batch=${ICMP_BATCH_SIZE}, concurrency=${ICMP_CONCURRENCY_LIMIT}`
+    );
+
+    // Rule user-defined aktif (dievaluasi sekali per siklus)
+    const enabledRules = await fetchEnabledRules(prisma);
 
     // ── Dequeue & proses hingga antrian habis ─────────────────────────────────
     let batchNum = 0;
@@ -519,13 +705,16 @@ async function runPollCycle(): Promise<void> {
         .filter((d): d is NonNullable<typeof d> => d !== undefined);
 
       if (batchDevices.length > 0) {
-        await processBatch(batchDevices, deviceMap);
+        await processBatch(batchDevices, deviceMap, enabledRules);
         totalProcessed += batchDevices.length;
       }
     }
 
     const elapsed = Date.now() - cycleStart;
-    log('INFO', `Poll cycle [${cycleId}] completed: ${totalProcessed} devices, ${batchNum} batches, ${elapsed}ms`);
+    log(
+      'INFO',
+      `Poll cycle [${cycleId}] completed: ${totalProcessed} devices, ${batchNum} batches, ${elapsed}ms`
+    );
   } catch (err) {
     log('ERROR', 'Poll cycle failed', err instanceof Error ? err.message : err);
   } finally {
@@ -541,17 +730,30 @@ async function gracefulShutdown(signal: string): Promise<void> {
   isShuttingDown = true;
   log('INFO', `Received ${signal}, shutting down gracefully...`);
 
-  try { await closeRedis(); log('INFO', 'Redis connection closed'); } catch (err) { log('ERROR', 'Error closing Redis', err); }
-  try { await prisma.$disconnect(); log('INFO', 'Prisma disconnected'); } catch (err) { log('ERROR', 'Error during shutdown', err); }
+  try {
+    await closeRedis();
+    log('INFO', 'Redis connection closed');
+  } catch (err) {
+    log('ERROR', 'Error closing Redis', err);
+  }
+  try {
+    await prisma.$disconnect();
+    log('INFO', 'Prisma disconnected');
+  } catch (err) {
+    log('ERROR', 'Error during shutdown', err);
+  }
 
   process.exit(0);
 }
 
 process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
-process.on('SIGINT',  () => void gracefulShutdown('SIGINT'));
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
-log('INFO', `ICMP Poller v2 — batch=${ICMP_BATCH_SIZE}, concurrency=${ICMP_CONCURRENCY_LIMIT}, redis=${process.env.REDIS_URL ? 'enabled' : 'disabled (in-memory fallback)'}`);
+log(
+  'INFO',
+  `ICMP Poller v2 — batch=${ICMP_BATCH_SIZE}, concurrency=${ICMP_CONCURRENCY_LIMIT}, redis=${process.env.REDIS_URL ? 'enabled' : 'disabled (in-memory fallback)'}`
+);
 
 void startPollScheduler({
   prisma,

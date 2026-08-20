@@ -38,6 +38,7 @@ import {
   resolveCustomOidAlert,
   type CustomOidAlertInput,
 } from '../lib/alert-engine';
+import { fetchEnabledRules, evaluateRuleForDevice } from '../lib/alert-rules';
 import {
   pollCustomOids,
   serializeCustomOidResults,
@@ -60,28 +61,28 @@ const OID = {
   sysUpTime: '1.3.6.1.2.1.1.3.0',
 
   // HOST-RESOURCES-MIB: CPU
-  hrProcessorLoad: '1.3.6.1.2.1.25.3.3.1.2',      // table — per-CPU load
+  hrProcessorLoad: '1.3.6.1.2.1.25.3.3.1.2', // table — per-CPU load
 
   // HOST-RESOURCES-MIB: Memory
-  hrStorageType:   '1.3.6.1.2.1.25.2.3.1.2',      // table
-  hrStorageSize:   '1.3.6.1.2.1.25.2.3.1.5',
-  hrStorageUsed:   '1.3.6.1.2.1.25.2.3.1.6',
+  hrStorageType: '1.3.6.1.2.1.25.2.3.1.2', // table
+  hrStorageSize: '1.3.6.1.2.1.25.2.3.1.5',
+  hrStorageUsed: '1.3.6.1.2.1.25.2.3.1.6',
 
   // RAM type OID
   hrStorageRam: '1.3.6.1.2.1.25.2.1.2',
 
   // IF-MIB: Interface (32-bit counters)
-  ifDescr:       '1.3.6.1.2.1.2.2.1.2',           // table
-  ifOperStatus:  '1.3.6.1.2.1.2.2.1.8',
-  ifSpeed:       '1.3.6.1.2.1.2.2.1.5',
-  ifInOctets:    '1.3.6.1.2.1.2.2.1.10',
-  ifOutOctets:   '1.3.6.1.2.1.2.2.1.16',
-  ifInErrors:    '1.3.6.1.2.1.2.2.1.14',
-  ifOutErrors:   '1.3.6.1.2.1.2.2.1.20',
+  ifDescr: '1.3.6.1.2.1.2.2.1.2', // table
+  ifOperStatus: '1.3.6.1.2.1.2.2.1.8',
+  ifSpeed: '1.3.6.1.2.1.2.2.1.5',
+  ifInOctets: '1.3.6.1.2.1.2.2.1.10',
+  ifOutOctets: '1.3.6.1.2.1.2.2.1.16',
+  ifInErrors: '1.3.6.1.2.1.2.2.1.14',
+  ifOutErrors: '1.3.6.1.2.1.2.2.1.20',
 
   // IF-MIB: Interface (64-bit counters — IF-MIB::ifHCInOctets / ifHCOutOctets)
-  ifHCInOctets:  '1.3.6.1.2.1.31.1.1.1.6',       // 64-bit in octets
-  ifHCOutOctets: '1.3.6.1.2.1.31.1.1.1.10',      // 64-bit out octets
+  ifHCInOctets: '1.3.6.1.2.1.31.1.1.1.6', // 64-bit in octets
+  ifHCOutOctets: '1.3.6.1.2.1.31.1.1.1.10', // 64-bit out octets
 } as const;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -98,7 +99,7 @@ interface InterfaceEntry {
   index: number;
   name: string;
   operStatus: number; // 1=up, 2=down
-  speed: number;      // bps
+  speed: number; // bps
   inOctets: number;
   outOctets: number;
   inErrors: number;
@@ -116,12 +117,18 @@ interface SnmpResult {
   customOidResults?: CustomOidPollResult[];
   customOidData?: Record<
     string,
-    { name: string; value: number | string | null; unit: string | null; alertTriggered: string | null }
+    {
+      name: string;
+      value: number | string | null;
+      unit: string | null;
+      alertTriggered: string | null;
+    }
   >;
 }
 
 /** Hasil poll custom OID + threshold pembanding (untuk logika alert). */
 interface CustomOidPollResult extends CustomOidResult {
+  customOidId: string; // id record CustomOid (untuk match rule)
   alertHigh: number | null;
   alertLow: number | null;
 }
@@ -131,6 +138,7 @@ type PolledDevice = {
   id: string;
   name: string;
   ip: string;
+  type: string;
   credential: SnmpCredential | null;
   customOids: CustomOidRecord[];
 } & ThresholdOverrides;
@@ -159,10 +167,7 @@ function createSnmpSession(ip: string, cred: SnmpCredential): any | null {
       const user = cred.snmpUser ?? '';
       const authPass = cred.snmpAuthPass ?? '';
       const privPass = cred.snmpPrivPass ?? '';
-      const level =
-        authPass && privPass ? 'authPriv'
-        : authPass            ? 'authNoPriv'
-        :                       'noAuthNoPriv';
+      const level = authPass && privPass ? 'authPriv' : authPass ? 'authNoPriv' : 'noAuthNoPriv';
 
       return snmp.createSession(ip, '', {
         port,
@@ -192,8 +197,11 @@ function createSnmpSession(ip: string, cred: SnmpCredential): any | null {
 }
 
 // ─── Generic SNMP subtree walk ───────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function snmpSubtree(session: any, rootOid: string): Promise<Array<{ oid: string; value: unknown }>> {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function snmpSubtree(
+  session: any,
+  rootOid: string
+): Promise<Array<{ oid: string; value: unknown }>> {
   return new Promise((resolve) => {
     const results: Array<{ oid: string; value: unknown }> = [];
     session.subtree(
@@ -216,6 +224,7 @@ function snmpSubtree(session: any, rootOid: string): Promise<Array<{ oid: string
     );
   });
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ─── Extract index from OID tail ─────────────────────────────────────────────
 function oidIndex(oid: string, baseOid: string): number {
@@ -291,46 +300,49 @@ async function pollMemory(session: any): Promise<number | null> {
 async function pollInterfaces(session: any): Promise<InterfaceEntry[]> {
   try {
     // Try 64-bit counters first (IF-MIB::ifHCInOctets / ifHCOutOctets)
-    const [descrs, statuses, speeds, inOcts, outOcts, inErrs, outErrs, inOcts64, outOcts64] = await Promise.all([
-      snmpSubtree(session, OID.ifDescr),
-      snmpSubtree(session, OID.ifOperStatus),
-      snmpSubtree(session, OID.ifSpeed),
-      snmpSubtree(session, OID.ifInOctets),
-      snmpSubtree(session, OID.ifOutOctets),
-      snmpSubtree(session, OID.ifInErrors),
-      snmpSubtree(session, OID.ifOutErrors),
-      snmpSubtree(session, OID.ifHCInOctets),
-      snmpSubtree(session, OID.ifHCOutOctets),
-    ]);
+    const [descrs, statuses, speeds, inOcts, outOcts, inErrs, outErrs, inOcts64, outOcts64] =
+      await Promise.all([
+        snmpSubtree(session, OID.ifDescr),
+        snmpSubtree(session, OID.ifOperStatus),
+        snmpSubtree(session, OID.ifSpeed),
+        snmpSubtree(session, OID.ifInOctets),
+        snmpSubtree(session, OID.ifOutOctets),
+        snmpSubtree(session, OID.ifInErrors),
+        snmpSubtree(session, OID.ifOutErrors),
+        snmpSubtree(session, OID.ifHCInOctets),
+        snmpSubtree(session, OID.ifHCOutOctets),
+      ]);
 
     const toMap = (rows: Array<{ oid: string; value: unknown }>, base: string) =>
       new Map<number, unknown>(rows.map((r) => [oidIndex(r.oid, base), r.value]));
 
-    const descrMap   = toMap(descrs,    OID.ifDescr);
-    const statusMap  = toMap(statuses,  OID.ifOperStatus);
-    const speedMap   = toMap(speeds,    OID.ifSpeed);
-    const inMap32    = toMap(inOcts,    OID.ifInOctets);
-    const outMap32   = toMap(outOcts,   OID.ifOutOctets);
-    const inMap64    = toMap(inOcts64,  OID.ifHCInOctets);
-    const outMap64   = toMap(outOcts64, OID.ifHCOutOctets);
-    const inErrMap   = toMap(inErrs,    OID.ifInErrors);
-    const outErrMap  = toMap(outErrs,   OID.ifOutErrors);
+    const descrMap = toMap(descrs, OID.ifDescr);
+    const statusMap = toMap(statuses, OID.ifOperStatus);
+    const speedMap = toMap(speeds, OID.ifSpeed);
+    const inMap32 = toMap(inOcts, OID.ifInOctets);
+    const outMap32 = toMap(outOcts, OID.ifOutOctets);
+    const inMap64 = toMap(inOcts64, OID.ifHCInOctets);
+    const outMap64 = toMap(outOcts64, OID.ifHCOutOctets);
+    const inErrMap = toMap(inErrs, OID.ifInErrors);
+    const outErrMap = toMap(outErrs, OID.ifOutErrors);
 
     const interfaces: InterfaceEntry[] = [];
     for (const [idx] of descrMap) {
       // Prefer 64-bit counters, fall back to 32-bit
-      const inOctets  = inMap64.has(idx)  ? Number(inMap64.get(idx))  : Number(inMap32.get(idx)  ?? 0);
-      const outOctets = outMap64.has(idx) ? Number(outMap64.get(idx)) : Number(outMap32.get(idx) ?? 0);
+      const inOctets = inMap64.has(idx) ? Number(inMap64.get(idx)) : Number(inMap32.get(idx) ?? 0);
+      const outOctets = outMap64.has(idx)
+        ? Number(outMap64.get(idx))
+        : Number(outMap32.get(idx) ?? 0);
 
       interfaces.push({
-        index:      idx,
-        name:       String(descrMap.get(idx)   ?? `if${idx}`),
-        operStatus: Number(statusMap.get(idx)  ?? 2),
-        speed:      Number(speedMap.get(idx)   ?? 0),
+        index: idx,
+        name: String(descrMap.get(idx) ?? `if${idx}`),
+        operStatus: Number(statusMap.get(idx) ?? 2),
+        speed: Number(speedMap.get(idx) ?? 0),
         inOctets,
         outOctets,
-        inErrors:   Number(inErrMap.get(idx)   ?? 0),
-        outErrors:  Number(outErrMap.get(idx)  ?? 0),
+        inErrors: Number(inErrMap.get(idx) ?? 0),
+        outErrors: Number(outErrMap.get(idx) ?? 0),
       });
     }
 
@@ -345,6 +357,7 @@ async function pollDevice(device: {
   id: string;
   ip: string;
   name: string;
+  type: string;
   credential: SnmpCredential | null;
   customOids: CustomOidRecord[];
 }): Promise<SnmpResult> {
@@ -385,6 +398,7 @@ async function pollDevice(device: {
         return {
           ...r,
           value: r.value as number,
+          customOidId: oid?.id ?? '',
           alertHigh: oid?.alertHigh ?? null,
           alertLow: oid?.alertLow ?? null,
         };
@@ -401,7 +415,11 @@ async function pollDevice(device: {
       customOidData: serializeCustomOidResults(customOidResults),
     };
   } catch (err) {
-    try { session.close(); } catch { /* ignore */ }
+    try {
+      session.close();
+    } catch {
+      /* ignore */
+    }
     const errMsg = err instanceof Error ? err.message : String(err);
     return {
       deviceId: device.id,
@@ -443,35 +461,37 @@ async function handleUtilizationAlerts(
       });
 
       if (r.action === 'created') {
-        await sendNotificationWithCooldown(
-          {
-            type: 'HIGH_UTILIZATION',
-            severity: r.alert.severity,
-            deviceId: device.id,
-            deviceName: device.name,
-            deviceIp: device.ip,
-            message: `CPU ${device.name} (${device.ip}) mencapai ${cpu.toFixed(1)}% — melebihi batas ${t.cpuAlert}%.`,
-            cooldownKey: 'cpu',
-            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
-            alertId: r.alert.id,
-            valueSnapshot: { cpu },
-          }
+        await sendNotificationWithCooldown({
+          type: 'HIGH_UTILIZATION',
+          severity: r.alert.severity,
+          deviceId: device.id,
+          deviceName: device.name,
+          deviceIp: device.ip,
+          message: `CPU ${device.name} (${device.ip}) mencapai ${cpu.toFixed(1)}% — melebihi batas ${t.cpuAlert}%.`,
+          cooldownKey: 'cpu',
+          cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+          alertId: r.alert.id,
+          valueSnapshot: { cpu },
+        });
+        log(
+          'WARN',
+          `HIGH CPU alert created for ${device.name}: ${cpu.toFixed(1)}% (threshold ${t.cpuAlert}%, severity ${r.alert.severity})`
         );
-        log('WARN', `HIGH CPU alert created for ${device.name}: ${cpu.toFixed(1)}% (threshold ${t.cpuAlert}%, severity ${r.alert.severity})`);
       } else if (r.action === 'correlated') {
-        await sendNotificationWithCooldown(
-          {
-            type: 'HIGH_UTILIZATION_CORRELATED',
-            severity: 'CRITICAL',
-            deviceId: device.id,
-            deviceName: device.name,
-            deviceIp: device.ip,
-            message: `CPU ${device.name} (${device.ip}) ${cpu.toFixed(1)}% — perangkat DOWN, alert DEVICE_DOWN dinaikkan ke CRITICAL.`,
-            cooldownKey: 'cpu',
-            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
-          }
+        await sendNotificationWithCooldown({
+          type: 'HIGH_UTILIZATION_CORRELATED',
+          severity: 'CRITICAL',
+          deviceId: device.id,
+          deviceName: device.name,
+          deviceIp: device.ip,
+          message: `CPU ${device.name} (${device.ip}) ${cpu.toFixed(1)}% — perangkat DOWN, alert DEVICE_DOWN dinaikkan ke CRITICAL.`,
+          cooldownKey: 'cpu',
+          cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+        });
+        log(
+          'WARN',
+          `[CORRELATED] CPU ${device.name}: ${cpu.toFixed(1)}% saat perangkat DOWN — DEVICE_DOWN dinaikkan ke CRITICAL`
         );
-        log('WARN', `[CORRELATED] CPU ${device.name}: ${cpu.toFixed(1)}% saat perangkat DOWN — DEVICE_DOWN dinaikkan ke CRITICAL`);
       }
       // duplicate → no-op
     } else if (cpu < t.cpuResolve) {
@@ -483,19 +503,20 @@ async function handleUtilizationAlerts(
         resolveThreshold: t.cpuResolve,
       });
       if (resolved > 0) {
-        log('INFO', `AUTO-RESOLVED ${resolved} HIGH_CPU alert(s) for ${device.name}: CPU now ${cpu.toFixed(1)}% (below ${t.cpuResolve}%)`);
-        await sendNotificationWithCooldown(
-          {
-            type: 'HIGH_UTILIZATION_RESOLVED',
-            severity: 'INFO',
-            deviceId: device.id,
-            deviceName: device.name,
-            deviceIp: device.ip,
-            message: `CPU ${device.name} (${device.ip}) kembali normal: ${cpu.toFixed(1)}% (batas resolve: ${t.cpuResolve}%).`,
-            cooldownKey: 'cpu-recover',
-            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
-          }
+        log(
+          'INFO',
+          `AUTO-RESOLVED ${resolved} HIGH_CPU alert(s) for ${device.name}: CPU now ${cpu.toFixed(1)}% (below ${t.cpuResolve}%)`
         );
+        await sendNotificationWithCooldown({
+          type: 'HIGH_UTILIZATION_RESOLVED',
+          severity: 'INFO',
+          deviceId: device.id,
+          deviceName: device.name,
+          deviceIp: device.ip,
+          message: `CPU ${device.name} (${device.ip}) kembali normal: ${cpu.toFixed(1)}% (batas resolve: ${t.cpuResolve}%).`,
+          cooldownKey: 'cpu-recover',
+          cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+        });
       }
     }
   }
@@ -512,35 +533,37 @@ async function handleUtilizationAlerts(
       });
 
       if (r.action === 'created') {
-        await sendNotificationWithCooldown(
-          {
-            type: 'HIGH_UTILIZATION',
-            severity: r.alert.severity,
-            deviceId: device.id,
-            deviceName: device.name,
-            deviceIp: device.ip,
-            message: `Memory ${device.name} (${device.ip}) mencapai ${mem.toFixed(1)}% — melebihi batas ${t.memAlert}%.`,
-            cooldownKey: 'mem',
-            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
-            alertId: r.alert.id,
-            valueSnapshot: { mem },
-          }
+        await sendNotificationWithCooldown({
+          type: 'HIGH_UTILIZATION',
+          severity: r.alert.severity,
+          deviceId: device.id,
+          deviceName: device.name,
+          deviceIp: device.ip,
+          message: `Memory ${device.name} (${device.ip}) mencapai ${mem.toFixed(1)}% — melebihi batas ${t.memAlert}%.`,
+          cooldownKey: 'mem',
+          cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+          alertId: r.alert.id,
+          valueSnapshot: { mem },
+        });
+        log(
+          'WARN',
+          `HIGH MEMORY alert created for ${device.name}: ${mem.toFixed(1)}% (threshold ${t.memAlert}%, severity ${r.alert.severity})`
         );
-        log('WARN', `HIGH MEMORY alert created for ${device.name}: ${mem.toFixed(1)}% (threshold ${t.memAlert}%, severity ${r.alert.severity})`);
       } else if (r.action === 'correlated') {
-        await sendNotificationWithCooldown(
-          {
-            type: 'HIGH_UTILIZATION_CORRELATED',
-            severity: 'CRITICAL',
-            deviceId: device.id,
-            deviceName: device.name,
-            deviceIp: device.ip,
-            message: `Memory ${device.name} (${device.ip}) ${mem.toFixed(1)}% — perangkat DOWN, alert DEVICE_DOWN dinaikkan ke CRITICAL.`,
-            cooldownKey: 'mem',
-            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
-          }
+        await sendNotificationWithCooldown({
+          type: 'HIGH_UTILIZATION_CORRELATED',
+          severity: 'CRITICAL',
+          deviceId: device.id,
+          deviceName: device.name,
+          deviceIp: device.ip,
+          message: `Memory ${device.name} (${device.ip}) ${mem.toFixed(1)}% — perangkat DOWN, alert DEVICE_DOWN dinaikkan ke CRITICAL.`,
+          cooldownKey: 'mem',
+          cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+        });
+        log(
+          'WARN',
+          `[CORRELATED] Memory ${device.name}: ${mem.toFixed(1)}% saat perangkat DOWN — DEVICE_DOWN dinaikkan ke CRITICAL`
         );
-        log('WARN', `[CORRELATED] Memory ${device.name}: ${mem.toFixed(1)}% saat perangkat DOWN — DEVICE_DOWN dinaikkan ke CRITICAL`);
       }
       // duplicate → no-op
     } else if (mem < t.memResolve) {
@@ -552,19 +575,20 @@ async function handleUtilizationAlerts(
         resolveThreshold: t.memResolve,
       });
       if (resolved > 0) {
-        log('INFO', `AUTO-RESOLVED ${resolved} HIGH_MEM alert(s) for ${device.name}: MEM now ${mem.toFixed(1)}% (below ${t.memResolve}%)`);
-        await sendNotificationWithCooldown(
-          {
-            type: 'HIGH_UTILIZATION_RESOLVED',
-            severity: 'INFO',
-            deviceId: device.id,
-            deviceName: device.name,
-            deviceIp: device.ip,
-            message: `Memory ${device.name} (${device.ip}) kembali normal: ${mem.toFixed(1)}% (batas resolve: ${t.memResolve}%).`,
-            cooldownKey: 'mem-recover',
-            cooldownMs: SNMP_ALERT_COOLDOWN_MS,
-          }
+        log(
+          'INFO',
+          `AUTO-RESOLVED ${resolved} HIGH_MEM alert(s) for ${device.name}: MEM now ${mem.toFixed(1)}% (below ${t.memResolve}%)`
         );
+        await sendNotificationWithCooldown({
+          type: 'HIGH_UTILIZATION_RESOLVED',
+          severity: 'INFO',
+          deviceId: device.id,
+          deviceName: device.name,
+          deviceIp: device.ip,
+          message: `Memory ${device.name} (${device.ip}) kembali normal: ${mem.toFixed(1)}% (batas resolve: ${t.memResolve}%).`,
+          cooldownKey: 'mem-recover',
+          cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+        });
       }
     }
   }
@@ -609,32 +633,80 @@ async function handleCustomOidAlerts(
           alertId: res.alert.id,
           valueSnapshot: { oid: r.oid, name: r.name, value: r.value, direction: r.alertTriggered },
         });
-        log('WARN', `CUSTOM OID alert for ${device.name} "${r.name}" (${r.oid}): value ${r.value}${r.unit ?? ''} — severity ${res.alert.severity}`);
+        log(
+          'WARN',
+          `CUSTOM OID alert for ${device.name} "${r.name}" (${r.oid}): value ${r.value}${r.unit ?? ''} — severity ${res.alert.severity}`
+        );
       }
     } else {
       const resolved = await resolveCustomOidAlert(prisma, device.id, r.oid);
       if (resolved > 0) {
-        log('INFO', `AUTO-RESOLVED ${resolved} custom OID alert(s) for ${device.name} "${r.name}": kembali normal.`);
+        log(
+          'INFO',
+          `AUTO-RESOLVED ${resolved} custom OID alert(s) for ${device.name} "${r.name}": kembali normal.`
+        );
+      }
+    }
+  }
+}
+
+// ─── Rule evaluasi (Tahap 3) — nilai SEGAR dari hasil poll ────────────────────
+async function handleRuleAlerts(
+  device: PolledDevice,
+  cpuUtil: number | null | undefined,
+  memUtil: number | null | undefined,
+  customOidResults: CustomOidPollResult[],
+  rules: Awaited<ReturnType<typeof fetchEnabledRules>>
+): Promise<void> {
+  if (rules.length === 0) return;
+
+  const ruleDevice = { id: device.id, name: device.name, ip: device.ip, type: device.type };
+
+  const dispatchRule = async (rule: (typeof rules)[number], metric: string, value: number) => {
+    const res = await evaluateRuleForDevice(prisma, rule, ruleDevice, value);
+    if (res?.created && res.alert) {
+      await sendNotificationWithCooldown({
+        type: 'RULE_BREACH',
+        severity: res.alert.severity,
+        deviceId: device.id,
+        deviceName: device.name,
+        deviceIp: device.ip,
+        message: res.alert.message,
+        cooldownKey: `rule:${rule.id}`,
+        cooldownMs: rule.cooldownMs || SNMP_ALERT_COOLDOWN_MS,
+        alertId: res.alert.id,
+        valueSnapshot: { ruleId: rule.id, metric, value },
+      });
+      log('WARN', `RULE_BREACH untuk ${device.name} (${metric}=${value}) — rule ${rule.name}`);
+    }
+  };
+
+  for (const rule of rules) {
+    if (rule.metric === 'cpu' && cpuUtil != null) await dispatchRule(rule, 'cpu', cpuUtil);
+    if (rule.metric === 'mem' && memUtil != null) await dispatchRule(rule, 'mem', memUtil);
+    if (rule.metric === 'customOid') {
+      for (const r of customOidResults) {
+        if (rule.customOidId && r.customOidId === rule.customOidId) {
+          await dispatchRule(rule, 'customOid', Number(r.value));
+        }
       }
     }
   }
 }
 
 // ─── Cooldown-aware multi-channel notification ───────────────────────────────
-async function sendNotificationWithCooldown(
-  payload: {
-    deviceId: string;
-    deviceName: string;
-    deviceIp: string;
-    type: string;
-    severity: string;
-    message: string;
-    cooldownKey: string;
-    cooldownMs: number;
-    alertId?: string;
-    valueSnapshot?: Record<string, unknown>;
-  }
-): Promise<void> {
+async function sendNotificationWithCooldown(payload: {
+  deviceId: string;
+  deviceName: string;
+  deviceIp: string;
+  type: string;
+  severity: string;
+  message: string;
+  cooldownKey: string;
+  cooldownMs: number;
+  alertId?: string;
+  valueSnapshot?: Record<string, unknown>;
+}): Promise<void> {
   try {
     const result = await dispatchNotifications(prisma, payload);
     if (result.sent.length > 0) {
@@ -654,7 +726,8 @@ async function sendNotificationWithCooldown(
 // ─── Persist SNMP results to DB ──────────────────────────────────────────────
 async function persistResults(
   results: SnmpResult[],
-  deviceMap: Map<string, PolledDevice>
+  deviceMap: Map<string, PolledDevice>,
+  rules: Awaited<ReturnType<typeof fetchEnabledRules>>
 ): Promise<void> {
   const settledResults = await Promise.allSettled(
     results.map(async (result) => {
@@ -673,12 +746,14 @@ async function persistResults(
           metricType: 'SNMP',
           cpuUtil: result.cpuUtil ?? null,
           memUtil: result.memUtil ?? null,
-          interfaceData: result.interfaces && result.interfaces.length > 0
-            ? (result.interfaces as unknown as import('@prisma/client').Prisma.JsonArray)
-            : undefined,
-          customOidData: result.customOidData && Object.keys(result.customOidData).length > 0
-            ? (result.customOidData as unknown as import('@prisma/client').Prisma.JsonObject)
-            : undefined,
+          interfaceData:
+            result.interfaces && result.interfaces.length > 0
+              ? (result.interfaces as unknown as import('@prisma/client').Prisma.JsonArray)
+              : undefined,
+          customOidData:
+            result.customOidData && Object.keys(result.customOidData).length > 0
+              ? (result.customOidData as unknown as import('@prisma/client').Prisma.JsonObject)
+              : undefined,
         },
       });
 
@@ -689,16 +764,17 @@ async function persistResults(
         metrics: {
           cpuUtil: result.cpuUtil ?? null,
           memUtil: result.memUtil ?? null,
-          interfaces: result.interfaces?.map((iface) => ({
-            index: iface.index,
-            name: iface.name,
-            operStatus: iface.operStatus,
-            speed: iface.speed,
-            inOctets: iface.inOctets,
-            outOctets: iface.outOctets,
-            inErrors: iface.inErrors,
-            outErrors: iface.outErrors,
-          })) ?? [],
+          interfaces:
+            result.interfaces?.map((iface) => ({
+              index: iface.index,
+              name: iface.name,
+              operStatus: iface.operStatus,
+              speed: iface.speed,
+              inOctets: iface.inOctets,
+              outOctets: iface.outOctets,
+              inErrors: iface.inErrors,
+              outErrors: iface.outErrors,
+            })) ?? [],
           customOids: result.customOidData ?? {},
         },
       }).catch(() => {});
@@ -709,7 +785,19 @@ async function persistResults(
       // Handle custom OID threshold alerts
       await handleCustomOidAlerts(device, result.customOidResults ?? []);
 
-      log('INFO', `SNMP polled ${device.name} — CPU: ${result.cpuUtil?.toFixed(1) ?? 'N/A'}%, MEM: ${result.memUtil?.toFixed(1) ?? 'N/A'}%, Interfaces: ${result.interfaces?.length ?? 0}`);
+      // Evaluasi rule user-defined (nilai segar dari hasil poll)
+      await handleRuleAlerts(
+        device,
+        result.cpuUtil,
+        result.memUtil,
+        result.customOidResults ?? [],
+        rules
+      );
+
+      log(
+        'INFO',
+        `SNMP polled ${device.name} — CPU: ${result.cpuUtil?.toFixed(1) ?? 'N/A'}%, MEM: ${result.memUtil?.toFixed(1) ?? 'N/A'}%, Interfaces: ${result.interfaces?.length ?? 0}`
+      );
     })
   );
 
@@ -728,7 +816,8 @@ async function persistResults(
 //
 async function processBatch(
   devices: PolledDevice[],
-  deviceMap: Map<string, PolledDevice>
+  deviceMap: Map<string, PolledDevice>,
+  rules: Awaited<ReturnType<typeof fetchEnabledRules>>
 ): Promise<void> {
   // Bungkus sebagai lazy tasks agar pLimit bisa kontrol concurrency
   const tasks = devices.map((device) => () => pollDevice(device));
@@ -744,11 +833,14 @@ async function processBatch(
     } satisfies SnmpResult;
   });
 
-  await persistResults(results, deviceMap);
+  await persistResults(results, deviceMap, rules);
 
-  const okCount   = results.filter((r) => r.success).length;
+  const okCount = results.filter((r) => r.success).length;
   const failCount = results.filter((r) => !r.success).length;
-  log('INFO', `Batch complete: ${okCount} OK, ${failCount} FAILED / ${results.length} devices (concurrency=${SNMP_CONCURRENCY_LIMIT})`);
+  log(
+    'INFO',
+    `Batch complete: ${okCount} OK, ${failCount} FAILED / ${results.length} devices (concurrency=${SNMP_CONCURRENCY_LIMIT})`
+  );
 }
 
 // ─── Overlap guard ────────────────────────────────────────────────────────────
@@ -780,6 +872,7 @@ async function runPollCycle(): Promise<void> {
         id: true,
         name: true,
         ip: true,
+        type: true,
         cpuThresholdOverride: true,
         memThresholdOverride: true,
         cpuResolveThresholdOverride: true,
@@ -821,6 +914,7 @@ async function runPollCycle(): Promise<void> {
       id: d.id,
       name: d.name,
       ip: d.ip,
+      type: d.type,
       cpuThresholdOverride: d.cpuThresholdOverride,
       memThresholdOverride: d.memThresholdOverride,
       cpuResolveThresholdOverride: d.cpuResolveThresholdOverride,
@@ -837,12 +931,12 @@ async function runPollCycle(): Promise<void> {
       })),
       credential: d.credentials
         ? {
-            snmpVersion:   d.credentials.snmpVersion   ?? 'v2c',
+            snmpVersion: d.credentials.snmpVersion ?? 'v2c',
             snmpCommunity: d.credentials.snmpCommunity ?? 'public',
-            snmpPort:      d.credentials.snmpPort      ?? 161,
-            snmpUser:      d.credentials.snmpUser,
-            snmpAuthPass:  d.credentials.snmpAuthPass,
-            snmpPrivPass:  d.credentials.snmpPrivPass,
+            snmpPort: d.credentials.snmpPort ?? 161,
+            snmpUser: d.credentials.snmpUser,
+            snmpAuthPass: d.credentials.snmpAuthPass,
+            snmpPrivPass: d.credentials.snmpPrivPass,
           }
         : null,
     }));
@@ -850,9 +944,19 @@ async function runPollCycle(): Promise<void> {
     const deviceMap = new Map(flatDevices.map((d) => [d.id, d]));
 
     // ── Enqueue ke Redis (atau in-memory fallback) ──────────────────────────
-    await enqueueDevices('snmp', flatDevices.map((d) => d.id), REDIS_QUEUE_TTL_SECONDS);
+    await enqueueDevices(
+      'snmp',
+      flatDevices.map((d) => d.id),
+      REDIS_QUEUE_TTL_SECONDS
+    );
     const queueStatus = await getQueueStatus('snmp');
-    log('INFO', `Queue [${queueStatus.backend}] ${flatDevices.length} devices, batch=${SNMP_BATCH_SIZE}, concurrency=${SNMP_CONCURRENCY_LIMIT}`);
+    log(
+      'INFO',
+      `Queue [${queueStatus.backend}] ${flatDevices.length} devices, batch=${SNMP_BATCH_SIZE}, concurrency=${SNMP_CONCURRENCY_LIMIT}`
+    );
+
+    // Rule user-defined aktif (dievaluasi sekali per siklus terhadap nilai segar)
+    const enabledRules = await fetchEnabledRules(prisma);
 
     // ── Dequeue & proses hingga antrian habis ──────────────────────────────
     let batchNum = 0;
@@ -871,13 +975,16 @@ async function runPollCycle(): Promise<void> {
         .filter((d): d is NonNullable<typeof d> => d !== undefined);
 
       if (batchDevices.length > 0) {
-        await processBatch(batchDevices, deviceMap);
+        await processBatch(batchDevices, deviceMap, enabledRules);
         totalProcessed += batchDevices.length;
       }
     }
 
     const elapsed = Date.now() - cycleStart;
-    log('INFO', `Poll cycle [${cycleId}] completed: ${totalProcessed} devices, ${batchNum} batches, ${elapsed}ms`);
+    log(
+      'INFO',
+      `Poll cycle [${cycleId}] completed: ${totalProcessed} devices, ${batchNum} batches, ${elapsed}ms`
+    );
   } catch (err) {
     log('ERROR', 'Poll cycle failed', err instanceof Error ? err.message : err);
   } finally {
@@ -893,17 +1000,30 @@ async function gracefulShutdown(signal: string): Promise<void> {
   isShuttingDown = true;
   log('INFO', `Received ${signal}, shutting down gracefully...`);
 
-  try { await closeRedis(); log('INFO', 'Redis connection closed'); } catch (err) { log('ERROR', 'Error closing Redis', err); }
-  try { await prisma.$disconnect(); log('INFO', 'Prisma disconnected'); } catch (err) { log('ERROR', 'Error during shutdown', err); }
+  try {
+    await closeRedis();
+    log('INFO', 'Redis connection closed');
+  } catch (err) {
+    log('ERROR', 'Error closing Redis', err);
+  }
+  try {
+    await prisma.$disconnect();
+    log('INFO', 'Prisma disconnected');
+  } catch (err) {
+    log('ERROR', 'Error during shutdown', err);
+  }
 
   process.exit(0);
 }
 
 process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
-process.on('SIGINT',  () => void gracefulShutdown('SIGINT'));
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
-log('INFO', `SNMP Poller v2 — batch=${SNMP_BATCH_SIZE}, concurrency=${SNMP_CONCURRENCY_LIMIT}, redis=${process.env.REDIS_URL ? 'enabled' : 'disabled (in-memory fallback)'}`);
+log(
+  'INFO',
+  `SNMP Poller v2 — batch=${SNMP_BATCH_SIZE}, concurrency=${SNMP_CONCURRENCY_LIMIT}, redis=${process.env.REDIS_URL ? 'enabled' : 'disabled (in-memory fallback)'}`
+);
 
 void startPollScheduler({
   prisma,

@@ -19,6 +19,15 @@ export const SEVERITY_ORDER: Record<SeverityGate, number> = {
   CRITICAL: 3,
 };
 
+/** Jadwal senyap per channel (Tahap 3). */
+export interface QuietHours {
+  enabled: boolean;
+  start: string; // "HH:MM" 24-jam
+  end: string;   // "HH:MM" 24-jam (mendukung lintas tengah malam)
+  timezone: string;
+  bypassFor: SeverityGate[]; // severity yang tetap dikirim walau jam senyap
+}
+
 export function severityAtLeast(gate: SeverityGate | undefined, severity: string): boolean {
   if (!gate) return true;
   const gateRank = SEVERITY_ORDER[gate] ?? 0;
@@ -31,6 +40,7 @@ export interface TelegramChannelConfig {
   botToken: string;
   chatIds: string[];
   minSeverity?: SeverityGate;
+  quietHours?: QuietHours;
 }
 
 export interface EmailChannelConfig {
@@ -43,12 +53,20 @@ export interface EmailChannelConfig {
   from: string;
   recipients: string[];
   minSeverity?: SeverityGate;
+  quietHours?: QuietHours;
 }
 
 export interface WebhookChannelConfig {
   enabled: boolean;
   urls: string[];
   minSeverity?: SeverityGate;
+  quietHours?: QuietHours;
+  /** Format payload webhook. */
+  format?: 'slack' | 'discord' | 'teams' | 'generic';
+  /** HMAC secret untuk header X-HK-Nova-Signature (opsional). */
+  signatureSecret?: string;
+  /** Header HTTP tambahan per pengiriman (opsional). */
+  headers?: Record<string, string> | null;
 }
 
 /** Format payload yang dikirim ke endpoint SIEM. */
@@ -61,6 +79,7 @@ export interface SiemChannelConfig {
   token: string;
   format: SiemFormat;
   minSeverity?: SeverityGate;
+  quietHours?: QuietHours;
 }
 
 export type SmsProvider = 'generic' | 'twilio';
@@ -74,6 +93,7 @@ export interface SmsChannelConfig {
   senderId: string;
   toNumbers: string[];
   minSeverity?: SeverityGate;
+  quietHours?: QuietHours;
 }
 
 export interface NotificationConfig {
@@ -96,7 +116,7 @@ export const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
     from: '',
     recipients: [],
   },
-  webhook: { enabled: false, urls: [] },
+  webhook: { enabled: false, urls: [], minSeverity: undefined, format: 'slack', signatureSecret: '', headers: null },
   sms: { enabled: false, provider: 'generic', apiUrl: '', apiKey: '', accountSid: '', senderId: '', toNumbers: [] },
   siem: { enabled: false, urls: [], token: '', format: 'generic' },
 };
@@ -205,6 +225,10 @@ async function buildNotificationConfig(prisma: PrismaClient): Promise<Notificati
   cfg.email.password = safeDecrypt(cfg.email.password) ?? '';
   cfg.sms.apiKey = safeDecrypt(cfg.sms.apiKey) ?? '';
   cfg.siem.token = safeDecrypt(cfg.siem.token) ?? '';
+  cfg.webhook.signatureSecret = safeDecrypt(cfg.webhook.signatureSecret ?? '') ?? '';
+  if (!cfg.webhook.format || !['slack', 'discord', 'teams', 'generic'].includes(cfg.webhook.format)) {
+    cfg.webhook.format = 'slack';
+  }
 
   applyEnvFallbacks(cfg);
   return cfg;
@@ -223,6 +247,7 @@ export async function saveNotificationConfig(prisma: PrismaClient, config: Notif
       botToken: resolveSecret(config.telegram.botToken, previous.telegram.botToken),
       chatIds: normalizeList(config.telegram.chatIds),
       minSeverity: normalizeSeverityHeader(config.telegram.minSeverity),
+      quietHours: normalizeQuietHours(config.telegram.quietHours),
     },
     email: {
       enabled: Boolean(config.email.enabled),
@@ -234,11 +259,20 @@ export async function saveNotificationConfig(prisma: PrismaClient, config: Notif
       from: config.email.from.trim(),
       recipients: normalizeList(config.email.recipients),
       minSeverity: normalizeSeverityHeader(config.email.minSeverity),
+      quietHours: normalizeQuietHours(config.email.quietHours),
     },
     webhook: {
       enabled: Boolean(config.webhook.enabled),
       urls: normalizeList(config.webhook.urls),
       minSeverity: normalizeSeverityHeader(config.webhook.minSeverity),
+      quietHours: normalizeQuietHours(config.webhook.quietHours),
+      format: config.webhook.format && ['slack', 'discord', 'teams', 'generic'].includes(config.webhook.format)
+        ? config.webhook.format
+        : 'slack',
+      signatureSecret: resolveSecret(config.webhook.signatureSecret, previous.webhook.signatureSecret),
+      headers: config.webhook.headers && typeof config.webhook.headers === 'object'
+        ? config.webhook.headers
+        : null,
     },
     sms: {
       enabled: Boolean(config.sms.enabled),
@@ -249,6 +283,7 @@ export async function saveNotificationConfig(prisma: PrismaClient, config: Notif
       senderId: config.sms.senderId.trim(),
       toNumbers: normalizeList(config.sms.toNumbers),
       minSeverity: normalizeSeverityHeader(config.sms.minSeverity),
+      quietHours: normalizeQuietHours(config.sms.quietHours),
     },
     siem: {
       enabled: Boolean(config.siem.enabled),
@@ -256,6 +291,7 @@ export async function saveNotificationConfig(prisma: PrismaClient, config: Notif
       token: resolveSecret(config.siem.token, previous.siem.token),
       format: config.siem.format === 'splunk' ? 'splunk' : 'generic',
       minSeverity: normalizeSeverityHeader(config.siem.minSeverity),
+      quietHours: normalizeQuietHours(config.siem.quietHours),
     },
   };
 
@@ -278,6 +314,7 @@ type PrismaJsonValue = Parameters<PrismaClient['setting']['create']>[0]['data'][
 export function toPublicNotificationConfig(cfg: NotificationConfig) {
   const mask = (v: string) => (v ? MASK_VALUE : '');
   const gate = (v: SeverityGate | undefined): SeverityGate => (v && v in SEVERITY_ORDER ? (v as SeverityGate) : 'LOW');
+  const quiet = (q: QuietHours | undefined): QuietHours => q ?? { enabled: false, start: '22:00', end: '06:00', timezone: 'Asia/Jakarta', bypassFor: [] };
 
   return {
     telegram: {
@@ -285,6 +322,7 @@ export function toPublicNotificationConfig(cfg: NotificationConfig) {
       botToken: mask(cfg.telegram.botToken),
       chatIds: [...cfg.telegram.chatIds],
       minSeverity: gate(cfg.telegram.minSeverity),
+      quietHours: quiet(cfg.telegram.quietHours),
       configured: Boolean(cfg.telegram.botToken && cfg.telegram.chatIds.length > 0),
     },
     email: {
@@ -297,12 +335,17 @@ export function toPublicNotificationConfig(cfg: NotificationConfig) {
       from: cfg.email.from,
       recipients: [...cfg.email.recipients],
       minSeverity: gate(cfg.email.minSeverity),
+      quietHours: quiet(cfg.email.quietHours),
       configured: Boolean(cfg.email.host && cfg.email.from && cfg.email.recipients.length > 0),
     },
     webhook: {
       enabled: cfg.webhook.enabled,
       urls: [...cfg.webhook.urls],
       minSeverity: gate(cfg.webhook.minSeverity),
+      quietHours: quiet(cfg.webhook.quietHours),
+      format: cfg.webhook.format ?? 'slack',
+      signatureSecret: mask(cfg.webhook.signatureSecret ?? ''),
+      headers: cfg.webhook.headers ?? null,
       configured: cfg.webhook.urls.length > 0,
     },
     sms: {
@@ -314,6 +357,7 @@ export function toPublicNotificationConfig(cfg: NotificationConfig) {
       senderId: cfg.sms.senderId,
       toNumbers: [...cfg.sms.toNumbers],
       minSeverity: gate(cfg.sms.minSeverity),
+      quietHours: quiet(cfg.sms.quietHours),
       configured: Boolean(
         cfg.sms.toNumbers.length > 0 &&
           (cfg.sms.provider === 'generic' ? cfg.sms.apiUrl : cfg.sms.accountSid)
@@ -325,6 +369,7 @@ export function toPublicNotificationConfig(cfg: NotificationConfig) {
       token: mask(cfg.siem.token),
       format: cfg.siem.format,
       minSeverity: gate(cfg.siem.minSeverity),
+      quietHours: quiet(cfg.siem.quietHours),
       configured: cfg.siem.urls.length > 0,
     },
   };
@@ -352,6 +397,7 @@ async function readDecryptedConfig(prisma: PrismaClient): Promise<NotificationCo
   cfg.email.password = safeDecrypt(cfg.email.password) ?? '';
   cfg.sms.apiKey = safeDecrypt(cfg.sms.apiKey) ?? '';
   cfg.siem.token = safeDecrypt(cfg.siem.token) ?? '';
+  cfg.webhook.signatureSecret = safeDecrypt(cfg.webhook.signatureSecret ?? '') ?? '';
   return cfg;
 }
 
@@ -371,6 +417,25 @@ function normalizeSeverityHeader(value: unknown): SeverityGate | undefined {
   if (value === undefined || value === null) return undefined;
   const v = String(value);
   return v in SEVERITY_ORDER ? (v as SeverityGate) : undefined;
+}
+
+function normalizeQuietHours(value: unknown): QuietHours | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const q = value as Partial<QuietHours>;
+  const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const start = typeof q.start === 'string' && timeRe.test(q.start) ? q.start : undefined;
+  const end = typeof q.end === 'string' && timeRe.test(q.end) ? q.end : undefined;
+  if (!start || !end) return undefined;
+  const bypass = Array.isArray(q.bypassFor)
+    ? q.bypassFor.filter((s): s is SeverityGate => typeof s === 'string' && s in SEVERITY_ORDER)
+    : [];
+  return {
+    enabled: Boolean(q.enabled),
+    start,
+    end,
+    timezone: typeof q.timezone === 'string' && q.timezone.trim() ? q.timezone.trim() : 'Asia/Jakarta',
+    bypassFor: bypass,
+  };
 }
 
 export const NOTIFICATION_CHANNELS: NotificationChannel[] = ['telegram', 'email', 'webhook', 'sms', 'siem'];

@@ -48,6 +48,7 @@ enum AlertType {
   BACKUP_FAILED
   PROVISIONING_FAILED
   CUSTOM_OID_OUT_OF_RANGE
+  RULE_BREACH
 }
 
 enum AlertActivityAction {
@@ -65,6 +66,19 @@ enum AlertDeliveryStatus {
   SENT
   FAILED
   SKIPPED
+}
+
+enum AlertRuleOperator {
+  GT
+  GTE
+  LT
+  LTE
+}
+
+enum AlertRuleDeviceScope {
+  ALL
+  DEVICE_TYPE
+  DEVICES
 }
 
 enum AnomalySeverity {
@@ -376,6 +390,32 @@ model AlertEscalation {
   @@index([triggeredAt])
 }
 
+// ─── Rule threshold user-configurable (Tahap 3) ───────────────────────────────
+model AlertRule {
+  id          String      @id @default(cuid())
+  name        String
+  // "cpu" | "mem" | "latency" | "packetLoss" | "jitter" | "customOid"
+  metric      String
+  operator    AlertRuleOperator @default(GTE)
+  threshold   Float
+  severity    AlertSeverity     @default(HIGH)
+  // anti-flapping: berapa sampel berturut-turut sebelum alert diangkat
+  consecutiveSamples Int        @default(2)
+  deviceScope AlertRuleDeviceScope @default(ALL)
+  deviceType  DeviceType?
+  deviceIds   Json?             // array deviceId saat scope = DEVICES
+  customOidId String?
+  customOid   CustomOid?        @relation(fields: [customOidId], references: [id], onDelete: SetNull)
+  enabled     Boolean           @default(true)
+  cooldownMs  Int               @default(300000)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled])
+  @@index([metric])
+}
+
 model AuditLog {
   id        String  @id @default(cuid())
   action    String
@@ -420,6 +460,8 @@ model CustomOid {
   alertHigh   Float?
   alertLow    Float?
   enabled     Boolean  @default(true)
+
+  alertRules AlertRule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
