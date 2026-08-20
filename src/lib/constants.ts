@@ -30,13 +30,17 @@ export const METRICS_RETENTION_DAYS = 30;
 export const ANOMALY_THRESHOLD = 0.7;
 
 // ICMP Worker constants
-export const ICMP_BATCH_SIZE = Number(process.env.ICMP_BATCH_SIZE ?? '10');
+// ICMP_BATCH_SIZE: jumlah device per batch (20–50 direkomendasikan)
+export const ICMP_BATCH_SIZE = Number(process.env.ICMP_BATCH_SIZE ?? '20');
 export const ICMP_POLL_INTERVAL = process.env.ICMP_POLL_INTERVAL ?? '*/1 * * * *';
 export const ICMP_PING_RETRIES = 2;
 export const ICMP_ALERT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+// Maks concurrent ICMP polls dalam satu batch (hindari overload NIC)
+export const ICMP_CONCURRENCY_LIMIT = Number(process.env.ICMP_CONCURRENCY_LIMIT ?? '10');
 
 // SNMP Worker constants
-export const SNMP_BATCH_SIZE = Number(process.env.SNMP_BATCH_SIZE ?? '5');
+// SNMP_BATCH_SIZE: jumlah device per batch (20–50 direkomendasikan)
+export const SNMP_BATCH_SIZE = Number(process.env.SNMP_BATCH_SIZE ?? '20');
 export const SNMP_POLL_INTERVAL = process.env.SNMP_POLL_INTERVAL ?? '*/5 * * * *';
 export const SNMP_ALERT_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
 export const SNMP_HIGH_CPU_THRESHOLD = Number(process.env.SNMP_HIGH_CPU_THRESHOLD ?? '85');
@@ -44,6 +48,12 @@ export const SNMP_HIGH_MEM_THRESHOLD = Number(process.env.SNMP_HIGH_MEM_THRESHOL
 // Hysteresis: resolve thresholds (5% below alert thresholds)
 export const SNMP_HIGH_CPU_RESOLVE_THRESHOLD = Number(process.env.SNMP_HIGH_CPU_RESOLVE_THRESHOLD ?? '80');
 export const SNMP_HIGH_MEM_RESOLVE_THRESHOLD = Number(process.env.SNMP_HIGH_MEM_RESOLVE_THRESHOLD ?? '85');
+// Maks concurrent SNMP polls dalam satu batch (hindari overload network device)
+export const SNMP_CONCURRENCY_LIMIT = Number(process.env.SNMP_CONCURRENCY_LIMIT ?? '10');
+
+// Redis Queue constants
+// TTL antrian Redis (detik) — gunakan 2× interval polling terpanjang
+export const REDIS_QUEUE_TTL_SECONDS = Number(process.env.REDIS_QUEUE_TTL_SECONDS ?? '600');
 
 // Historical baseline constants
 export const BASELINE_WINDOW_HOURS = Number(process.env.BASELINE_WINDOW_HOURS ?? '24');

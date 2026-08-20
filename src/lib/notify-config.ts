@@ -6,7 +6,7 @@ export const NOTIFICATION_SETTING_KEY = 'notify:channels';
 /** Sentinels used when a secret is carried back from the API without being changed. */
 export const MASK_VALUE = '***MASKED***';
 
-export type NotificationChannel = 'telegram' | 'email' | 'webhook' | 'sms';
+export type NotificationChannel = 'telegram' | 'email' | 'webhook' | 'sms' | 'siem';
 
 export interface TelegramChannelConfig {
   enabled: boolean;
@@ -30,6 +30,17 @@ export interface WebhookChannelConfig {
   urls: string[];
 }
 
+/** Format payload yang dikirim ke endpoint SIEM. */
+export type SiemFormat = 'generic' | 'splunk';
+
+export interface SiemChannelConfig {
+  enabled: boolean;
+  urls: string[];
+  /** Token otentikasi (Splunk HEC token / Elasticsearch API key). Opsional. */
+  token: string;
+  format: SiemFormat;
+}
+
 export type SmsProvider = 'generic' | 'twilio';
 
 export interface SmsChannelConfig {
@@ -47,6 +58,7 @@ export interface NotificationConfig {
   email: EmailChannelConfig;
   webhook: WebhookChannelConfig;
   sms: SmsChannelConfig;
+  siem: SiemChannelConfig;
 }
 
 export const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
@@ -63,6 +75,7 @@ export const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
   },
   webhook: { enabled: false, urls: [] },
   sms: { enabled: false, provider: 'generic', apiUrl: '', apiKey: '', accountSid: '', senderId: '', toNumbers: [] },
+  siem: { enabled: false, urls: [], token: '', format: 'generic' },
 };
 
 function splitList(value: string | null | undefined): string[] {
@@ -100,6 +113,16 @@ function applyEnvFallbacks(cfg: NotificationConfig): void {
     cfg.webhook.urls = splitList(process.env.NOTIFY_WEBHOOK_URLS);
   }
 
+  if (cfg.siem.urls.length === 0) {
+    cfg.siem.urls = splitList(process.env.SIEM_WEBHOOK_URLS);
+  }
+  if (!cfg.siem.token) {
+    cfg.siem.token = process.env.SIEM_WEBHOOK_TOKEN || '';
+  }
+  if (process.env.SIEM_FORMAT === 'splunk') {
+    cfg.siem.format = 'splunk';
+  }
+
   const sms = cfg.sms;
   if (!sms.apiUrl) sms.apiUrl = process.env.SMS_API_URL || '';
   if (!sms.apiKey) sms.apiKey = process.env.SMS_API_KEY || '';
@@ -130,11 +153,13 @@ export async function getNotificationConfig(prisma: PrismaClient): Promise<Notif
     email: mergeChannel(DEFAULT_NOTIFICATION_CONFIG.email, stored?.email),
     webhook: mergeChannel(DEFAULT_NOTIFICATION_CONFIG.webhook, stored?.webhook),
     sms: mergeChannel(DEFAULT_NOTIFICATION_CONFIG.sms, stored?.sms),
+    siem: mergeChannel(DEFAULT_NOTIFICATION_CONFIG.siem, stored?.siem),
   };
 
   cfg.telegram.botToken = safeDecrypt(cfg.telegram.botToken) ?? '';
   cfg.email.password = safeDecrypt(cfg.email.password) ?? '';
   cfg.sms.apiKey = safeDecrypt(cfg.sms.apiKey) ?? '';
+  cfg.siem.token = safeDecrypt(cfg.siem.token) ?? '';
 
   applyEnvFallbacks(cfg);
   return cfg;
@@ -175,6 +200,12 @@ export async function saveNotificationConfig(prisma: PrismaClient, config: Notif
       accountSid: config.sms.accountSid.trim(),
       senderId: config.sms.senderId.trim(),
       toNumbers: normalizeList(config.sms.toNumbers),
+    },
+    siem: {
+      enabled: Boolean(config.siem.enabled),
+      urls: normalizeList(config.siem.urls),
+      token: resolveSecret(config.siem.token, previous.siem.token),
+      format: config.siem.format === 'splunk' ? 'splunk' : 'generic',
     },
   };
 
@@ -230,6 +261,13 @@ export function toPublicNotificationConfig(cfg: NotificationConfig) {
           (cfg.sms.provider === 'generic' ? cfg.sms.apiUrl : cfg.sms.accountSid)
       ),
     },
+    siem: {
+      enabled: cfg.siem.enabled,
+      urls: [...cfg.siem.urls],
+      token: mask(cfg.siem.token),
+      format: cfg.siem.format,
+      configured: cfg.siem.urls.length > 0,
+    },
   };
 }
 
@@ -249,10 +287,12 @@ async function readDecryptedConfig(prisma: PrismaClient): Promise<NotificationCo
     email: mergeChannel(DEFAULT_NOTIFICATION_CONFIG.email, stored?.email),
     webhook: mergeChannel(DEFAULT_NOTIFICATION_CONFIG.webhook, stored?.webhook),
     sms: mergeChannel(DEFAULT_NOTIFICATION_CONFIG.sms, stored?.sms),
+    siem: mergeChannel(DEFAULT_NOTIFICATION_CONFIG.siem, stored?.siem),
   };
   cfg.telegram.botToken = safeDecrypt(cfg.telegram.botToken) ?? '';
   cfg.email.password = safeDecrypt(cfg.email.password) ?? '';
   cfg.sms.apiKey = safeDecrypt(cfg.sms.apiKey) ?? '';
+  cfg.siem.token = safeDecrypt(cfg.siem.token) ?? '';
   return cfg;
 }
 
@@ -268,4 +308,4 @@ function normalizeList(items: unknown): string[] {
   return items.filter((x): x is string => typeof x === 'string' && x.trim() !== '').map((x) => x.trim());
 }
 
-export const NOTIFICATION_CHANNELS: NotificationChannel[] = ['telegram', 'email', 'webhook', 'sms'];
+export const NOTIFICATION_CHANNELS: NotificationChannel[] = ['telegram', 'email', 'webhook', 'sms', 'siem'];

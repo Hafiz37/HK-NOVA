@@ -1,17 +1,31 @@
 /**
- * SNMP Poller Worker
+ * SNMP Poller Worker — v2 (Optimasi Polling & Scalability)
  * Standalone Node.js process for polling device metrics via SNMP.
  * Collects CPU utilization, memory utilization, and interface statistics.
  * Interval diambil dari pengaturan DB (polling:real:interval) melalui scheduler
- * dinamis — bisa diubah dari UI tanpa restart. Berbasis batch dengan kontrol concurrency.
+ * dinamis — bisa diubah dari UI tanpa restart.
+ *
+ * Optimasi v2:
+ *  - Batch polling    : 20–50 device per batch (SNMP_BATCH_SIZE, default 20)
+ *  - Parallel polling : pLimit() maks SNMP_CONCURRENCY_LIMIT concurrent (default 10)
+ *  - Redis queue      : enqueue → dequeue per batch; fallback in-memory otomatis
  */
 
 import { PrismaClient } from '@prisma/client';
 import {
   SNMP_BATCH_SIZE,
+  SNMP_CONCURRENCY_LIMIT,
   SNMP_ALERT_COOLDOWN_MS,
   DEFAULT_SNMP_TIMEOUT,
+  REDIS_QUEUE_TTL_SECONDS,
 } from '../lib/constants';
+import {
+  enqueueDevices,
+  dequeueDevices,
+  getQueueStatus,
+  closeRedis,
+  pLimit,
+} from '../lib/redis-queue';
 import { startPollScheduler } from '../lib/poll-scheduler';
 import { randomUUID } from 'crypto';
 import { dispatchNotifications } from '../lib/notifier';
@@ -21,6 +35,7 @@ import {
   processUtilizationAlert,
   resolveUtilizationAlert,
 } from '../lib/alert-engine';
+import { forwardMetricsToSiem } from '../lib/siem-forward';
 
 // ─── Prisma singleton for worker process ────────────────────────────────────
 const prisma = new PrismaClient();
@@ -570,6 +585,26 @@ async function persistResults(
         },
       });
 
+      // Forward ke SIEM (fire-and-forget, tidak block polling)
+      void forwardMetricsToSiem(prisma, {
+        device: { id: device.id, name: device.name, ip: device.ip },
+        metricType: 'SNMP',
+        metrics: {
+          cpuUtil: result.cpuUtil ?? null,
+          memUtil: result.memUtil ?? null,
+          interfaces: result.interfaces?.map((iface) => ({
+            index: iface.index,
+            name: iface.name,
+            operStatus: iface.operStatus,
+            speed: iface.speed,
+            inOctets: iface.inOctets,
+            outOctets: iface.outOctets,
+            inErrors: iface.inErrors,
+            outErrors: iface.outErrors,
+          })) ?? [],
+        },
+      }).catch(() => {});
+
       // Handle utilization alerts
       await handleUtilizationAlerts(device, result.cpuUtil, result.memUtil);
 
@@ -585,14 +620,18 @@ async function persistResults(
   });
 }
 
-// ─── Process a batch of devices ──────────────────────────────────────────────
+// ─── Process a batch of devices dengan concurrency limit ─────────────────────
+//
+// pLimit() memastikan maks SNMP_CONCURRENCY_LIMIT SNMP session aktif serentak.
+// Ini mencegah ledakan koneksi dan overload device pada batch besar (20–50).
+//
 async function processBatch(
   devices: PolledDevice[],
   deviceMap: Map<string, PolledDevice>
 ): Promise<void> {
-  const settled = await Promise.allSettled(
-    devices.map((device) => pollDevice(device))
-  );
+  // Bungkus sebagai lazy tasks agar pLimit bisa kontrol concurrency
+  const tasks = devices.map((device) => () => pollDevice(device));
+  const settled = await pLimit(tasks, SNMP_CONCURRENCY_LIMIT);
 
   const results: SnmpResult[] = settled.map((s, i) => {
     if (s.status === 'fulfilled') return s.value;
@@ -608,7 +647,7 @@ async function processBatch(
 
   const okCount   = results.filter((r) => r.success).length;
   const failCount = results.filter((r) => !r.success).length;
-  log('INFO', `Batch complete: ${okCount} OK, ${failCount} FAILED out of ${results.length} devices`);
+  log('INFO', `Batch complete: ${okCount} OK, ${failCount} FAILED / ${results.length} devices (concurrency=${SNMP_CONCURRENCY_LIMIT})`);
 }
 
 // ─── Overlap guard ────────────────────────────────────────────────────────────
@@ -685,18 +724,36 @@ async function runPollCycle(): Promise<void> {
     }));
 
     const deviceMap = new Map(flatDevices.map((d) => [d.id, d]));
-    log('INFO', `Polling ${flatDevices.length} devices in batches of ${SNMP_BATCH_SIZE}`);
 
-    for (let i = 0; i < flatDevices.length; i += SNMP_BATCH_SIZE) {
-      const batch = flatDevices.slice(i, i + SNMP_BATCH_SIZE);
-      const batchNum    = Math.floor(i / SNMP_BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(flatDevices.length / SNMP_BATCH_SIZE);
-      log('INFO', `Processing batch ${batchNum}/${totalBatches} (${batch.length} devices)`);
-      await processBatch(batch, deviceMap);
+    // ── Enqueue ke Redis (atau in-memory fallback) ──────────────────────────
+    await enqueueDevices('snmp', flatDevices.map((d) => d.id), REDIS_QUEUE_TTL_SECONDS);
+    const queueStatus = await getQueueStatus('snmp');
+    log('INFO', `Queue [${queueStatus.backend}] ${flatDevices.length} devices, batch=${SNMP_BATCH_SIZE}, concurrency=${SNMP_CONCURRENCY_LIMIT}`);
+
+    // ── Dequeue & proses hingga antrian habis ──────────────────────────────
+    let batchNum = 0;
+    let totalProcessed = 0;
+    const totalBatches = Math.ceil(flatDevices.length / SNMP_BATCH_SIZE);
+
+    while (true) {
+      const batchIds = await dequeueDevices('snmp', SNMP_BATCH_SIZE);
+      if (batchIds.length === 0) break;
+
+      batchNum++;
+      log('INFO', `Processing batch ${batchNum}/${totalBatches} (${batchIds.length} devices)`);
+
+      const batchDevices: PolledDevice[] = batchIds
+        .map((id) => deviceMap.get(id))
+        .filter((d): d is NonNullable<typeof d> => d !== undefined);
+
+      if (batchDevices.length > 0) {
+        await processBatch(batchDevices, deviceMap);
+        totalProcessed += batchDevices.length;
+      }
     }
 
     const elapsed = Date.now() - cycleStart;
-    log('INFO', `Poll cycle [${cycleId}] completed in ${elapsed}ms`);
+    log('INFO', `Poll cycle [${cycleId}] completed: ${totalProcessed} devices, ${batchNum} batches, ${elapsed}ms`);
   } catch (err) {
     log('ERROR', 'Poll cycle failed', err instanceof Error ? err.message : err);
   } finally {
@@ -712,12 +769,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
   isShuttingDown = true;
   log('INFO', `Received ${signal}, shutting down gracefully...`);
 
-  try {
-    await prisma.$disconnect();
-    log('INFO', 'Prisma disconnected');
-  } catch (err) {
-    log('ERROR', 'Error during shutdown', err);
-  }
+  try { await closeRedis(); log('INFO', 'Redis connection closed'); } catch (err) { log('ERROR', 'Error closing Redis', err); }
+  try { await prisma.$disconnect(); log('INFO', 'Prisma disconnected'); } catch (err) { log('ERROR', 'Error during shutdown', err); }
 
   process.exit(0);
 }
@@ -726,7 +779,7 @@ process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => void gracefulShutdown('SIGINT'));
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
-log('INFO', `SNMP Poller starting with dynamic interval, batch size: ${SNMP_BATCH_SIZE}`);
+log('INFO', `SNMP Poller v2 — batch=${SNMP_BATCH_SIZE}, concurrency=${SNMP_CONCURRENCY_LIMIT}, redis=${process.env.REDIS_URL ? 'enabled' : 'disabled (in-memory fallback)'}`);
 
 void startPollScheduler({
   prisma,

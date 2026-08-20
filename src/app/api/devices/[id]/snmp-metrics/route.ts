@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
+import { getClientIp } from '@/lib/audit';
+import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { parsePositiveNumberParam } from '@/lib/utils';
 
 interface RouteParams {
@@ -28,6 +30,9 @@ interface IfEntry {
 export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
+
+  const rateLimitError = rateLimitResponse(RATE_LIMITS.read, 'snmpmetrics:read', getClientIp(request) || '127.0.0.1');
+  if (rateLimitError) return rateLimitError;
 
   try {
     const { id } = await params;

@@ -58,11 +58,17 @@ function parseConfig(body: unknown): ValidationResult {
   const email = (b.email ?? {}) as Record<string, unknown>;
   const webhook = (b.webhook ?? {}) as Record<string, unknown>;
   const sms = (b.sms ?? {}) as Record<string, unknown>;
+  const siem = (b.siem ?? {}) as Record<string, unknown>;
 
   const chatIds = asStringArray(telegram.chatIds, 'telegram.chatIds', errors);
   const recipients = asStringArray(email.recipients, 'email.recipients', errors, (v) => EMAIL_REGEX.test(v));
   const urls = asStringArray(webhook.urls, 'webhook.urls', errors, (v) => URL_REGEX.test(v));
   const toNumbers = asStringArray(sms.toNumbers, 'sms.toNumbers', errors, (v) => PHONE_REGEX.test(v));
+  const siemUrls = asStringArray(siem.urls, 'siem.urls', errors, (v) => URL_REGEX.test(v));
+
+  if (siem.format !== undefined && !['generic', 'splunk'].includes(siem.format as string)) {
+    errors.push('siem.format harus "generic" atau "splunk"');
+  }
 
   const emailPort = email.port === undefined ? 465 : Number(email.port);
   if (Number.isNaN(emailPort) || emailPort <= 0 || emailPort > 65535) {
@@ -104,6 +110,12 @@ function parseConfig(body: unknown): ValidationResult {
       accountSid: typeof sms.accountSid === 'string' ? sms.accountSid.trim() : '',
       senderId: typeof sms.senderId === 'string' ? sms.senderId.trim() : '',
       toNumbers,
+    },
+    siem: {
+      enabled: Boolean(siem.enabled),
+      urls: siemUrls,
+      token: typeof siem.token === 'string' ? siem.token : '',
+      format: siem.format === 'splunk' ? 'splunk' : 'generic',
     },
   };
 

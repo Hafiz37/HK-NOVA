@@ -5,6 +5,7 @@ import { sendTelegramToChats, formatTelegramMessage } from './channels/telegram'
 import { sendEmail, formatEmailHtml, formatEmailSubject } from './channels/email';
 import { sendWebhooks } from './channels/webhook';
 import { sendSms } from './channels/sms';
+import { sendToSiem } from './channels/siem';
 
 export interface NotificationPayload {
   type: string;
@@ -72,6 +73,8 @@ function channelEnabled(cfg: Awaited<ReturnType<typeof getNotificationConfig>>, 
           cfg.sms.toNumbers.length > 0 &&
           (cfg.sms.provider === 'generic' ? Boolean(cfg.sms.apiUrl) : Boolean(cfg.sms.accountSid && cfg.sms.apiKey))
       );
+    case 'siem':
+      return Boolean(cfg.siem.enabled && cfg.siem.urls.length > 0);
     default:
       return false;
   }
@@ -151,6 +154,24 @@ async function sendToChannel(
         return sendWebhooks(cfg.webhook.urls, plainText(payload, true));
       case 'sms':
         return sendSms(cfg.sms, plainText(payload, false));
+      case 'siem':
+        return sendToSiem(cfg.siem, {
+          event: 'alert',
+          source: 'hk-nova',
+          '@timestamp': (payload.timestamp ?? new Date()).toISOString(),
+          device: {
+            id: payload.deviceId,
+            name: payload.deviceName,
+            ip: payload.deviceIp ?? '',
+          },
+          metricType: 'ICMP' as const,
+          metrics: {
+            alertType: payload.type,
+            severity: payload.severity,
+            message: payload.message,
+          },
+          maintenance: false,
+        });
       default:
         return false;
     }

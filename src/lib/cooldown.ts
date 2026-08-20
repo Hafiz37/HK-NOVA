@@ -1,6 +1,8 @@
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, Prisma } from '@prisma/client';
 
-export const COOLDOWN_CHANNELS = ['telegram', 'email', 'webhook', 'sms'] as const;
+type DbClient = PrismaClient | Prisma.TransactionClient;
+
+export const COOLDOWN_CHANNELS = ['telegram', 'email', 'webhook', 'sms', 'siem'] as const;
 export type CooldownChannel = (typeof COOLDOWN_CHANNELS)[number];
 
 export const DEFAULT_COOLDOWN_KEY = 'default';
@@ -27,7 +29,7 @@ function resolveKey(k: CooldownKeyInput) {
  * Persisted in the `AlertCooldown` table so it survives worker restarts.
  */
 export async function checkCooldown(
-  prisma: PrismaClient,
+  prisma: DbClient,
   input: CooldownKeyInput,
   now: number = Date.now()
 ): Promise<{ allowed: boolean; remainingMs: number }> {
@@ -50,7 +52,7 @@ export async function checkCooldown(
 
 /** Record the timestamp of a notification attempt for a (device, channel, key). */
 export async function markNotified(
-  prisma: PrismaClient,
+  prisma: DbClient,
   input: CooldownKeyInput,
   at: number = Date.now()
 ): Promise<void> {

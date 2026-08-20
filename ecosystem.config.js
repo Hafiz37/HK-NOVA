@@ -31,10 +31,20 @@ module.exports = {
       },
     }),
     app('hk-nova-icmp-worker', 'tsx', 'src/workers/icmp-poller.ts', {
-      env: { NODE_ENV: 'production' },
+      env: {
+        NODE_ENV: 'production',
+        REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
+        ICMP_BATCH_SIZE: process.env.ICMP_BATCH_SIZE ?? '20',
+        ICMP_CONCURRENCY_LIMIT: process.env.ICMP_CONCURRENCY_LIMIT ?? '10',
+      },
     }),
     app('hk-nova-snmp-worker', 'tsx', 'src/workers/snmp-poller.ts', {
-      env: { NODE_ENV: 'production' },
+      env: {
+        NODE_ENV: 'production',
+        REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
+        SNMP_BATCH_SIZE: process.env.SNMP_BATCH_SIZE ?? '20',
+        SNMP_CONCURRENCY_LIMIT: process.env.SNMP_CONCURRENCY_LIMIT ?? '10',
+      },
     }),
     app('hk-nova-demo-generator', 'tsx', 'src/workers/demo-generator.ts', {
       env: { NODE_ENV: 'development', APP_MODE: 'development' },

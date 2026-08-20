@@ -30,6 +30,7 @@ interface NotificationSettings {
     toNumbers: string;
     configured: boolean;
   };
+  siem: { enabled: boolean; urls: string; token: string; format: 'generic' | 'splunk'; configured: boolean };
 }
 
 const MASK = '***MASKED***';
@@ -40,6 +41,7 @@ function EmptySettings(): NotificationSettings {
     email: { enabled: false, host: '', port: 465, secure: true, username: '', password: '', from: '', recipients: '', configured: false },
     webhook: { enabled: false, urls: '', configured: false },
     sms: { enabled: false, provider: 'generic', apiUrl: '', apiKey: '', accountSid: '', senderId: '', toNumbers: '', configured: false },
+    siem: { enabled: false, urls: '', token: '', format: 'generic', configured: false },
   };
 }
 
@@ -85,6 +87,7 @@ export default function SettingsPage() {
           const e = data.data.email;
           const w = data.data.webhook;
           const s = data.data.sms;
+          const si = data.data.siem;
           setNotif({
             telegram: { enabled: t.enabled, botToken: t.botToken === MASK ? MASK : '', chatIds: t.chatIds.join(', '), configured: t.configured },
             email: {
@@ -108,6 +111,13 @@ export default function SettingsPage() {
               senderId: s.senderId,
               toNumbers: s.toNumbers.join(', '),
               configured: s.configured,
+            },
+            siem: {
+              enabled: si.enabled,
+              urls: si.urls.join(', '),
+              token: si.token === MASK ? MASK : '',
+              format: si.format,
+              configured: si.configured,
             },
           });
         }
@@ -151,6 +161,7 @@ export default function SettingsPage() {
       const e = notif.email;
       const w = notif.webhook;
       const s = notif.sms;
+      const si = notif.siem;
 
       const payload = {
         telegram: {
@@ -181,6 +192,12 @@ export default function SettingsPage() {
           senderId: s.senderId,
           toNumbers: toList(s.toNumbers),
         },
+        siem: {
+          enabled: si.enabled,
+          urls: toList(si.urls),
+          token: secretValue(si.configured, si.token),
+          format: si.format,
+        },
       };
 
       const res = await fetch('/api/settings/notifications', {
@@ -198,6 +215,7 @@ export default function SettingsPage() {
       const ne = returned.email;
       const nw = returned.webhook;
       const ns = returned.sms;
+      const nsi = returned.siem;
       // Refresh local state with the returned (masked) values
       setNotif({
         telegram: { enabled: nt.enabled, botToken: nt.botToken === MASK ? MASK : nt.botToken, chatIds: nt.chatIds.join(', '), configured: nt.configured },
@@ -222,6 +240,13 @@ export default function SettingsPage() {
           senderId: ns.senderId,
           toNumbers: ns.toNumbers.join(', '),
           configured: ns.configured,
+        },
+        siem: {
+          enabled: nsi.enabled,
+          urls: nsi.urls.join(', '),
+          token: nsi.token === MASK ? MASK : nsi.token,
+          format: nsi.format,
+          configured: nsi.configured,
         },
       });
       setNotifToast({ ok: true, msg: 'Konfigurasi notifikasi berhasil disimpan' });
@@ -290,8 +315,8 @@ export default function SettingsPage() {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-3xl">
         <h2 className="text-lg font-semibold text-white mb-1">Kanal Notifikasi Alert</h2>
         <p className="text-xs text-slate-500 mb-6">
-          Fallback dari environment variable: TELEGRAM_*, SMTP_*, NOTIFY_WEBHOOK_URLS, SMS_*. Bidang rahasia yang dikosongkan
-          akan mempertahankan nilai lama.
+          Fallback dari environment variable: TELEGRAM_*, SMTP_*, NOTIFY_WEBHOOK_URLS, SMS_*, SIEM_WEBHOOK_URLS / SIEM_WEBHOOK_TOKEN / SIEM_FORMAT.
+          Bidang rahasia yang dikosongkan akan mempertahankan nilai lama.
         </p>
 
         <div className="space-y-8">
@@ -352,6 +377,41 @@ export default function SettingsPage() {
             </div>
             <Field label="Sender ID / From Number" value={notif.sms.senderId} onChange={(v) => setNotif((p) => ({ ...p, sms: { ...p.sms, senderId: v } }))} />
             <Field label="Nomor Tujuan — pisahkan dengan koma" value={notif.sms.toNumbers} onChange={(v) => setNotif((p) => ({ ...p, sms: { ...p.sms, toNumbers: v } }))} />
+          </Section>
+
+          {/* SIEM */}
+          <Section
+            title="SIEM (Splunk / ELK / Generic HTTP)"
+            enabled={notif.siem.enabled}
+            onToggle={(v) => setNotif((p) => ({ ...p, siem: { ...p.siem, enabled: v } }))}
+          >
+            <p className="text-xs text-slate-500 -mt-1">
+              Forward data monitoring (ICMP &amp; SNMP) ke SIEM. Perangkat dalam maintenance window otomatis dilewati.
+            </p>
+            <Field
+              label="SIEM Webhook URL(s) — pisahkan dengan koma (Splunk HEC `/services/collector/event`, Elasticsearch, atau collector HTTP lain)"
+              value={notif.siem.urls}
+              placeholder="https://splunk.example.com:8088/services/collector/event, https://elk:9200/hk-nova/_doc"
+              onChange={(v) => setNotif((p) => ({ ...p, siem: { ...p.siem, urls: v } }))}
+            />
+            <Field
+              label="Token (HEC token / API key) — opsional"
+              type="password"
+              value={notif.siem.token}
+              placeholder={notif.siem.configured ? MASK : 'Splunk HEC token atau Bearer token'}
+              onChange={(v) => setNotif((p) => ({ ...p, siem: { ...p.siem, token: v } }))}
+            />
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-400 mr-2">Format Payload</label>
+              <select
+                value={notif.siem.format}
+                onChange={(e) => setNotif((p) => ({ ...p, siem: { ...p.siem, format: e.target.value as 'generic' | 'splunk' } }))}
+                className={`${inputCls} max-w-xs`}
+              >
+                <option value="generic">Generic JSON (Elasticsearch/ELK, dsb.)</option>
+                <option value="splunk">Splunk HTTP Event Collector</option>
+              </select>
+            </div>
           </Section>
         </div>
 

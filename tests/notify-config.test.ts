@@ -32,11 +32,12 @@ const sampleConfig: NotificationConfig = {
     senderId: 'HK-NOVA',
     toNumbers: ['+6281234567890'],
   },
+  siem: { enabled: true, urls: ['https://splunk.example.com:8088/services/collector/event'], token: 'siem-token', format: 'generic' },
 };
 
 describe('Notification Config — masking helpers', () => {
   it('membuat konfigurasi default penuh', () => {
-    expect(Object.keys(DEFAULT_NOTIFICATION_CONFIG)).toEqual(['telegram', 'email', 'webhook', 'sms']);
+    expect(Object.keys(DEFAULT_NOTIFICATION_CONFIG)).toEqual(['telegram', 'email', 'webhook', 'sms', 'siem']);
   });
 
   it('menyamarkan nilai rahasia pada representasi publik', () => {
@@ -74,9 +75,21 @@ describe('Notification Config — DB round-trip (encrypted secrets)', () => {
   });
 
   it('menghasilkan nilai default saat belum pernah disimpan', async () => {
-    const cfg = await getNotificationConfig(prisma);
-    expect(cfg.telegram.chatIds).toEqual([]);
-    expect(cfg.email.host).toBe('');
+    // Jauhkan dari env fallback agar hasil deterministik (bukan tergantung .env)
+    const saved = {
+      telegramChatIds: process.env.TELEGRAM_CHAT_ID,
+      smtpRecipients: process.env.SMTP_RECIPIENTS,
+    };
+    delete process.env.TELEGRAM_CHAT_ID;
+    delete process.env.SMTP_RECIPIENTS;
+    try {
+      const cfg = await getNotificationConfig(prisma);
+      expect(cfg.telegram.chatIds).toEqual([]);
+      expect(cfg.email.host).toBe('');
+    } finally {
+      if (saved.telegramChatIds !== undefined) process.env.TELEGRAM_CHAT_ID = saved.telegramChatIds;
+      if (saved.smtpRecipients !== undefined) process.env.SMTP_RECIPIENTS = saved.smtpRecipients;
+    }
   });
 
   it('menyimpan konfigurasi dengan rahasia ter-enkripsi', async () => {

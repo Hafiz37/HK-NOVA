@@ -55,7 +55,7 @@ function envLimit(key: string, fallback: number): number {
 /**
  * Centralized, environment-tunable rate limit presets.
  */
-export const RATE_LIMITS: Record<'login' | 'test' | 'mutation' | 'users' | 'settings' | 'export' | 'provision', RateLimitConfig> = {
+export const RATE_LIMITS: Record<'login' | 'test' | 'mutation' | 'users' | 'settings' | 'export' | 'provision' | 'read', RateLimitConfig> = {
   // Brute-force protection: 5 attempts / minute / (IP + username)
   login: {
     limit: envLimit('RATE_LIMIT_LOGIN_LIMIT', 5),
@@ -91,6 +91,12 @@ export const RATE_LIMITS: Record<'login' | 'test' | 'mutation' | 'users' | 'sett
     limit: envLimit('RATE_LIMIT_EXPORT_LIMIT', 5),
     windowMs: 60 * 1000,
     loopbackLimit: envLimit('RATE_LIMIT_EXPORT_LOOPBACK_LIMIT', 2000),
+  },
+  // Read-only data endpoint (metrics / snmp-metrics — diakses dashboard berkala)
+  read: {
+    limit: envLimit('RATE_LIMIT_READ_LIMIT', 60),
+    windowMs: 60 * 1000,
+    loopbackLimit: envLimit('RATE_LIMIT_READ_LOOPBACK_LIMIT', 2000),
   },
   // Device console actions (backup on-demand, OLT provisioning)
   provision: {

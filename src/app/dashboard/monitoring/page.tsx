@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   XAxis,
   YAxis,
@@ -23,6 +23,7 @@ interface DeviceRow {
   name: string;
   ip: string;
   type: string;
+  vendor: string | null;
   location: string | null;
   status: 'UP' | 'DOWN' | 'UNKNOWN' | 'MAINTENANCE';
   latestLatency: number | null;
@@ -133,6 +134,9 @@ export default function MonitoringPage() {
   const [loading, setLoading] = useState(true);
   const [ackLoading, setAckLoading] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [vendorFilter, setVendorFilter] = useState('');
 
   // Baseline historis (24 jam) untuk metrik ICMP
   const { data: baselineLatency } = useBaseline(selectedDevice || null, 'latency', timeRange);
@@ -162,14 +166,30 @@ export default function MonitoringPage() {
 
   useEffect(() => { void fetchMetrics(); /* eslint-disable-line react-hooks/set-state-in-effect */ }, [fetchMetrics]);
 
-  // Auto-select first device on initial load
+  // ── Device filtering (status / type / vendor) ─────────────────────────────────
+  const typeOptions = useMemo(() => Array.from(new Set(devices.map((d) => d.type).filter(Boolean))).sort(), [devices]);
+  const vendorOptions = useMemo(
+    () => Array.from(new Set(devices.map((d) => d.vendor ?? '').filter(Boolean))).sort(),
+    [devices]
+  );
+
+  const filteredDevices = useMemo(() => {
+    return devices.filter((d) => {
+      if (statusFilter && d.status !== statusFilter) return false;
+      if (typeFilter && d.type !== typeFilter) return false;
+      if (vendorFilter && (d.vendor ?? '') !== vendorFilter) return false;
+      return true;
+    });
+  }, [devices, statusFilter, typeFilter, vendorFilter]);
+
+  // Auto-select first device on initial load (dari hasil filter)
   const initialSelectRef = useRef(true);
   useEffect(() => {
-    if (initialSelectRef.current && devices.length > 0 && !selectedDevice) {
+    if (initialSelectRef.current && filteredDevices.length > 0 && !selectedDevice) {
       initialSelectRef.current = false;
-      setSelectedDevice(devices[0].id);
+      setSelectedDevice(filteredDevices[0].id);
     }
-  }, [devices, selectedDevice]);
+  }, [filteredDevices, selectedDevice]);
 
   // ── Acknowledge alert ────────────────────────────────────────────────────────
   const acknowledge = async (alertId: string) => {
@@ -220,7 +240,7 @@ export default function MonitoringPage() {
             className="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">— Select Device —</option>
-            {devices.map((d) => (
+            {filteredDevices.map((d) => (
               <option key={d.id} value={d.id}>{d.name} ({d.ip})</option>
             ))}
           </select>
@@ -412,13 +432,59 @@ export default function MonitoringPage() {
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white">🖥️ Device Status</h3>
-          <span className="text-xs text-slate-500">{devices.length} device{devices.length !== 1 ? 's' : ''}</span>
+          <span className="text-xs text-slate-500">{filteredDevices.length} device{filteredDevices.length !== 1 ? 's' : ''}</span>
         </div>
+
+        {/* Filter bar */}
+        <div className="px-5 py-3 border-b border-slate-800 bg-slate-900/60 flex flex-wrap items-center gap-3">
+          <label className="text-xs text-slate-500">Filter:</label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Semua Status</option>
+            <option value="UP">UP</option>
+            <option value="DOWN">DOWN</option>
+            <option value="UNKNOWN">UNKNOWN</option>
+            <option value="MAINTENANCE">MAINTENANCE</option>
+          </select>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Semua Type</option>
+            {typeOptions.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <select
+            value={vendorFilter}
+            onChange={(e) => setVendorFilter(e.target.value)}
+            className="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Semua Vendor</option>
+            {vendorOptions.map((v) => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+          {(statusFilter || typeFilter || vendorFilter) && (
+            <button
+              onClick={() => { setStatusFilter(''); setTypeFilter(''); setVendorFilter(''); }}
+              className="text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2"
+            >
+              Reset filter
+            </button>
+          )}
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-slate-800">
                 <th className="text-left px-5 py-3">Device</th>
+                <th className="text-left px-5 py-3">Type / Vendor</th>
                 <th className="text-left px-5 py-3">IP</th>
                 <th className="text-left px-5 py-3">Status</th>
                 <th className="text-right px-5 py-3">Latency</th>
@@ -428,20 +494,28 @@ export default function MonitoringPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {devices.length === 0 ? (
+              {filteredDevices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-slate-500">
-                    No devices found. Run <code className="text-blue-400">pnpm db:seed</code> to add demo devices.
+                  <td colSpan={8} className="px-5 py-8 text-center text-slate-500">
+                    Tidak ada perangkat yang cocok dengan filter. Run <code className="text-blue-400">pnpm db:seed</code> to add demo devices.
                   </td>
                 </tr>
               ) : (
-                devices.map((device) => {
+                filteredDevices.map((device) => {
                   const sc = statusColor(device.status);
                   return (
                     <tr key={device.id} className="hover:bg-slate-800/30 transition-colors">
                       <td className="px-5 py-3">
                         <div className="font-medium text-white">{device.name}</div>
-                        <div className="text-xs text-slate-500">{device.location ?? device.type}</div>
+                        <div className="text-xs text-slate-500">{device.location ?? ''}</div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                          {device.type}
+                        </span>
+                        {device.vendor && (
+                          <span className="ml-1 text-xs text-slate-500">{device.vendor}</span>
+                        )}
                       </td>
                       <td className="px-5 py-3 text-slate-300 font-mono text-xs">{device.ip}</td>
                       <td className="px-5 py-3">

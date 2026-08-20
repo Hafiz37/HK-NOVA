@@ -42,7 +42,7 @@ export async function GET(request: Request): Promise<Response> {
             prisma.device.findMany({
               where: { deletedAt: null },
               select: {
-                id: true, name: true, ip: true, type: true,
+                id: true, name: true, ip: true, type: true, vendor: true,
                 location: true, status: true, isDemo: true,
               },
               orderBy: { name: 'asc' },

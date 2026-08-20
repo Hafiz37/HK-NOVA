@@ -44,10 +44,17 @@ describe('Notifications Settings API Integration Tests', () => {
   it('GET sebagai ADMIN mengembalikan 4 kanal dengan nilai ter-nyamarkan', async () => {
     const res = await createTestAgent({ token: adminToken }).get('/api/settings/notifications');
     const data = expectSuccessResponse(res);
-    expect(Object.keys(data)).toEqual(['telegram', 'email', 'webhook', 'sms']);
-    // Nilai rahasia kosong dikembalikan sebagai '' (belum terkonfigurasi)
-    expect(data.telegram).toHaveProperty('botToken', '');
-    expect(data.telegram.configured).toBe(false);
+    expect(Object.keys(data)).toEqual(['telegram', 'email', 'webhook', 'sms', 'siem']);
+    // Bila channel dikonfigurasi lewat env (.env), nilai rahasia ikut ter-nyamarkan.
+    // Jika tidak ada env fallback, nilai kosong dikembalikan sebagai '' (belum terkonfigurasi).
+    const telegramViaEnv = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
+    if (telegramViaEnv) {
+      expect(data.telegram.botToken).toBe(MASK_VALUE);
+      expect(data.telegram.configured).toBe(true);
+    } else {
+      expect(data.telegram).toHaveProperty('botToken', '');
+      expect(data.telegram.configured).toBe(false);
+    }
     expect(data.email).toHaveProperty('password', '');
   });
 

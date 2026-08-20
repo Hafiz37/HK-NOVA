@@ -7,8 +7,8 @@ Platform web fullstack untuk Network Operations Center (NOC) ISP yang mengintegr
 | Fitur | Status | Keterangan |
 |-------|--------|------------|
 | **Monitoring ICMP & SNMP** | ✅ Selesai | Real-time polling UP/DOWN, latency, CPU/Mem, interface |
-| **Alert & Notification** | ✅ Selesai | Lifecycle ACTIVE/ACK/RESOLVE + multi-channel (Telegram/Email/Webhook/SMS) |
-| **Dashboard Real-time** | ✅ Selesai | Dark theme, grafik, SSE realtime, worker status live |
+| **Alert & Notification** | ✅ Selesai | Lifecycle ACTIVE/ACK/RESOLVE + multi-channel (Telegram/Email/Webhook/SMS) + forward data polling ke SIEM (Splunk/ELK) |
+| **Dashboard Real-time** | ✅ Selesai | Dark theme, grafik, SSE realtime, worker status live, filter status/type/vendor |
 | **Autobackup Config** | ✅ Selesai | Backup scheduler via SSH, versioning + diff, worker & UI aktif |
 | **OLT Provisioning** | ✅ Selesai | Template Huawei/ZTE/Generic, dry-run & execute mode, log |
 | **ML Anomaly Detection** | ✅ Selesai | Isolation Forest, 7 hari training, auto-alert HIGH/CRITICAL, worker/API/UI lengkap |

@@ -137,6 +137,8 @@ model Device {
   anomalies         Anomaly[]
   alerts            Alert[]
   MaintenanceWindow MaintenanceWindow[]
+  customOids        CustomOid[]
+  thresholds        DeviceThreshold[]
 
   @@index([status])
   @@index([type])
@@ -173,13 +175,22 @@ model Metric {
   metricType String
   source     MetricSource @default(REAL)
 
+  // ICMP metrics
   latency    Float?
   packetLoss Float?
+  // ICMPv6 / Jitter / RTT detail
+  jitter     Float?    // variasi RTT antar probe (ms)
+  rttMin     Float?    // RTT minimum probe (ms)
+  rttMax     Float?    // RTT maximum probe (ms)
+  isIPv6     Boolean   @default(false)
 
+  // SNMP metrics
   cpuUtil Float?
   memUtil Float?
 
   interfaceData Json?
+  // Custom OID results — key: oid string, value: parsed number/string
+  customOidData Json?
 
   @@index([deviceId, timestamp])
   @@index([metricType, timestamp])
@@ -314,4 +325,51 @@ model User {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
+}
+
+// ─── Custom SNMP OID per device / vendor ─────────────────────────────────────
+model CustomOid {
+  id       String @id @default(cuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  name        String   // label tampilan, mis. "CPU Huawei" / "Fan Speed"
+  oid         String   // dotted-decimal OID, mis. "1.3.6.1.4.1.2011.5.2.1.0"
+  unit        String?  // satuan tampilan, mis. "°C", "%", "rpm"
+  description String?  @db.Text
+  // Threshold alert untuk OID ini (null = tidak ada alert)
+  alertHigh   Float?
+  alertLow    Float?
+  enabled     Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([deviceId])
+  @@index([enabled])
+}
+
+// ─── Dynamic / auto threshold per device per metric ──────────────────────────
+model DeviceThreshold {
+  id       String @id @default(cuid())
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  metric         String   // "latency" | "packetLoss" | "jitter" | "cpu" | "mem"
+  // Nilai threshold hasil komputasi otomatis (mean + N*stddev)
+  dynamicHigh    Float?   // nilai alert upper-bound dinamis
+  dynamicLow     Float?   // nilai alert lower-bound (opsional)
+  baselineMean   Float?   // mean historis saat komputasi
+  baselineStddev Float?   // stddev historis
+  sampleCount    Int      @default(0)
+  // Override manual (null = gunakan dynamic)
+  manualHigh     Float?
+  manualLow      Float?
+  // Kapan threshold terakhir di-compute
+  computedAt     DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([deviceId, metric])
+  @@index([deviceId])
+  @@index([computedAt])
 }

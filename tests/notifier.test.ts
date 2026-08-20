@@ -10,6 +10,7 @@ const disabledConfig: NotificationConfig = {
   email: { enabled: false, host: '', port: 465, secure: true, username: '', password: '', from: '', recipients: [] },
   webhook: { enabled: false, urls: [] },
   sms: { enabled: false, provider: 'generic', apiUrl: '', apiKey: '', accountSid: '', senderId: '', toNumbers: [] },
+  siem: { enabled: false, urls: [], token: '', format: 'generic' },
 };
 
 describe('Notifier — dispatch behavior', () => {
@@ -37,7 +38,7 @@ describe('Notifier — dispatch behavior', () => {
 
     expect(result.sent).toEqual([]);
     expect(result.failed).toEqual([]);
-    expect(result.skipped).toEqual(['telegram', 'email', 'webhook', 'sms']);
+    expect(result.skipped).toEqual(['telegram', 'email', 'webhook', 'sms', 'siem']);
   });
 
   it('tidak membuat record cooldown ketika semua channel nonaktif', async () => {
