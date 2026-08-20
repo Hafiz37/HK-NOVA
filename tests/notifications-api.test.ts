@@ -160,4 +160,62 @@ describe('Notifications Settings API Integration Tests', () => {
     expect(data.telegram.enabled).toBe(false);
     expect(data.webhook.urls).toEqual(['https://discord.com/api/webhooks/AAA/BBB']);
   });
+
+  it('POST menyimpan minSeverity tiap kanal', async () => {
+    const payload = {
+      telegram: { enabled: true, botToken: 'tok-123', chatIds: ['-100111'], minSeverity: 'HIGH' },
+      email: { enabled: true, host: 'smtp.test.local', port: 465, secure: true, username: '', password: '', from: 'n@t.local', recipients: ['a@b.local'], minSeverity: 'CRITICAL' },
+      webhook: { enabled: true, urls: ['https://hooks.slack.com/X'], minSeverity: 'MEDIUM' },
+      sms: { enabled: false, provider: 'generic', apiUrl: '', apiKey: '', accountSid: '', senderId: '', toNumbers: [], minSeverity: 'LOW' },
+      siem: { enabled: true, urls: ['https://splunk.test:8088'], token: 'tok', format: 'generic', minSeverity: 'HIGH' },
+    };
+    const res = await createTestAgent({ token: adminToken }).post('/api/settings/notifications').send(payload);
+    const data = expectSuccessResponse(res);
+    expect(data.telegram.minSeverity).toBe('HIGH');
+    expect(data.email.minSeverity).toBe('CRITICAL');
+    expect(data.webhook.minSeverity).toBe('MEDIUM');
+    expect(data.siem.minSeverity).toBe('HIGH');
+  });
+
+  it('POST dengan minSeverity invalid → 400', async () => {
+    const res = await createTestAgent({ token: adminToken }).post('/api/settings/notifications').send({
+      telegram: { enabled: true, botToken: 't', chatIds: ['1'], minSeverity: 'EXTREME' },
+    });
+    expectErrorResponse(res, 400);
+  });
+
+  it('POST /api/settings/notifications/test tanpa sesi → 401', async () => {
+    const res = await createTestAgent().post('/api/settings/notifications/test').send({ channel: 'webhook' });
+    expectErrorResponse(res, 401);
+  });
+
+  it('POST /api/settings/notifications/test dengan channel tidak valid → 400', async () => {
+    const res = await createTestAgent({ token: adminToken }).post('/api/settings/notifications/test').send({ channel: 'pagerduty' });
+    expectErrorResponse(res, 400);
+  });
+
+  it('GET /api/settings/alert-policies → 200 dengan default', async () => {
+    const res = await createTestAgent({ token: adminToken }).get('/api/settings/alert-policies');
+    const data = expectSuccessResponse(res);
+    expect(data.ackSlaMinutes).toBeGreaterThan(0);
+    expect(Array.isArray(data.escalationStages)).toBe(true);
+  });
+
+  it('POST /api/settings/alert-policies menyimpan stage eskalasi', async () => {
+    const payload = {
+      ackSlaMinutes: 20,
+      resolveSlaMinutes: 90,
+      renotifyIntervalMinutes: 15,
+      escalationStages: [
+        { afterMinutes: 20, severity: 'HIGH' },
+        { afterMinutes: 60, severity: 'CRITICAL' },
+      ],
+    };
+    const res = await createTestAgent({ token: adminToken }).post('/api/settings/alert-policies').send(payload);
+    const data = expectSuccessResponse(res);
+    expect(data.ackSlaMinutes).toBe(20);
+    expect(data.resolveSlaMinutes).toBe(90);
+    expect(data.escalationStages).toHaveLength(2);
+    expect(data.escalationStages[1].severity).toBe('CRITICAL');
+  });
 });

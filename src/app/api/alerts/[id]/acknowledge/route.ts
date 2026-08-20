@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
+import { recordAlertActivity } from '@/lib/alert-engine';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -53,6 +54,14 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
           select: { id: true, name: true, ip: true },
         },
       },
+    });
+
+    await recordAlertActivity(prisma, {
+      alertId: id,
+      action: 'ACKNOWLEDGED',
+      actor: { id: auth.user.id, name: auth.user.username },
+      message: `Alert di-acknowledge oleh ${auth.user.username}`,
+      details: { acknowledgedAt: updated.acknowledgedAt?.toISOString() ?? null },
     });
 
     await logAudit({

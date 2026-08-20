@@ -57,6 +57,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           device: {
             select: { id: true, name: true, ip: true, type: true, location: true },
           },
+          assignee: {
+            select: { id: true, username: true, fullName: true },
+          },
           childAlerts: {
             include: {
               device: {
@@ -64,6 +67,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
               },
             },
             orderBy: { createdAt: 'asc' },
+          },
+          activities: {
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+          },
+          escalations: {
+            orderBy: { triggeredAt: 'desc' },
+            take: 5,
+          },
+          _count: {
+            select: { deliveries: true },
           },
         },
         orderBy: { createdAt: 'desc' },

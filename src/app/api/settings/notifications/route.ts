@@ -9,6 +9,7 @@ import {
   saveNotificationConfig,
   toPublicNotificationConfig,
   type NotificationConfig,
+  type SeverityGate,
 } from '@/lib/notify-config';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -66,6 +67,22 @@ function parseConfig(body: unknown): ValidationResult {
   const toNumbers = asStringArray(sms.toNumbers, 'sms.toNumbers', errors, (v) => PHONE_REGEX.test(v));
   const siemUrls = asStringArray(siem.urls, 'siem.urls', errors, (v) => URL_REGEX.test(v));
 
+  const SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+  const severityOf = (ch: Record<string, unknown>, name: string): SeverityGate | undefined => {
+    const v = ch.minSeverity;
+    if (v === undefined) return undefined;
+    if (typeof v !== 'string' || !SEVERITIES.includes(v)) {
+      errors.push(`${name}.minSeverity harus salah satu dari: ${SEVERITIES.join(', ')}`);
+      return undefined;
+    }
+    return v as SeverityGate;
+  };
+  const telegramGate = severityOf(telegram, 'telegram');
+  const emailGate = severityOf(email, 'email');
+  const webhookGate = severityOf(webhook, 'webhook');
+  const smsGate = severityOf(sms, 'sms');
+  const siemGate = severityOf(siem, 'siem');
+
   if (siem.format !== undefined && !['generic', 'splunk'].includes(siem.format as string)) {
     errors.push('siem.format harus "generic" atau "splunk"');
   }
@@ -87,6 +104,7 @@ function parseConfig(body: unknown): ValidationResult {
       enabled: Boolean(telegram.enabled),
       botToken: typeof telegram.botToken === 'string' ? telegram.botToken : '',
       chatIds,
+      minSeverity: telegramGate,
     },
     email: {
       enabled: Boolean(email.enabled),
@@ -97,10 +115,12 @@ function parseConfig(body: unknown): ValidationResult {
       password: typeof email.password === 'string' ? email.password : '',
       from: typeof email.from === 'string' ? email.from.trim() : '',
       recipients,
+      minSeverity: emailGate,
     },
     webhook: {
       enabled: Boolean(webhook.enabled),
       urls,
+      minSeverity: webhookGate,
     },
     sms: {
       enabled: Boolean(sms.enabled),
@@ -110,12 +130,14 @@ function parseConfig(body: unknown): ValidationResult {
       accountSid: typeof sms.accountSid === 'string' ? sms.accountSid.trim() : '',
       senderId: typeof sms.senderId === 'string' ? sms.senderId.trim() : '',
       toNumbers,
+      minSeverity: smsGate,
     },
     siem: {
       enabled: Boolean(siem.enabled),
       urls: siemUrls,
       token: typeof siem.token === 'string' ? siem.token : '',
       format: siem.format === 'splunk' ? 'splunk' : 'generic',
+      minSeverity: siemGate,
     },
   };
 

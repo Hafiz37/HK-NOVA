@@ -1,9 +1,16 @@
 import {
   PrismaClient,
+  Prisma,
   AlertStatus,
   AlertSeverity,
   AlertType,
+  AlertActivityAction,
 } from '@prisma/client';
+import {
+  bumpStreak,
+  resetStreak,
+  DEFAULT_MIN_CONSECUTIVE,
+} from './alert-streak';
 
 /**
  * Alert Engine — deduplikasi & korelasi alert ICMP+SNMP.
@@ -31,6 +38,7 @@ export const dedupKeyUp = (deviceId: string): string => `icmp:up:${deviceId}`;
 export const dedupKeyCpu = (deviceId: string): string => `snmp:cpu:${deviceId}`;
 export const dedupKeyMem = (deviceId: string): string => `snmp:mem:${deviceId}`;
 export const dedupKeyAnomaly = (deviceId: string, metricType: string): string => `anomaly:${metricType}:${deviceId}`;
+export const dedupKeyCustomOid = (deviceId: string, oid: string): string => `custom:oid:${deviceId}:${oid}`;
 export const correlationKeyFor = (deviceId: string): string => `device:${deviceId}`;
 
 // ─── Helper query ─────────────────────────────────────────────────────────────
@@ -41,6 +49,41 @@ async function findOpenByDedupKey(
   return prisma.alert.findFirst({
     where: { dedupKey, status: { in: OPEN_STATUSES } },
   });
+}
+
+export interface ActivityActor {
+  id?: string;
+  name?: string;
+}
+
+/**
+ * Catat satu event ke timeline alert (AlertActivity). Best-effort:
+ * kegagalan mencatat aktivitas tidak boleh menggagalkan aksi utama.
+ */
+export async function recordAlertActivity(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  input: {
+    alertId: string;
+    action: AlertActivityAction;
+    actor?: ActivityActor;
+    message?: string;
+    details?: Prisma.JsonObject;
+  }
+): Promise<void> {
+  try {
+    await prisma.alertActivity.create({
+      data: {
+        alertId: input.alertId,
+        action: input.action,
+        actorId: input.actor?.id ?? null,
+        actorName: input.actor?.name ?? null,
+        message: input.message ?? null,
+        details: input.details ?? undefined,
+      },
+    });
+  } catch (err) {
+    console.error('[AlertEngine] Failed to record alert activity', err);
+  }
 }
 
 // ─── Generic create-if-not-duplicate ──────────────────────────────────────────
@@ -55,6 +98,8 @@ export async function createAlertIfNotDuplicate(
     correlationKey?: string;
     status?: AlertStatus;
     resolvedAt?: Date;
+    valueSnapshot?: Prisma.JsonObject;
+    actor?: ActivityActor;
   }
 ): Promise<{ created: boolean; alert: { id: string; severity: AlertSeverity; message: string } }> {
   if (input.dedupKey) {
@@ -64,6 +109,7 @@ export async function createAlertIfNotDuplicate(
     }
   }
 
+  const now = new Date();
   const alert = await prisma.alert.create({
     data: {
       type: input.type,
@@ -74,7 +120,17 @@ export async function createAlertIfNotDuplicate(
       dedupKey: input.dedupKey,
       correlationKey: input.correlationKey,
       resolvedAt: input.resolvedAt,
+      firstTriggeredAt: now,
+      valueSnapshot: input.valueSnapshot ?? undefined,
     },
+  });
+
+  await recordAlertActivity(prisma, {
+    alertId: alert.id,
+    action: 'CREATED',
+    actor: input.actor,
+    message: input.message,
+    details: input.valueSnapshot ? { valueSnapshot: input.valueSnapshot } : undefined,
   });
 
   return { created: true, alert };
@@ -164,6 +220,7 @@ export async function processUtilizationAlert(
     metric: 'cpu' | 'mem';
     value: number;
     threshold: number;
+    minConsecutive?: number;
   }
 ): Promise<
   | { action: 'created'; alert: { id: string; severity: AlertSeverity; message: string } }
@@ -181,6 +238,12 @@ export async function processUtilizationAlert(
   // Dedupe: sudah ada alert aktif untuk metrik ini
   const existing = await findOpenByDedupKey(prisma, dedupKey);
   if (existing) {
+    return { action: 'duplicate' };
+  }
+
+  // Anti-flapping: tunggu N sampel berturut-turut sebelum alert diangkat.
+  const streak = bumpStreak(`snmp:${metric}:${device.id}`, input.minConsecutive ?? DEFAULT_MIN_CONSECUTIVE);
+  if (!streak.qualifies) {
     return { action: 'duplicate' };
   }
 
@@ -217,7 +280,7 @@ export async function processUtilizationAlert(
       });
 
       // Catat utilization sebagai child (sudah resolved) untuk jejak audit
-      await prisma.alert.create({
+      const child = await prisma.alert.create({
         data: {
           type: 'HIGH_UTILIZATION',
           deviceId: device.id,
@@ -225,10 +288,19 @@ export async function processUtilizationAlert(
           severity,
           status: 'RESOLVED',
           resolvedAt: new Date(),
+          firstTriggeredAt: new Date(),
+          valueSnapshot: { [metric]: value },
           dedupKey,
           correlationKey,
           parentId: down.id,
         },
+      });
+
+      await recordAlertActivity(prisma, {
+        alertId: child.id,
+        action: 'CREATED',
+        message,
+        details: { correlatedTo: down.id, value },
       });
     }
 
@@ -245,7 +317,16 @@ export async function processUtilizationAlert(
       status: 'ACTIVE',
       dedupKey,
       correlationKey,
+      firstTriggeredAt: new Date(),
+      valueSnapshot: { [metric]: value },
     },
+  });
+
+  await recordAlertActivity(prisma, {
+    alertId: created.id,
+    action: 'CREATED',
+    message,
+    details: { value, threshold },
   });
 
   return { action: 'created', alert: created };
@@ -262,13 +343,31 @@ export async function resolveUtilizationAlert(
   }
 ): Promise<number> {
   const dedupKey = input.metric === 'cpu' ? dedupKeyCpu(input.deviceId) : dedupKeyMem(input.deviceId);
+
+  // Pulih dari breach → reset streak agar siklus anti-flapping mulai dari nol.
+  resetStreak(`snmp:${input.metric}:${input.deviceId}`);
+
+  const open = await prisma.alert.findMany({
+    where: { dedupKey, status: { in: OPEN_STATUSES } },
+    select: { id: true },
+  });
+
   const resolved = await prisma.alert.updateMany({
-    where: {
-      dedupKey,
-      status: { in: OPEN_STATUSES },
-    },
+    where: { id: { in: open.map((o) => o.id) } },
     data: { status: 'RESOLVED', resolvedAt: new Date() },
   });
+
+  await Promise.all(
+    open.map((o) =>
+      recordAlertActivity(prisma, {
+        alertId: o.id,
+        action: 'RESOLVED',
+        message: `${input.metric === 'cpu' ? 'CPU' : 'Memory'} kembali di bawah ${input.resolveThreshold}% (${input.value.toFixed(1)}%)`,
+        details: { autoResolved: true, value: input.value, resolveThreshold: input.resolveThreshold },
+      })
+    )
+  );
+
   return resolved.count;
 }
 
@@ -295,13 +394,29 @@ export async function resolveDeviceDownAlert(
     data: { status: 'RESOLVED', resolvedAt: new Date() },
   });
 
-  const childrenResolved = await prisma.alert.updateMany({
+  const childrenIds = await prisma.alert.findMany({
     where: {
       parentId: { in: parentIds },
       status: { in: OPEN_STATUSES },
     },
+    select: { id: true },
+  });
+
+  const childrenResolved = await prisma.alert.updateMany({
+    where: { id: { in: childrenIds.map((c) => c.id) } },
     data: { status: 'RESOLVED', resolvedAt: new Date() },
   });
+
+  await Promise.all(
+    [...parentIds, ...childrenIds.map((c) => c.id)].map((id) =>
+      recordAlertActivity(prisma, {
+        alertId: id,
+        action: 'RESOLVED',
+        message: 'Device recovered — alert otomatis ditutup.',
+        details: { autoResolved: true },
+      })
+    )
+  );
 
   return { downResolved: downResolved.count, childrenResolved: childrenResolved.count };
 }
@@ -334,6 +449,7 @@ export async function processAnomalyAlert(
     severity: anomaly.severity as AlertSeverity,
     dedupKey,
     correlationKey,
+    valueSnapshot: { anomalyScore: anomaly.anomalyScore, metricType: anomaly.metricType },
   });
 
   return { created: result.created, alert: result.alert };
@@ -347,16 +463,116 @@ export async function resolveAnomalyAlert(
 ): Promise<number> {
   const dedupKey = dedupKeyAnomaly(deviceId, metricType);
 
+  const open = await prisma.alert.findMany({
+    where: { dedupKey, status: { in: OPEN_STATUSES } },
+    select: { id: true },
+  });
+
   const resolved = await prisma.alert.updateMany({
-    where: {
-      dedupKey,
-      status: { in: OPEN_STATUSES },
-    },
+    where: { id: { in: open.map((o) => o.id) } },
     data: {
       status: 'RESOLVED',
       resolvedAt: new Date(),
     },
   });
+
+  await Promise.all(
+    open.map((o) =>
+      recordAlertActivity(prisma, {
+        alertId: o.id,
+        action: 'RESOLVED',
+        message: 'Skor anomali kembali normal — alert otomatis ditutup.',
+        details: { autoResolved: true },
+      })
+    )
+  );
+
+  return resolved.count;
+}
+
+// ─── CUSTOM OID: alert saat nilai melewati alertHigh/alertLow (CustomOid) ─────
+export interface CustomOidAlertInput {
+  oid: string;
+  name: string;
+  value: number;
+  unit: string | null;
+  /** 'HIGH' = di atas alertHigh, 'LOW' = di bawah alertLow. */
+  direction: 'HIGH' | 'LOW';
+  alertHigh: number | null;
+  alertLow: number | null;
+}
+
+/**
+ * Buat / dedupe alert untuk custom OID yang breach threshold.
+ * severity: HIGH untuk melebihi ambang atas, MEDIUM untuk ambang bawah.
+ */
+export async function processCustomOidAlert(
+  prisma: PrismaClient,
+  device: AlertDevice,
+  input: CustomOidAlertInput & { minConsecutive?: number }
+): Promise<{ created: boolean; alert: { id: string; severity: AlertSeverity; message: string } | null }> {
+  const dedupKey = dedupKeyCustomOid(device.id, input.oid);
+  const correlationKey = correlationKeyFor(device.id);
+
+  const bound =
+    input.direction === 'HIGH'
+      ? (input.alertHigh ?? input.value)
+      : (input.alertLow ?? input.value);
+
+  const message =
+    `Custom OID "${input.name}" on ${device.name} (${device.ip}) is ${input.value}` +
+    `${input.unit ?? ''} (${input.direction === 'HIGH' ? '>' : '<'} threshold ${bound}${input.unit ?? ''}).`;
+
+  // Anti-flapping: tunggu N sampel berturut-turut.
+  const streak = bumpStreak(`custom:${device.id}:${input.oid}`, input.minConsecutive ?? DEFAULT_MIN_CONSECUTIVE);
+  if (!streak.qualifies) {
+    return { created: false, alert: null };
+  }
+
+  const result = await createAlertIfNotDuplicate(prisma, {
+    type: 'CUSTOM_OID_OUT_OF_RANGE',
+    deviceId: device.id,
+    message,
+    severity: input.direction === 'HIGH' ? 'HIGH' : 'MEDIUM',
+    dedupKey,
+    correlationKey,
+    valueSnapshot: { oid: input.oid, name: input.name, value: input.value, direction: input.direction },
+  });
+
+  return { created: result.created, alert: result.alert };
+}
+
+/** Resolve custom OID alert ketika nilai kembali normal. */
+export async function resolveCustomOidAlert(
+  prisma: PrismaClient,
+  deviceId: string,
+  oid: string
+): Promise<number> {
+  // Pulih → reset streak anti-flapping.
+  resetStreak(`custom:${deviceId}:${oid}`);
+
+  const dedupKey = dedupKeyCustomOid(deviceId, oid);
+
+  const open = await prisma.alert.findMany({
+    where: { dedupKey, status: { in: OPEN_STATUSES } },
+    select: { id: true },
+  });
+
+  const resolved = await prisma.alert.updateMany({
+    where: { id: { in: open.map((o) => o.id) } },
+    data: { status: 'RESOLVED', resolvedAt: new Date() },
+  });
+
+  await Promise.all(
+    open.map((o) =>
+      recordAlertActivity(prisma, {
+        alertId: o.id,
+        action: 'RESOLVED',
+        message: 'Nilai custom OID kembali dalam rentang normal.',
+        details: { autoResolved: true },
+      })
+    )
+  );
 
   return resolved.count;
 }

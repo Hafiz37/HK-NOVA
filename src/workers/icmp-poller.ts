@@ -322,6 +322,8 @@ async function handleAlertTransition(device: DeviceRecord, newStatus: 'UP' | 'DO
         message: `${device.name} (${device.ip}) tidak dapat dijangkau. Semua percobaan ping gagal.`,
         cooldownKey: 'default',
         cooldownMs: ICMP_ALERT_COOLDOWN_MS,
+        alertId: result.alert.id,
+        valueSnapshot: { status: 'DOWN', packetLoss: 100 },
       });
     } else {
       log('INFO', `Alert DEVICE_DOWN sudah aktif (dedupe) untuk ${device.name} (${device.ip})`);

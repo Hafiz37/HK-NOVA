@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
+import { recordAlertActivity } from '@/lib/alert-engine';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -65,6 +66,14 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
         status: 'RESOLVED',
         resolvedAt: new Date(),
       },
+    });
+
+    await recordAlertActivity(prisma, {
+      alertId: id,
+      action: 'RESOLVED',
+      actor: { id: auth.user.id, name: auth.user.username },
+      message: `Alert di-resolve oleh ${auth.user.username}`,
+      details: { resolvedAt: updated.resolvedAt?.toISOString() ?? null, childrenResolved: childrenResolved.count },
     });
 
     await logAudit({

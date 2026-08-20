@@ -8,8 +8,11 @@ import {
   processUtilizationAlert,
   resolveUtilizationAlert,
   resolveDeviceDownAlert,
+  processCustomOidAlert,
+  resolveCustomOidAlert,
   dedupKeyCpu,
   dedupKeyDown,
+  dedupKeyCustomOid,
 } from '../src/lib/alert-engine';
 
 describe('Alert Engine — Deduplikasi', () => {
@@ -68,12 +71,14 @@ describe('Alert Engine — Deduplikasi', () => {
       metric: 'cpu',
       value: 92,
       threshold: 85,
+      minConsecutive: 1,
     });
     const second = await processUtilizationAlert(prisma, {
       device: { id: device.id, name: device.name, ip: device.ip },
       metric: 'cpu',
       value: 96,
       threshold: 85,
+      minConsecutive: 1,
     });
 
     expect(first.action).toBe('created');
@@ -160,6 +165,7 @@ describe('Alert Engine — Korelasi (Gabung + Eskalasi)', () => {
       metric: 'mem',
       value: 95,
       threshold: 90,
+      minConsecutive: 1,
     });
 
     expect(result.action).toBe('correlated');
@@ -220,6 +226,7 @@ describe('Alert Engine — Korelasi (Gabung + Eskalasi)', () => {
       metric: 'cpu',
       value: 92,
       threshold: 85,
+      minConsecutive: 1,
     });
 
     const count = await resolveUtilizationAlert(prisma, {
@@ -234,6 +241,129 @@ describe('Alert Engine — Korelasi (Gabung + Eskalasi)', () => {
       where: { deviceId: device.id, type: 'HIGH_UTILIZATION', status: 'ACTIVE' },
     });
     expect(open).toBe(0);
+  });
+});
+
+describe('Alert Engine — Tahap 1 (onset, snapshot, custom OID, streak)', () => {
+  let testDeviceIds: string[] = [];
+
+  beforeEach(async () => {
+    await cleanTestData();
+    testDeviceIds = [];
+  });
+
+  afterAll(async () => {
+    for (const id of testDeviceIds) {
+      try {
+        await prisma.device.delete({ where: { id } });
+      } catch {
+        // ignore
+      }
+    }
+  });
+
+  it('createAlertIfNotDuplicate mengisi firstTriggeredAt + valueSnapshot + aktivitas CREATED', async () => {
+    const device = await createTestDevice();
+    testDeviceIds.push(device.id);
+
+    const result = await createAlertIfNotDuplicate(prisma, {
+      type: 'DEVICE_DOWN',
+      deviceId: device.id,
+      message: 'down test',
+      severity: 'HIGH',
+      dedupKey: dedupKeyDown(device.id),
+      valueSnapshot: { status: 'DOWN' },
+    });
+
+    expect(result.created).toBe(true);
+    const alert = await prisma.alert.findUnique({ where: { id: result.alert.id } });
+    expect(alert?.firstTriggeredAt).toBeDefined();
+    expect((alert?.valueSnapshot as { status?: string })?.status).toBe('DOWN');
+
+    const activity = await prisma.alertActivity.count({ where: { alertId: alert!.id, action: 'CREATED' } });
+    expect(activity).toBe(1);
+  });
+
+  it('processCustomOidAlert membuat alert HIGH untuk ambang atas + resolve saat normal', async () => {
+    const device = await createTestDevice();
+    testDeviceIds.push(device.id);
+
+    const created = await processCustomOidAlert(prisma, device, {
+      oid: '1.3.6.1.4.1.9.2.1.56.0',
+      name: 'CPU 5s (Cisco)',
+      value: 92,
+      unit: '%',
+      direction: 'HIGH',
+      alertHigh: 85,
+      alertLow: null,
+      minConsecutive: 1,
+    });
+
+    expect(created.created).toBe(true);
+    expect(created.alert?.severity).toBe('HIGH');
+
+    const open = await prisma.alert.count({
+      where: { deviceId: device.id, type: 'CUSTOM_OID_OUT_OF_RANGE', status: 'ACTIVE' },
+    });
+    expect(open).toBe(1);
+
+    // Dedupe: panggilan kedua tidak membuat duplikat
+    const dup = await processCustomOidAlert(prisma, device, {
+      oid: '1.3.6.1.4.1.9.2.1.56.0',
+      name: 'CPU 5s (Cisco)',
+      value: 94,
+      unit: '%',
+      direction: 'HIGH',
+      alertHigh: 85,
+      alertLow: null,
+      minConsecutive: 1,
+    });
+    expect(dup.created).toBe(false);
+
+    // Resolve saat nilai kembali normal
+    const resolved = await resolveCustomOidAlert(prisma, device.id, '1.3.6.1.4.1.9.2.1.56.0');
+    expect(resolved).toBe(1);
+    const left = await prisma.alert.count({
+      where: { deviceId: device.id, type: 'CUSTOM_OID_OUT_OF_RANGE', status: 'ACTIVE' },
+    });
+    expect(left).toBe(0);
+  });
+
+  it('dedup key custom OID unik per oid', () => {
+    expect(dedupKeyCustomOid('dev-1', '1.1')).toBe('custom:oid:dev-1:1.1');
+  });
+
+  it('streak: tidak mengangkat alert sebelum N sampel berturut-turut', async () => {
+    const device = await createTestDevice();
+    testDeviceIds.push(device.id);
+
+    // minConsecutive default 2 → panggilan pertama tidak mengangkat alert
+    const first = await processUtilizationAlert(prisma, {
+      device: { id: device.id, name: device.name, ip: device.ip },
+      metric: 'cpu',
+      value: 92,
+      threshold: 85,
+    });
+    expect(first.action).toBe('duplicate');
+
+    const open = await prisma.alert.count({
+      where: { deviceId: device.id, type: 'HIGH_UTILIZATION', status: 'ACTIVE' },
+    });
+    expect(open).toBe(0);
+
+    // Panggilan kedua → streak terpenuhi
+    const second = await processUtilizationAlert(prisma, {
+      device: { id: device.id, name: device.name, ip: device.ip },
+      metric: 'cpu',
+      value: 92,
+      threshold: 85,
+    });
+    expect(second.action).toBe('created');
+
+    const after = await prisma.alert.count({
+      where: { deviceId: device.id, type: 'HIGH_UTILIZATION', status: 'ACTIVE' },
+    });
+    expect(after).toBe(1);
   });
 });
 

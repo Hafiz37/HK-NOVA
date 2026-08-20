@@ -117,6 +117,8 @@ async function processDevice(device: { id: string; name: string; ip: string; typ
         deviceIp: device.ip,
         message: alertResult.alert.message,
         cooldownMs: ANOMALY_ALERT_COOLDOWN_MS,
+        alertId: alertResult.alert.id,
+        valueSnapshot: { anomalyScore: score, metricType: latest.metricType },
       });
 
       log(

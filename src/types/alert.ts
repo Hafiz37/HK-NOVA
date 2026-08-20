@@ -16,7 +16,8 @@ export type AlertType =
   | 'HIGH_UTILIZATION'
   | 'ANOMALY_DETECTED'
   | 'BACKUP_FAILED'
-  | 'PROVISIONING_FAILED';
+  | 'PROVISIONING_FAILED'
+  | 'CUSTOM_OID_OUT_OF_RANGE';
 
 export type AlertSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type AlertStatus = 'ACTIVE' | 'RESOLVED' | 'ACKNOWLEDGED';

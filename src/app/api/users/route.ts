@@ -7,7 +7,8 @@ import { logAudit, getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function GET(): Promise<NextResponse> {
-  const auth = await requireRole([UserRole.ADMIN]);
+  // OPERATOR & ADMIN boleh melihat daftar user (dipakai untuk assign alert).
+  const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
   if (!auth.ok) return auth.response;
 
   try {

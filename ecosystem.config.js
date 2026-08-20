@@ -58,5 +58,8 @@ module.exports = {
     app('hk-nova-anomaly-worker', 'tsx', 'src/workers/anomaly-detector.ts', {
       env: { NODE_ENV: 'production' },
     }),
+    app('hk-nova-escalator-worker', 'tsx', 'src/workers/alert-escalator.ts', {
+      env: { NODE_ENV: 'production', ESCALATOR_INTERVAL: '* * * * *' },
+    }),
   ],
 };

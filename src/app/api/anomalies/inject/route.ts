@@ -115,6 +115,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           deviceIp: device.ip,
           message: alertResult.alert.message,
           cooldownMs: ANOMALY_ALERT_COOLDOWN_MS,
+          alertId: alertResult.alert.id,
+          valueSnapshot: { anomalyScore: score, metricType },
         });
       }
     }

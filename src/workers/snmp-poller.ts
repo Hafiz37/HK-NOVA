@@ -34,7 +34,16 @@ import { resolveThresholds, type ThresholdOverrides } from '../lib/thresholds';
 import {
   processUtilizationAlert,
   resolveUtilizationAlert,
+  processCustomOidAlert,
+  resolveCustomOidAlert,
+  type CustomOidAlertInput,
 } from '../lib/alert-engine';
+import {
+  pollCustomOids,
+  serializeCustomOidResults,
+  type CustomOidRecord,
+  type CustomOidResult,
+} from '../lib/custom-oid';
 import { forwardMetricsToSiem } from '../lib/siem-forward';
 
 // ─── Prisma singleton for worker process ────────────────────────────────────
@@ -104,6 +113,17 @@ interface SnmpResult {
   cpuUtil?: number | null;
   memUtil?: number | null;
   interfaces?: InterfaceEntry[];
+  customOidResults?: CustomOidPollResult[];
+  customOidData?: Record<
+    string,
+    { name: string; value: number | string | null; unit: string | null; alertTriggered: string | null }
+  >;
+}
+
+/** Hasil poll custom OID + threshold pembanding (untuk logika alert). */
+interface CustomOidPollResult extends CustomOidResult {
+  alertHigh: number | null;
+  alertLow: number | null;
 }
 
 // Perangkat yang dipoll beserta threshold override-nya (null = gunakan global)
@@ -112,6 +132,7 @@ type PolledDevice = {
   name: string;
   ip: string;
   credential: SnmpCredential | null;
+  customOids: CustomOidRecord[];
 } & ThresholdOverrides;
 
 // ─── Logging helper ──────────────────────────────────────────────────────────
@@ -325,6 +346,7 @@ async function pollDevice(device: {
   ip: string;
   name: string;
   credential: SnmpCredential | null;
+  customOids: CustomOidRecord[];
 }): Promise<SnmpResult> {
   if (!device.credential) {
     return {
@@ -346,13 +368,27 @@ async function pollDevice(device: {
   }
 
   try {
-    const [cpuUtil, memUtil, interfaces] = await Promise.all([
+    const [cpuUtil, memUtil, interfaces, customOidResults] = await Promise.all([
       pollCpu(session),
       pollMemory(session),
       pollInterfaces(session),
+      pollCustomOids(session, device.customOids),
     ]);
 
     session.close();
+
+    // Enrich hasil custom OID dengan ambang threshold utk logika alert.
+    const customOidEnriched: CustomOidPollResult[] = customOidResults
+      .filter((r) => r.value !== null && typeof r.value === 'number')
+      .map((r) => {
+        const oid = device.customOids.find((o) => o.oid === r.oid);
+        return {
+          ...r,
+          value: r.value as number,
+          alertHigh: oid?.alertHigh ?? null,
+          alertLow: oid?.alertLow ?? null,
+        };
+      });
 
     return {
       deviceId: device.id,
@@ -361,6 +397,8 @@ async function pollDevice(device: {
       cpuUtil,
       memUtil,
       interfaces,
+      customOidResults: customOidEnriched,
+      customOidData: serializeCustomOidResults(customOidResults),
     };
   } catch (err) {
     try { session.close(); } catch { /* ignore */ }
@@ -415,6 +453,8 @@ async function handleUtilizationAlerts(
             message: `CPU ${device.name} (${device.ip}) mencapai ${cpu.toFixed(1)}% — melebihi batas ${t.cpuAlert}%.`,
             cooldownKey: 'cpu',
             cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+            alertId: r.alert.id,
+            valueSnapshot: { cpu },
           }
         );
         log('WARN', `HIGH CPU alert created for ${device.name}: ${cpu.toFixed(1)}% (threshold ${t.cpuAlert}%, severity ${r.alert.severity})`);
@@ -482,6 +522,8 @@ async function handleUtilizationAlerts(
             message: `Memory ${device.name} (${device.ip}) mencapai ${mem.toFixed(1)}% — melebihi batas ${t.memAlert}%.`,
             cooldownKey: 'mem',
             cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+            alertId: r.alert.id,
+            valueSnapshot: { mem },
           }
         );
         log('WARN', `HIGH MEMORY alert created for ${device.name}: ${mem.toFixed(1)}% (threshold ${t.memAlert}%, severity ${r.alert.severity})`);
@@ -528,6 +570,56 @@ async function handleUtilizationAlerts(
   }
 }
 
+// ─── Alert: CUSTOM OID (threshold CustomOid.alertHigh / alertLow) ─────────────
+async function handleCustomOidAlerts(
+  device: PolledDevice,
+  customOidResults: CustomOidPollResult[]
+): Promise<void> {
+  if (customOidResults.length === 0) return;
+
+  if (await isDeviceInMaintenance(device.id)) {
+    log('INFO', `[MAINTENANCE] Custom OID alerts suppressed for ${device.name} (${device.ip})`);
+    return;
+  }
+
+  for (const r of customOidResults) {
+    const alertInput: CustomOidAlertInput = {
+      oid: r.oid,
+      name: r.name,
+      value: Number(r.value),
+      unit: r.unit,
+      direction: r.alertTriggered as 'HIGH' | 'LOW',
+      alertHigh: r.alertHigh,
+      alertLow: r.alertLow,
+    };
+
+    if (r.alertTriggered === 'HIGH' || r.alertTriggered === 'LOW') {
+      const res = await processCustomOidAlert(prisma, device, alertInput);
+
+      if (res.created && res.alert) {
+        await sendNotificationWithCooldown({
+          type: 'CUSTOM_OID_OUT_OF_RANGE',
+          severity: res.alert.severity,
+          deviceId: device.id,
+          deviceName: device.name,
+          deviceIp: device.ip,
+          message: res.alert.message,
+          cooldownKey: `custom:${r.oid}`,
+          cooldownMs: SNMP_ALERT_COOLDOWN_MS,
+          alertId: res.alert.id,
+          valueSnapshot: { oid: r.oid, name: r.name, value: r.value, direction: r.alertTriggered },
+        });
+        log('WARN', `CUSTOM OID alert for ${device.name} "${r.name}" (${r.oid}): value ${r.value}${r.unit ?? ''} — severity ${res.alert.severity}`);
+      }
+    } else {
+      const resolved = await resolveCustomOidAlert(prisma, device.id, r.oid);
+      if (resolved > 0) {
+        log('INFO', `AUTO-RESOLVED ${resolved} custom OID alert(s) for ${device.name} "${r.name}": kembali normal.`);
+      }
+    }
+  }
+}
+
 // ─── Cooldown-aware multi-channel notification ───────────────────────────────
 async function sendNotificationWithCooldown(
   payload: {
@@ -539,6 +631,8 @@ async function sendNotificationWithCooldown(
     message: string;
     cooldownKey: string;
     cooldownMs: number;
+    alertId?: string;
+    valueSnapshot?: Record<string, unknown>;
   }
 ): Promise<void> {
   try {
@@ -582,6 +676,9 @@ async function persistResults(
           interfaceData: result.interfaces && result.interfaces.length > 0
             ? (result.interfaces as unknown as import('@prisma/client').Prisma.JsonArray)
             : undefined,
+          customOidData: result.customOidData && Object.keys(result.customOidData).length > 0
+            ? (result.customOidData as unknown as import('@prisma/client').Prisma.JsonObject)
+            : undefined,
         },
       });
 
@@ -602,11 +699,15 @@ async function persistResults(
             inErrors: iface.inErrors,
             outErrors: iface.outErrors,
           })) ?? [],
+          customOids: result.customOidData ?? {},
         },
       }).catch(() => {});
 
       // Handle utilization alerts
       await handleUtilizationAlerts(device, result.cpuUtil, result.memUtil);
+
+      // Handle custom OID threshold alerts
+      await handleCustomOidAlerts(device, result.customOidResults ?? []);
 
       log('INFO', `SNMP polled ${device.name} — CPU: ${result.cpuUtil?.toFixed(1) ?? 'N/A'}%, MEM: ${result.memUtil?.toFixed(1) ?? 'N/A'}%, Interfaces: ${result.interfaces?.length ?? 0}`);
     })
@@ -683,6 +784,19 @@ async function runPollCycle(): Promise<void> {
         memThresholdOverride: true,
         cpuResolveThresholdOverride: true,
         memResolveThresholdOverride: true,
+        customOids: {
+          where: { enabled: true },
+          select: {
+            id: true,
+            name: true,
+            oid: true,
+            unit: true,
+            description: true,
+            alertHigh: true,
+            alertLow: true,
+            enabled: true,
+          },
+        },
         credentials: {
           select: {
             snmpVersion: true,
@@ -711,6 +825,16 @@ async function runPollCycle(): Promise<void> {
       memThresholdOverride: d.memThresholdOverride,
       cpuResolveThresholdOverride: d.cpuResolveThresholdOverride,
       memResolveThresholdOverride: d.memResolveThresholdOverride,
+      customOids: d.customOids.map((o) => ({
+        id: o.id,
+        name: o.name,
+        oid: o.oid,
+        unit: o.unit,
+        description: o.description,
+        alertHigh: o.alertHigh,
+        alertLow: o.alertLow,
+        enabled: o.enabled,
+      })),
       credential: d.credentials
         ? {
             snmpVersion:   d.credentials.snmpVersion   ?? 'v2c',

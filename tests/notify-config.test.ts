@@ -7,6 +7,7 @@ import {
   getNotificationConfig,
   saveNotificationConfig,
   toPublicNotificationConfig,
+  severityAtLeast,
   type NotificationConfig,
 } from '@/lib/notify-config';
 
@@ -62,6 +63,16 @@ describe('Notification Config — masking helpers', () => {
     const pub = toPublicNotificationConfig(sampleConfig );
     expect(pub.email.host).toBe('smtp.example.com');
     expect(pub.sms.senderId).toBe('HK-NOVA');
+  });
+
+  it('routing severity: severityAtLeast mengikut gate per kanal', () => {
+    expect(severityAtLeast(undefined, 'LOW')).toBe(true);
+    expect(severityAtLeast('LOW', 'LOW')).toBe(true);
+    expect(severityAtLeast('HIGH', 'MEDIUM')).toBe(false);
+    expect(severityAtLeast('HIGH', 'HIGH')).toBe(true);
+    expect(severityAtLeast('CRITICAL', 'CRITICAL')).toBe(true);
+    expect(severityAtLeast('CRITICAL', 'HIGH')).toBe(false);
+    expect(severityAtLeast('MEDIUM', 'CRITICAL')).toBe(true);
   });
 });
 

@@ -8,10 +8,29 @@ export const MASK_VALUE = '***MASKED***';
 
 export type NotificationChannel = 'telegram' | 'email' | 'webhook' | 'sms' | 'siem';
 
+/** Batas minimum severity agar sebuah channel diaktifkan untuk alert tsb. */
+export type SeverityGate = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+/** Urutan severity untuk perbandingan routing (LOW < MEDIUM < HIGH < CRITICAL). */
+export const SEVERITY_ORDER: Record<SeverityGate, number> = {
+  LOW: 0,
+  MEDIUM: 1,
+  HIGH: 2,
+  CRITICAL: 3,
+};
+
+export function severityAtLeast(gate: SeverityGate | undefined, severity: string): boolean {
+  if (!gate) return true;
+  const gateRank = SEVERITY_ORDER[gate] ?? 0;
+  const sevRank = SEVERITY_ORDER[severity as SeverityGate] ?? 0;
+  return sevRank >= gateRank;
+}
+
 export interface TelegramChannelConfig {
   enabled: boolean;
   botToken: string;
   chatIds: string[];
+  minSeverity?: SeverityGate;
 }
 
 export interface EmailChannelConfig {
@@ -23,11 +42,13 @@ export interface EmailChannelConfig {
   password: string;
   from: string;
   recipients: string[];
+  minSeverity?: SeverityGate;
 }
 
 export interface WebhookChannelConfig {
   enabled: boolean;
   urls: string[];
+  minSeverity?: SeverityGate;
 }
 
 /** Format payload yang dikirim ke endpoint SIEM. */
@@ -39,6 +60,7 @@ export interface SiemChannelConfig {
   /** Token otentikasi (Splunk HEC token / Elasticsearch API key). Opsional. */
   token: string;
   format: SiemFormat;
+  minSeverity?: SeverityGate;
 }
 
 export type SmsProvider = 'generic' | 'twilio';
@@ -51,6 +73,7 @@ export interface SmsChannelConfig {
   accountSid: string;
   senderId: string;
   toNumbers: string[];
+  minSeverity?: SeverityGate;
 }
 
 export interface NotificationConfig {
@@ -136,8 +159,30 @@ function applyEnvFallbacks(cfg: NotificationConfig): void {
 /**
  * Build the effective config: stored DB value (merged over defaults) with
  * secrets decrypted, then env fallbacks for any remaining empty field.
+ *
+ * Hasil di-cache selama CONFIG_CACHE_TTL_MS untuk menghindari pembacaan DB
+ * berulang pada setiap dispatch notifikasi. Cache di-invalidate saat config
+ * disimpan (setiap proses memegang cache-nya sendiri di memori).
  */
+const CONFIG_CACHE_TTL_MS = 30_000;
+let configCache: { cfg: NotificationConfig; at: number } | null = null;
+
+export function invalidateNotificationConfigCache(): void {
+  configCache = null;
+}
+
 export async function getNotificationConfig(prisma: PrismaClient): Promise<NotificationConfig> {
+  if (configCache && Date.now() - configCache.at < CONFIG_CACHE_TTL_MS) {
+    return configCache.cfg;
+  }
+
+  const cfg = await buildNotificationConfig(prisma);
+
+  configCache = { cfg, at: Date.now() };
+  return cfg;
+}
+
+async function buildNotificationConfig(prisma: PrismaClient): Promise<NotificationConfig> {
   let stored: Partial<NotificationConfig> | null = null;
   try {
     const setting = await prisma.setting.findUnique({ where: { key: NOTIFICATION_SETTING_KEY } });
@@ -177,6 +222,7 @@ export async function saveNotificationConfig(prisma: PrismaClient, config: Notif
       enabled: Boolean(config.telegram.enabled),
       botToken: resolveSecret(config.telegram.botToken, previous.telegram.botToken),
       chatIds: normalizeList(config.telegram.chatIds),
+      minSeverity: normalizeSeverityHeader(config.telegram.minSeverity),
     },
     email: {
       enabled: Boolean(config.email.enabled),
@@ -187,10 +233,12 @@ export async function saveNotificationConfig(prisma: PrismaClient, config: Notif
       password: resolveSecret(config.email.password, previous.email.password),
       from: config.email.from.trim(),
       recipients: normalizeList(config.email.recipients),
+      minSeverity: normalizeSeverityHeader(config.email.minSeverity),
     },
     webhook: {
       enabled: Boolean(config.webhook.enabled),
       urls: normalizeList(config.webhook.urls),
+      minSeverity: normalizeSeverityHeader(config.webhook.minSeverity),
     },
     sms: {
       enabled: Boolean(config.sms.enabled),
@@ -200,12 +248,14 @@ export async function saveNotificationConfig(prisma: PrismaClient, config: Notif
       accountSid: config.sms.accountSid.trim(),
       senderId: config.sms.senderId.trim(),
       toNumbers: normalizeList(config.sms.toNumbers),
+      minSeverity: normalizeSeverityHeader(config.sms.minSeverity),
     },
     siem: {
       enabled: Boolean(config.siem.enabled),
       urls: normalizeList(config.siem.urls),
       token: resolveSecret(config.siem.token, previous.siem.token),
       format: config.siem.format === 'splunk' ? 'splunk' : 'generic',
+      minSeverity: normalizeSeverityHeader(config.siem.minSeverity),
     },
   };
 
@@ -214,6 +264,9 @@ export async function saveNotificationConfig(prisma: PrismaClient, config: Notif
     update: { value: next as unknown as PrismaJsonValue },
     create: { key: NOTIFICATION_SETTING_KEY, value: next as unknown as PrismaJsonValue },
   });
+
+  // Cache lama tidak berlaku lagi setelah konfigurasi berubah.
+  invalidateNotificationConfigCache();
 }
 
 type PrismaJsonValue = Parameters<PrismaClient['setting']['create']>[0]['data']['value'];
@@ -224,12 +277,14 @@ type PrismaJsonValue = Parameters<PrismaClient['setting']['create']>[0]['data'][
  */
 export function toPublicNotificationConfig(cfg: NotificationConfig) {
   const mask = (v: string) => (v ? MASK_VALUE : '');
+  const gate = (v: SeverityGate | undefined): SeverityGate => (v && v in SEVERITY_ORDER ? (v as SeverityGate) : 'LOW');
 
   return {
     telegram: {
       enabled: cfg.telegram.enabled,
       botToken: mask(cfg.telegram.botToken),
       chatIds: [...cfg.telegram.chatIds],
+      minSeverity: gate(cfg.telegram.minSeverity),
       configured: Boolean(cfg.telegram.botToken && cfg.telegram.chatIds.length > 0),
     },
     email: {
@@ -241,11 +296,13 @@ export function toPublicNotificationConfig(cfg: NotificationConfig) {
       password: mask(cfg.email.password),
       from: cfg.email.from,
       recipients: [...cfg.email.recipients],
+      minSeverity: gate(cfg.email.minSeverity),
       configured: Boolean(cfg.email.host && cfg.email.from && cfg.email.recipients.length > 0),
     },
     webhook: {
       enabled: cfg.webhook.enabled,
       urls: [...cfg.webhook.urls],
+      minSeverity: gate(cfg.webhook.minSeverity),
       configured: cfg.webhook.urls.length > 0,
     },
     sms: {
@@ -256,6 +313,7 @@ export function toPublicNotificationConfig(cfg: NotificationConfig) {
       accountSid: cfg.sms.accountSid,
       senderId: cfg.sms.senderId,
       toNumbers: [...cfg.sms.toNumbers],
+      minSeverity: gate(cfg.sms.minSeverity),
       configured: Boolean(
         cfg.sms.toNumbers.length > 0 &&
           (cfg.sms.provider === 'generic' ? cfg.sms.apiUrl : cfg.sms.accountSid)
@@ -266,6 +324,7 @@ export function toPublicNotificationConfig(cfg: NotificationConfig) {
       urls: [...cfg.siem.urls],
       token: mask(cfg.siem.token),
       format: cfg.siem.format,
+      minSeverity: gate(cfg.siem.minSeverity),
       configured: cfg.siem.urls.length > 0,
     },
   };
@@ -306,6 +365,12 @@ function resolveSecret(value: string | undefined, previous: string | undefined):
 function normalizeList(items: unknown): string[] {
   if (!Array.isArray(items)) return [];
   return items.filter((x): x is string => typeof x === 'string' && x.trim() !== '').map((x) => x.trim());
+}
+
+function normalizeSeverityHeader(value: unknown): SeverityGate | undefined {
+  if (value === undefined || value === null) return undefined;
+  const v = String(value);
+  return v in SEVERITY_ORDER ? (v as SeverityGate) : undefined;
 }
 
 export const NOTIFICATION_CHANNELS: NotificationChannel[] = ['telegram', 'email', 'webhook', 'sms', 'siem'];

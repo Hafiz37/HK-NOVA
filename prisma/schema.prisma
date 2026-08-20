@@ -47,6 +47,24 @@ enum AlertType {
   ANOMALY_DETECTED
   BACKUP_FAILED
   PROVISIONING_FAILED
+  CUSTOM_OID_OUT_OF_RANGE
+}
+
+enum AlertActivityAction {
+  CREATED
+  ACKNOWLEDGED
+  RESOLVED
+  ASSIGNED
+  NOTE_ADDED
+  ESCALATED
+  REOPENED
+}
+
+enum AlertDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
 }
 
 enum AnomalySeverity {
@@ -292,11 +310,70 @@ model Alert {
   acknowledgedAt DateTime?
   resolvedAt     DateTime?
 
+  // Perkuatan lifecycle/sumber (Tahap 1)
+  firstTriggeredAt DateTime? // awal kemunculan (onset), untuk durasi/umur alert
+  valueSnapshot    Json?     // nilai metrik pemicu alert (mis. { cpu: 92.3 })
+  assigneeId       String?
+  assignee         User?     @relation("AlertAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  note             String?   @db.Text
+
+  // Tahap 2 — eskalasi
+  escalationLevel Int @default(0) // 0 = normal; 1..N jejak tangga eskalasi
+
+  activities   AlertActivity[]
+  deliveries   AlertDelivery[]
+  escalations  AlertEscalation[]
+
   @@index([status, severity])
   @@index([createdAt])
   @@index([dedupKey])
   @@index([correlationKey])
   @@index([parentId])
+}
+
+// ─── Timeline aktivitas per alert (siapa & kapan mengubah lifecycle) ───────────
+model AlertActivity {
+  id        String               @id @default(cuid())
+  alertId   String
+  alert     Alert                @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  action    AlertActivityAction
+  actorId   String?              // id user (redeem sekadar untuk audit)
+  actorName String?              // snapshot nama user saat aksi
+  message   String?              @db.Text
+  details   Json?
+  createdAt DateTime             @default(now())
+
+  @@index([alertId, createdAt])
+}
+
+// ─── Rekam jejak pengiriman notifikasi per channel ────────────────────────────
+model AlertDelivery {
+  id          String              @id @default(cuid())
+  alertId     String
+  alert       Alert               @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  channel     String              // "telegram" | "email" | "webhook" | "sms" | "siem"
+  status      AlertDeliveryStatus @default(PENDING)
+  attempts    Int                 @default(0)
+  error       String?             @db.Text
+  sentAt      DateTime?
+  nextRetryAt DateTime?
+  createdAt   DateTime            @default(now())
+
+  @@index([alertId, status])
+  @@index([createdAt])
+}
+
+// ─── Jejak langkah eskalasi per alert (Tahap 2) ───────────────────────────────
+model AlertEscalation {
+  id          String   @id @default(cuid())
+  alertId     String
+  alert       Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  level       Int      // tangga eskalasi (1,2,3…)
+  triggeredAt DateTime @default(now())
+  details     Json?
+
+  @@index([alertId, level])
+  @@index([triggeredAt])
 }
 
 model AuditLog {
@@ -325,6 +402,8 @@ model User {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
+
+  assignedAlerts Alert[] @relation("AlertAssignee")
 }
 
 // ─── Custom SNMP OID per device / vendor ─────────────────────────────────────

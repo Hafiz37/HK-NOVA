@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from './setup';
 import { NOTIFICATION_SETTING_KEY, saveNotificationConfig, type NotificationConfig } from '@/lib/notify-config';
 import { dispatchNotifications } from '@/lib/notifier';
+import { NOTIFICATION_CHANNELS } from '@/lib/notify-config';
 
 const PREFIX = `test-feed-${Date.now()}`;
 
@@ -46,5 +47,38 @@ describe('Notifier — dispatch behavior', () => {
       where: { deviceId: `${PREFIX}-1` },
     });
     expect(count).toBe(0);
+  });
+
+  it('mencatat hasil delivery ke AlertDelivery saat payload.alertId ada', async () => {
+    const alert = await prisma.alert.create({
+      data: {
+        type: 'DEVICE_DOWN',
+        deviceId: null,
+        message: 'delivery persistence test',
+        severity: 'HIGH',
+        status: 'ACTIVE',
+      },
+    });
+
+    const result = await dispatchNotifications(prisma, {
+      type: 'DEVICE_DOWN',
+      severity: 'HIGH',
+      deviceId: `${PREFIX}-2`,
+      deviceName: 'Router Test',
+      deviceIp: '10.0.0.2',
+      message: 'tidak terjangkau',
+      cooldownKey: 'default',
+      cooldownMs: 300_000,
+      alertId: alert.id,
+    });
+
+    // Semua channel nonaktif → semua tercatat SKIPPED
+    expect(result.skipped).toEqual(['telegram', 'email', 'webhook', 'sms', 'siem']);
+
+    const deliveries = await prisma.alertDelivery.findMany({ where: { alertId: alert.id } });
+    expect(deliveries).toHaveLength(NOTIFICATION_CHANNELS.length);
+    expect(deliveries.every((d) => d.status === 'SKIPPED')).toBe(true);
+
+    await prisma.alert.delete({ where: { id: alert.id } });
   });
 });

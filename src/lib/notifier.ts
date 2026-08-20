@@ -1,8 +1,8 @@
 import type { PrismaClient } from '@prisma/client';
-import { getNotificationConfig, NOTIFICATION_CHANNELS, type NotificationChannel } from './notify-config';
+import { getNotificationConfig, NOTIFICATION_CHANNELS, severityAtLeast, type NotificationChannel } from './notify-config';
 import { shouldSendNotification, DEFAULT_COOLDOWN_KEY, type CooldownChannel } from './cooldown';
 import { sendTelegramToChats, formatTelegramMessage } from './channels/telegram';
-import { sendEmail, formatEmailHtml, formatEmailSubject } from './channels/email';
+import { sendEmail, formatEmailSubject, formatEmailHtml } from './channels/email';
 import { sendWebhooks } from './channels/webhook';
 import { sendSms } from './channels/sms';
 import { sendToSiem } from './channels/siem';
@@ -20,6 +20,10 @@ export interface NotificationPayload {
   cooldownMs: number;
   /** Optional override for consistent timestamps across channels. */
   timestamp?: Date;
+  /** ID alert terkait — bila ada, hasil kirim di-persist ke AlertDelivery. */
+  alertId?: string;
+  /** Nilai metrik pemicu untuk konteks delivery. */
+  valueSnapshot?: Record<string, unknown>;
 }
 
 export interface DispatchResult {
@@ -29,6 +33,10 @@ export interface DispatchResult {
 }
 
 const DEFAULT_COOLDOWN_MS = 5 * 60 * 1000;
+
+// Retry policy: max attempts + backoff (ms) untuk channel yang gagal.
+const MAX_RETRIES = 3;
+const RETRY_BACKOFF_MS = [0, 1_000, 5_000] as const;
 
 const severityEmoji: Record<string, string> = {
   LOW: '🟢',
@@ -83,6 +91,7 @@ function channelEnabled(cfg: Awaited<ReturnType<typeof getNotificationConfig>>, 
 /**
  * Dispatch an alert notification to every enabled recipient channel.
  * Per-channel cooldown is persisted in the DB (survives worker restarts).
+ * Hasil tiap channel direkam ke tabel AlertDelivery bila payload.alertId ada.
  */
 export async function dispatchNotifications(
   prisma: PrismaClient,
@@ -98,6 +107,14 @@ export async function dispatchNotifications(
   for (const channel of NOTIFICATION_CHANNELS) {
     if (!channelEnabled(cfg, channel)) {
       result.skipped.push(channel);
+      await recordDeliveryFor(prisma, payload, channel, 'SKIPPED', 0, 'channel disabled', timestamp);
+      continue;
+    }
+
+    // Routing severity: channel hanya menerima alert dengan severity >= minSeverity.
+    if (!severityAtLeast(channelGate(cfg, channel), payload.severity)) {
+      result.skipped.push(channel);
+      await recordDeliveryFor(prisma, payload, channel, 'SKIPPED', 0, 'below min severity', timestamp);
       continue;
     }
 
@@ -114,19 +131,109 @@ export async function dispatchNotifications(
 
     if (!allowed) {
       result.skipped.push(channel);
+      await recordDeliveryFor(prisma, payload, channel, 'SKIPPED', 0, 'cooldown', timestamp);
       continue;
     }
 
-    const ok = await sendToChannel(cfg, channel, payload);
-    if (ok) result.sent.push(channel);
-    else result.failed.push(channel);
+    const { ok, attempts } = await sendWithRetry(cfg, channel, payload);
+    if (ok) {
+      result.sent.push(channel);
+      await recordDeliveryFor(prisma, payload, channel, 'SENT', attempts, undefined, timestamp);
+    } else {
+      result.failed.push(channel);
+      await recordDeliveryFor(prisma, payload, channel, 'FAILED', attempts, 'channel reported failure', timestamp);
+    }
   }
 
   return result;
 }
 
+// ─── Send + retry (backoff) ───────────────────────────────────────────────────
+type NotifConfig = Awaited<ReturnType<typeof getNotificationConfig>>;
+
+function channelGate(cfg: NotifConfig, channel: NotificationChannel) {
+  switch (channel) {
+    case 'telegram': return cfg.telegram.minSeverity;
+    case 'email':    return cfg.email.minSeverity;
+    case 'webhook':  return cfg.webhook.minSeverity;
+    case 'sms':      return cfg.sms.minSeverity;
+    case 'siem':     return cfg.siem.minSeverity;
+    default:         return undefined;
+  }
+}
+
+async function sendWithRetry(
+  cfg: NotifConfig,
+  channel: NotificationChannel,
+  payload: NotificationPayload
+): Promise<{ ok: boolean; attempts: number }> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const delay = RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)];
+    if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+    if (await sendToChannel(cfg, channel, payload)) {
+      return { ok: true, attempts: attempt + 1 };
+    }
+  }
+  return { ok: false, attempts: MAX_RETRIES };
+}
+
+// ─── Persist satu baris delivery (best-effort) ────────────────────────────────
+async function recordDeliveryFor(
+  prisma: PrismaClient,
+  payload: NotificationPayload,
+  channel: NotificationChannel,
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED',
+  attempts: number,
+  error?: string,
+  timestamp?: Date
+): Promise<void> {
+  if (!payload.alertId) return;
+  try {
+    await prisma.alertDelivery.create({
+      data: {
+        alertId: payload.alertId,
+        channel,
+        status,
+        attempts,
+        error: error ?? null,
+        sentAt: status === 'SENT' ? (timestamp ?? new Date()) : null,
+      },
+    });
+  } catch (err) {
+    console.error('[Notify] Failed to record delivery', err);
+  }
+}
+
+/**
+ * Kirim notifikasi uji ke satu channel menggunakan konfigurasi tersimpan.
+ * Dipakai oleh tombol "Test Kirim" di halaman settings. Tanpa cooldown.
+ */
+export async function sendTestNotification(
+  prisma: PrismaClient,
+  channel: NotificationChannel
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const cfg = await getNotificationConfig(prisma);
+    if (!channelEnabled(cfg, channel)) {
+      return { ok: false, error: 'Channel belum dikonfigurasi / dinonaktifkan' };
+    }
+    const payload: NotificationPayload = {
+      type: 'TEST_NOTIFICATION',
+      severity: 'LOW',
+      deviceId: 'system',
+      deviceName: 'HK-NOVA',
+      message: `Notifikasi uji dari HK-NOVA — channel ${channel} terkonfigurasi dengan baik.`,
+      cooldownMs: 0,
+    };
+    const ok = await sendToChannel(cfg, channel, payload);
+    return ok ? { ok: true } : { ok: false, error: 'Gagal mengirim test; cek log server' };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 async function sendToChannel(
-  cfg: Awaited<ReturnType<typeof getNotificationConfig>>,
+  cfg: NotifConfig,
   channel: NotificationChannel,
   payload: NotificationPayload
 ): Promise<boolean> {
