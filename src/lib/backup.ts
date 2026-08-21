@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { execSshCommand, resolveSshCredentials } from './device-console';
 import { createAlertIfNotDuplicate, correlationKeyFor } from './alert-engine';
 import { DEFAULT_SSH_TIMEOUT } from './constants';
+import { prepareBackupContent } from './backup-storage';
 
 const BACKUP_COMMANDS: Record<string, string> = {
   huawei: 'display current-configuration',
@@ -48,11 +49,13 @@ export async function performBackup(
   prisma: PrismaClient,
   device: BackupDevice
 ): Promise<BackupResult> {
+  const startTime = Date.now();
   const creds = resolveSshCredentials(device.credentials ?? null);
   if (!creds) {
     return { status: 'FAILED', saved: false, changed: false, errorMessage: 'SSH credentials tidak dikonfigurasi' };
   }
 
+  const sshStartTime = Date.now();
   const res = await execSshCommand({
     host: device.ip,
     username: creds.username,
@@ -61,6 +64,7 @@ export async function performBackup(
     timeoutMs: DEFAULT_SSH_TIMEOUT,
     command: backupCommandFor(device.vendor),
   });
+  const sshConnectMs = Date.now() - sshStartTime;
 
   if (!res.ok) {
     await createAlertIfNotDuplicate(prisma, {
@@ -75,7 +79,9 @@ export async function performBackup(
   }
 
   const content = `${res.stdout.trim()}\n`;
-  const hash = createHash('sha256').update(content).digest('hex');
+
+  // Prepare content (compress + encrypt)
+  const prepared = await prepareBackupContent(content);
 
   const previous = await prisma.backup.findFirst({
     where: { deviceId: device.id },
@@ -83,22 +89,28 @@ export async function performBackup(
     select: { configHash: true },
   });
 
-  if (previous && previous.configHash === hash) {
+  if (previous && previous.configHash === prepared.hash) {
     // Tidak ada perubahan — jangan menumpuk snapshot identik.
-    return { status: 'SUCCESS', saved: false, changed: false, hash };
+    return { status: 'SUCCESS', saved: false, changed: false, hash: prepared.hash };
   }
 
   await prisma.backup.create({
     data: {
       deviceId: device.id,
-      configHash: hash,
-      configContent: content,
+      configHash: prepared.hash,
+      configContent: prepared.content,
+      isCompressed: prepared.isCompressed,
+      isEncrypted: prepared.isEncrypted,
+      sizeBytes: prepared.sizeBytes,
+      compressedBytes: prepared.compressedBytes,
       changeDetected: true,
       status: 'SUCCESS',
+      durationMs: Date.now() - startTime,
+      sshConnectMs,
     },
   });
 
-  return { status: 'SUCCESS', saved: true, changed: true, hash };
+  return { status: 'SUCCESS', saved: true, changed: true, hash: prepared.hash };
 }
 
 /** Load device by id (not deleted) and run a backup on demand. */

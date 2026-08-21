@@ -17,7 +17,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const page = parsePositiveIntParam(searchParams.get('page'), 1, 1, Number.MAX_SAFE_INTEGER);
     const limit = parsePositiveIntParam(searchParams.get('limit'), 20, 1, 100);
 
-    const where = deviceId ? { deviceId } : {};
+    const where = deviceId ? { deviceId, deletedAt: null } : { deletedAt: null };
 
     const [backups, total] = await Promise.all([
       prisma.backup.findMany({
@@ -25,7 +25,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         orderBy: { timestamp: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: {
+        select: {
+          id: true,
+          timestamp: true,
+          configHash: true,
+          changeDetected: true,
+          status: true,
+          errorMessage: true,
+          isCompressed: true,
+          isEncrypted: true,
+          sizeBytes: true,
+          compressedBytes: true,
+          durationMs: true,
+          sshConnectMs: true,
+          deletedAt: true,
+          isProtected: true,
+          storageLocation: true,
+          riskScore: true,
+          changesSummary: true,
           device: {
             select: { id: true, name: true, ip: true, type: true, vendor: true },
           },

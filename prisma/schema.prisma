@@ -134,7 +134,7 @@ model Setting {
 model AlertCooldown {
   id          String   @id @default(cuid())
   deviceId    String
-  channel     String   // "telegram" | "email" | "webhook" | "sms"
+  channel     String // "telegram" | "email" | "webhook" | "sms"
   cooldownKey String   @default("default") // "default" | "cpu" | "mem" | "cpu-recover" | "mem-recover"
   cooldownAt  DateTime @db.Timestamp(3)
   createdAt   DateTime @default(now())
@@ -162,6 +162,12 @@ model Device {
   cpuResolveThresholdOverride Float?
   memResolveThresholdOverride Float?
 
+  // Backup configuration
+  backupSchedule      String? // cron format, null = use global
+  backupEnabled       Boolean @default(true)
+  backupPriority      Int     @default(50) // 0-100, higher = backup first
+  backupRetentionDays Int? // null = use global setting
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -169,6 +175,7 @@ model Device {
   credentials       Credential?
   metrics           Metric[]
   backups           Backup[]
+  backupRestores    BackupRestore[]
   provisioning      ProvisioningLog[]
   anomalies         Anomaly[]
   alerts            Alert[]
@@ -215,10 +222,10 @@ model Metric {
   latency    Float?
   packetLoss Float?
   // ICMPv6 / Jitter / RTT detail
-  jitter     Float?    // variasi RTT antar probe (ms)
-  rttMin     Float?    // RTT minimum probe (ms)
-  rttMax     Float?    // RTT maximum probe (ms)
-  isIPv6     Boolean   @default(false)
+  jitter     Float? // variasi RTT antar probe (ms)
+  rttMin     Float? // RTT minimum probe (ms)
+  rttMax     Float? // RTT maximum probe (ms)
+  isIPv6     Boolean @default(false)
 
   // SNMP metrics
   cpuUtil Float?
@@ -240,14 +247,85 @@ model Backup {
   deviceId String
   device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
-  timestamp      DateTime     @default(now())
-  configHash     String
-  configContent  String       @db.LongText
-  changeDetected Boolean      @default(true)
-  status         BackupStatus
-  errorMessage   String?      @db.Text
+  timestamp       DateTime     @default(now())
+  configHash      String
+  configContent   Bytes?       @db.MediumBlob
+  isCompressed    Boolean      @default(false)
+  isEncrypted     Boolean      @default(false)
+  sizeBytes       Int?
+  compressedBytes Int?
+  changeDetected  Boolean      @default(true)
+  status          BackupStatus
+  errorMessage    String?      @db.Text
+
+  isProtected     Boolean         @default(false)
+  deletedAt       DateTime?
+  storageLocation String          @default("database")
+  filePath        String?
+  archivedAt      DateTime?
+  changesSummary  Json?
+  criticalChanges Json?
+  riskScore       Float?
+  durationMs      Int?
+  sshConnectMs    Int?
+  BackupRestore   BackupRestore[]
 
   @@index([deviceId, timestamp])
+  @@index([storageLocation])
+  @@index([archivedAt])
+  @@index([deletedAt])
+  @@index([isProtected])
+  @@index([riskScore])
+}
+
+model BackupRestore {
+  id       String @id @default(cuid())
+  backupId String
+  backup   Backup @relation(fields: [backupId], references: [id], onDelete: Cascade)
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  restoredBy String
+  user       User     @relation(fields: [restoredBy], references: [id])
+  restoredAt DateTime @default(now())
+
+  status ProvisioningStatus
+  dryRun Boolean            @default(false)
+
+  preRestoreBackupId String?
+
+  command      String  @db.Text
+  response     String? @db.Text
+  errorMessage String? @db.Text
+  durationMs   Int?
+
+  @@index([deviceId, restoredAt])
+  @@index([backupId])
+  @@index([restoredBy])
+  @@index([status])
+}
+
+model BackupMetrics {
+  id        String   @id @default(cuid())
+  timestamp DateTime @default(now())
+
+  totalDevices  Int
+  successCount  Int
+  failedCount   Int
+  skippedCount  Int
+  avgDurationMs Int
+  maxDurationMs Int
+  minDurationMs Int
+
+  dbStorageMB         Float
+  filesystemStorageMB Float?
+  totalBackupCount    Int
+  compressionRatio    Float?
+
+  criticalChangesCount Int   @default(0)
+  consecutiveFailures  Json?
+
+  @@index([timestamp])
 }
 
 model ProvisioningLog {
@@ -332,7 +410,7 @@ model Alert {
 
   // Perkuatan lifecycle/sumber (Tahap 1)
   firstTriggeredAt DateTime? // awal kemunculan (onset), untuk durasi/umur alert
-  valueSnapshot    Json?     // nilai metrik pemicu alert (mis. { cpu: 92.3 })
+  valueSnapshot    Json? // nilai metrik pemicu alert (mis. { cpu: 92.3 })
   assigneeId       String?
   assignee         User?     @relation("AlertAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   note             String?   @db.Text
@@ -340,9 +418,9 @@ model Alert {
   // Tahap 2 — eskalasi
   escalationLevel Int @default(0) // 0 = normal; 1..N jejak tangga eskalasi
 
-  activities   AlertActivity[]
-  deliveries   AlertDelivery[]
-  escalations  AlertEscalation[]
+  activities  AlertActivity[]
+  deliveries  AlertDelivery[]
+  escalations AlertEscalation[]
 
   @@index([status, severity])
   @@index([status, createdAt])
@@ -354,15 +432,15 @@ model Alert {
 
 // ─── Timeline aktivitas per alert (siapa & kapan mengubah lifecycle) ───────────
 model AlertActivity {
-  id        String               @id @default(cuid())
+  id        String              @id @default(cuid())
   alertId   String
-  alert     Alert                @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  alert     Alert               @relation(fields: [alertId], references: [id], onDelete: Cascade)
   action    AlertActivityAction
-  actorId   String?              // id user (redeem sekadar untuk audit)
-  actorName String?              // snapshot nama user saat aksi
-  message   String?              @db.Text
+  actorId   String? // id user (redeem sekadar untuk audit)
+  actorName String? // snapshot nama user saat aksi
+  message   String?             @db.Text
   details   Json?
-  createdAt DateTime             @default(now())
+  createdAt DateTime            @default(now())
 
   @@index([alertId, createdAt])
 }
@@ -372,7 +450,7 @@ model AlertDelivery {
   id          String              @id @default(cuid())
   alertId     String
   alert       Alert               @relation(fields: [alertId], references: [id], onDelete: Cascade)
-  channel     String              // "telegram" | "email" | "webhook" | "sms" | "siem"
+  channel     String // "telegram" | "email" | "webhook" | "sms" | "siem"
   status      AlertDeliveryStatus @default(PENDING)
   attempts    Int                 @default(0)
   error       String?             @db.Text
@@ -389,7 +467,7 @@ model AlertEscalation {
   id          String   @id @default(cuid())
   alertId     String
   alert       Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
-  level       Int      // tangga eskalasi (1,2,3…)
+  level       Int // tangga eskalasi (1,2,3…)
   triggeredAt DateTime @default(now())
   details     Json?
 
@@ -399,22 +477,22 @@ model AlertEscalation {
 
 // ─── Rule threshold user-configurable (Tahap 3) ───────────────────────────────
 model AlertRule {
-  id          String      @id @default(cuid())
-  name        String
+  id                 String               @id @default(cuid())
+  name               String
   // "cpu" | "mem" | "latency" | "packetLoss" | "jitter" | "customOid"
-  metric      String
-  operator    AlertRuleOperator @default(GTE)
-  threshold   Float
-  severity    AlertSeverity     @default(HIGH)
+  metric             String
+  operator           AlertRuleOperator    @default(GTE)
+  threshold          Float
+  severity           AlertSeverity        @default(HIGH)
   // anti-flapping: berapa sampel berturut-turut sebelum alert diangkat
-  consecutiveSamples Int        @default(2)
-  deviceScope AlertRuleDeviceScope @default(ALL)
-  deviceType  DeviceType?
-  deviceIds   Json?             // array deviceId saat scope = DEVICES
-  customOidId String?
-  customOid   CustomOid?        @relation(fields: [customOidId], references: [id], onDelete: SetNull)
-  enabled     Boolean           @default(true)
-  cooldownMs  Int               @default(300000)
+  consecutiveSamples Int                  @default(2)
+  deviceScope        AlertRuleDeviceScope @default(ALL)
+  deviceType         DeviceType?
+  deviceIds          Json? // array deviceId saat scope = DEVICES
+  customOidId        String?
+  customOid          CustomOid?           @relation(fields: [customOidId], references: [id], onDelete: SetNull)
+  enabled            Boolean              @default(true)
+  cooldownMs         Int                  @default(300000)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -450,7 +528,8 @@ model User {
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
 
-  assignedAlerts Alert[] @relation("AlertAssignee")
+  assignedAlerts Alert[]         @relation("AlertAssignee")
+  backupRestores BackupRestore[]
 }
 
 // ─── Custom SNMP OID per device / vendor ─────────────────────────────────────
@@ -459,14 +538,14 @@ model CustomOid {
   deviceId String
   device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
-  name        String   // label tampilan, mis. "CPU Huawei" / "Fan Speed"
-  oid         String   // dotted-decimal OID, mis. "1.3.6.1.4.1.2011.5.2.1.0"
-  unit        String?  // satuan tampilan, mis. "°C", "%", "rpm"
-  description String?  @db.Text
+  name        String // label tampilan, mis. "CPU Huawei" / "Fan Speed"
+  oid         String // dotted-decimal OID, mis. "1.3.6.1.4.1.2011.5.2.1.0"
+  unit        String? // satuan tampilan, mis. "°C", "%", "rpm"
+  description String? @db.Text
   // Threshold alert untuk OID ini (null = tidak ada alert)
   alertHigh   Float?
   alertLow    Float?
-  enabled     Boolean  @default(true)
+  enabled     Boolean @default(true)
 
   alertRules AlertRule[]
 
@@ -483,12 +562,12 @@ model DeviceThreshold {
   deviceId String
   device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
-  metric         String   // "latency" | "packetLoss" | "jitter" | "cpu" | "mem"
+  metric         String // "latency" | "packetLoss" | "jitter" | "cpu" | "mem"
   // Nilai threshold hasil komputasi otomatis (mean + N*stddev)
-  dynamicHigh    Float?   // nilai alert upper-bound dinamis
-  dynamicLow     Float?   // nilai alert lower-bound (opsional)
-  baselineMean   Float?   // mean historis saat komputasi
-  baselineStddev Float?   // stddev historis
+  dynamicHigh    Float? // nilai alert upper-bound dinamis
+  dynamicLow     Float? // nilai alert lower-bound (opsional)
+  baselineMean   Float? // mean historis saat komputasi
+  baselineStddev Float? // stddev historis
   sampleCount    Int      @default(0)
   // Override manual (null = gunakan dynamic)
   manualHigh     Float?

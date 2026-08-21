@@ -103,10 +103,10 @@ export async function createTestUser(overrides: Partial<{
 }
 
 // Helper to create session token
-export function createTestSessionToken(username: string): string {
+export function createTestSessionToken(username: string, fullName?: string): string {
   const secret = process.env.JWT_SECRET || process.env.ENCRYPTION_KEY || 'dev-insecure-secret';
   const exp = Math.floor(Date.now() / 1000) + 60 * 60 * 12;
-  const body = Buffer.from(JSON.stringify({ u: username, exp }), 'utf8').toString('base64url');
+  const body = Buffer.from(JSON.stringify({ u: username, n: fullName, exp }), 'utf8').toString('base64url');
   const sig = createHmac('sha256', secret).update(body).digest('hex');
   return `${body}.${sig}`;
 }

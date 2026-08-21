@@ -10,6 +10,17 @@ interface BackupRecord {
   changeDetected: boolean;
   status: string;
   errorMessage: string | null;
+  isCompressed: boolean;
+  isEncrypted: boolean;
+  sizeBytes: number | null;
+  compressedBytes: number | null;
+  durationMs: number | null;
+  sshConnectMs: number | null;
+  deletedAt: string | null;
+  isProtected: boolean;
+  storageLocation: string;
+  riskScore: number | null;
+  changesSummary: { critical: number; high: number; medium: number; low: number; totalChanges: number } | null;
   device: { id: string; name: string; ip: string; type: string; vendor: string | null };
 }
 
@@ -20,12 +31,26 @@ interface BackupDetail {
   configContent: string;
   changeDetected: boolean;
   status: string;
+  isCompressed: boolean;
+  isEncrypted: boolean;
+  sizeBytes: number | null;
+  compressedBytes: number | null;
+  durationMs: number | null;
+  sshConnectMs: number | null;
+  storageLocation: string;
   device: { id: string; name: string; ip: string; type: string; vendor: string | null };
 }
 
 interface DiffLine {
   kind: "same" | "add" | "del";
   text: string;
+}
+
+function formatBytes(bytes: number | null): string {
+  if (!bytes) return '-';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -122,6 +147,32 @@ export default function BackupPage() {
     return `/api/export/backups?${params.toString()}`;
   };
 
+  const getStorageBadge = (storageLocation: string, isProtected: boolean, deletedAt: string | null) => {
+    if (deletedAt) {
+      return <span className="px-2 py-0.5 text-xs font-semibold rounded border bg-slate-800/50 text-slate-400 border-slate-700">🗑️ Deleted</span>;
+    }
+    if (isProtected) {
+      return <span className="px-2 py-0.5 text-xs font-semibold rounded border bg-amber-500/10 text-amber-400 border-amber-500/20">📌 Protected</span>;
+    }
+    if (storageLocation === 'filesystem') {
+      return <span className="px-2 py-0.5 text-xs font-semibold rounded border bg-blue-500/10 text-blue-400 border-blue-500/20">📁 Archived</span>;
+    }
+    return <span className="px-2 py-0.5 text-xs font-semibold rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">💾 Hot</span>;
+  };
+
+  const getEncryptionBadge = (isEncrypted: boolean, isCompressed: boolean) => {
+    if (isEncrypted && isCompressed) {
+      return <span className="px-2 py-0.5 text-xs font-semibold rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/20" title="Encrypted + Compressed">🔐🗜️</span>;
+    }
+    if (isEncrypted) {
+      return <span className="px-2 py-0.5 text-xs font-semibold rounded border bg-blue-500/10 text-blue-400 border-blue-500/20" title="Encrypted">🔐</span>;
+    }
+    if (isCompressed) {
+      return <span className="px-2 py-0.5 text-xs font-semibold rounded border bg-amber-500/10 text-amber-400 border-amber-500/20" title="Compressed">🗜️</span>;
+    }
+    return <span className="px-2 py-0.5 text-xs font-semibold rounded border bg-slate-800 text-slate-400 border-slate-700" title="Plain">📄</span>;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -180,6 +231,9 @@ export default function BackupPage() {
                     <th className="px-4 py-3">Device</th>
                     <th className="px-4 py-3">IP</th>
                     <th className="px-4 py-3">Hash</th>
+                    <th className="px-4 py-3">Size</th>
+                    <th className="px-4 py-3">Encryption</th>
+                    <th className="px-4 py-3">Storage</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">Aksi</th>
                   </tr>
@@ -191,6 +245,12 @@ export default function BackupPage() {
                       <td className="px-4 py-3 font-medium text-white">{b.device.name} <span className="text-xs text-slate-500">({b.device.type}{b.device.vendor ? ` · ${b.device.vendor}` : ""})</span></td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-400">{b.device.ip}</td>
                       <td className="px-4 py-3 font-mono text-[10px] text-slate-500">{b.configHash.slice(0, 12)}…</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-400">
+                        {formatBytes(b.sizeBytes)}
+                        {b.compressedBytes && b.sizeBytes && ` → ${formatBytes(b.compressedBytes)} (${((1 - b.compressedBytes / b.sizeBytes) * 100).toFixed(0)}%)`}
+                      </td>
+                      <td className="px-4 py-3 text-center">{getEncryptionBadge(b.isEncrypted, b.isCompressed)}</td>
+                      <td className="px-4 py-3 text-center">{getStorageBadge(b.storageLocation, b.isProtected, b.deletedAt)}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 text-xs font-semibold rounded border ${STATUS_STYLE[b.status] ?? "bg-slate-800 text-slate-400 border-slate-700"}`}>
                           {b.status}
@@ -232,6 +292,39 @@ export default function BackupPage() {
               <button onClick={() => setDetail(null)} className="text-slate-400 hover:text-white text-xl leading-none">✕</button>
             </div>
             <div className="flex-1 overflow-auto p-4 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>
+                  <p className="text-slate-500">Status Enkripsi</p>
+                  <p className="font-medium">
+                    {detail.backup.isEncrypted && detail.backup.isCompressed ? '🔐 Encrypted + 🗜️ Compressed' :
+                     detail.backup.isEncrypted ? '🔐 Encrypted' :
+                     detail.backup.isCompressed ? '🗜️ Compressed' : '📄 Plain'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Storage</p>
+                  <p className="font-medium">
+                    {detail.backup.storageLocation === 'filesystem' ? '📁 Archived (Filesystem)' : '💾 Hot (Database)'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Ukuran Original</p>
+                  <p className="font-medium">{formatBytes(detail.backup.sizeBytes)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Ukuran Tersimpan</p>
+                  <p className="font-medium">{formatBytes(detail.backup.compressedBytes)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Durasi Backup</p>
+                  <p className="font-medium">{detail.backup.durationMs ? `${detail.backup.durationMs}ms` : '-'}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">SSH Connect</p>
+                  <p className="font-medium">{detail.backup.sshConnectMs ? `${detail.backup.sshConnectMs}ms` : '-'}</p>
+                </div>
+              </div>
+              <hr className="border-slate-800" />
               {detail.diff ? (
                 <div>
                   <p className="text-xs font-semibold text-slate-400 uppercase mb-2">

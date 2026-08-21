@@ -10,7 +10,9 @@ export type AuditAction =
   | 'RESOLVE'
   | 'EXPORT'
   | 'EXECUTE'
-  | 'BACKUP';
+  | 'BACKUP'
+  | 'BACKUP_VIEW'
+  | 'BACKUP_RESTORE';
 
 export type AuditEntity =
   | 'User'

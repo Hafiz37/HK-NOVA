@@ -19,6 +19,7 @@
     "worker:snmp": "tsx watch src/workers/snmp-poller.ts",
     "worker:retention": "tsx watch src/workers/retention-worker.ts",
     "worker:backup": "tsx watch src/workers/backup-worker.ts",
+    "worker:backup-retention": "tsx watch src/workers/backup-retention-worker.ts",
     "worker:anomaly": "tsx watch src/workers/anomaly-detector.ts",
     "worker:escalator": "tsx watch src/workers/alert-escalator.ts",
     "worker:digest": "tsx watch src/workers/digest-worker.ts",
