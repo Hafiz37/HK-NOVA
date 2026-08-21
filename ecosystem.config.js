@@ -61,6 +61,9 @@ module.exports = {
     app('hk-nova-backup-archive-worker', 'tsx', 'src/workers/backup-archive-worker.ts', {
       env: { NODE_ENV: 'production' },
     }),
+    app('hk-nova-backup-notification-worker', 'tsx', 'src/workers/backup-notification-worker.ts', {
+      env: { NODE_ENV: 'production' },
+    }),
     app('hk-nova-anomaly-worker', 'tsx', 'src/workers/anomaly-detector.ts', {
       env: { NODE_ENV: 'production' },
     }),

@@ -64,6 +64,25 @@ interface BackupHealth {
   recommendations: string[];
 }
 
+interface SearchResult {
+  backupId: string;
+  deviceId: string;
+  deviceName: string;
+  deviceIp: string;
+  deviceType: string;
+  vendor: string | null;
+  timestamp: string;
+  matches: { lineNumber: number; line: string; contextBefore: string[]; contextAfter: string[] }[];
+  storageLocation: string;
+}
+
+interface SearchStats {
+  totalBackupsSearched: number;
+  totalMatches: number;
+  devicesWithMatches: number;
+  searchTimeMs: number;
+}
+
 function formatBytes(bytes: number | null): string {
   if (!bytes) return '-';
   if (bytes < 1024) return `${bytes} B`;
@@ -134,6 +153,15 @@ export default function BackupPage() {
   const [health, setHealth] = useState<BackupHealth | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchStats, setSearchStats] = useState<SearchStats | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchMode, setSearchMode] = useState(false);
+  const [searchUseRegex, setSearchUseRegex] = useState(false);
+  const [searchLatestOnly, setSearchLatestOnly] = useState(false);
+
   const showToast = (ok: boolean, msg: string) => {
     setToast({ ok, msg });
     setTimeout(() => setToast(null), 5000);
@@ -151,6 +179,25 @@ export default function BackupPage() {
       setHealthLoading(false);
     }
   }, []);
+
+  const searchBackups = useCallback(async () => {
+    if (!searchQuery.trim()) return;
+    setSearchLoading(true);
+    try {
+      const params = new URLSearchParams({ q: searchQuery });
+      if (searchUseRegex) params.set('useRegex', 'true');
+      if (searchLatestOnly) params.set('latestOnly', 'true');
+      params.set('limit', '100');
+      const res = await fetch(`/api/backups/search?${params.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        setSearchResults(json.data ?? []);
+        setSearchStats(json.stats ?? null);
+      }
+    } catch { /* silent */ } finally {
+      setSearchLoading(false);
+    }
+  }, [searchQuery, searchUseRegex, searchLatestOnly]);
 
   const fetchBackups = useCallback(async () => {
     setLoading(true);
@@ -241,6 +288,44 @@ export default function BackupPage() {
     }
   };
 
+  const downloadReport = async (format: 'pdf' | 'xlsx') => {
+    if (!deviceId) {
+      showToast(false, "Pilih device terlebih dahulu untuk laporan per device, atau biarkan kosong untuk semua device");
+    }
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30); // Last 30 days
+    const endDate = new Date();
+    
+    setSearchLoading(true); // Reuse loading state
+    try {
+      const params = new URLSearchParams({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        format,
+      });
+      if (deviceId) params.set('deviceIds', deviceId);
+      
+      const res = await fetch(`/api/backups/report?${params.toString()}`);
+      if (!res.ok) throw new Error('Gagal generate laporan');
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup-compliance-report-${startDate.toISOString().split('T')[0]}-to-${endDate.toISOString().split('T')[0]}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      showToast(true, `Laporan ${format.toUpperCase()} berhasil diunduh`);
+    } catch (err) {
+      showToast(false, err instanceof Error ? err.message : 'Gagal mengunduh laporan');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
   const buildExportUrl = (format: "csv" | "xlsx" | "pdf") => {
     const params = new URLSearchParams({ format });
     if (deviceId) params.set("deviceId", deviceId);
@@ -309,6 +394,112 @@ export default function BackupPage() {
         </div>
       )}
 
+      {/* Search Panel */}
+      <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4">
+        <div className="flex flex-col sm:flex-row gap-4 mb-4">
+          <div className="flex-1 flex gap-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && searchBackups()}
+              placeholder="Cari konfigurasi... (contoh: vlan 100, interface GigabitEthernet, snmp-server community)"
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            />
+            <button
+              onClick={searchBackups}
+              disabled={searchLoading || !searchQuery.trim()}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              {searchLoading ? '🔍 Mencari...' : '🔍 Cari'}
+            </button>
+            <button
+              onClick={() => { setSearchMode(!searchMode); setSearchQuery(''); setSearchResults([]); }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${searchMode
+                ? 'bg-slate-700 text-amber-400'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`}
+            >
+              {searchMode ? '✕ Tutup Pencarian' : '🔍 Pencarian Lanjutan'}
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={searchUseRegex}
+                onChange={(e) => setSearchUseRegex(e.target.checked)}
+                className="rounded border-slate-600 text-blue-600 focus:ring-blue-500"
+              />
+              Regex
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={searchLatestOnly}
+                onChange={(e) => setSearchLatestOnly(e.target.checked)}
+                className="rounded border-slate-600 text-blue-600 focus:ring-blue-500"
+              />
+              Hanya Backup Terbaru
+            </label>
+          </div>
+        </div>
+
+        {searchMode && searchResults.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-400">
+                {searchStats?.totalMatches ?? 0} kecocokan di {searchStats?.devicesWithMatches ?? 0} device
+                ({searchStats?.searchTimeMs ?? 0}ms)
+              </span>
+              <span className="text-xs text-slate-500">
+                {searchLatestOnly ? 'Backup terbaru per device' : 'Semua backup'}
+              </span>
+            </div>
+            <div className="overflow-x-auto max-h-96">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-800/50 border-b border-slate-800 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <tr>
+                    <th className="px-4 py-2">Device</th>
+                    <th className="px-4 py-2">IP</th>
+                    <th className="px-4 py-2">Waktu</th>
+                    <th className="px-4 py-2">Kecocokan</th>
+                    <th className="px-4 py-2">Storage</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {searchResults.slice(0, 20).map((r) => (
+                    <tr key={r.backupId} className="hover:bg-slate-800/30 transition-colors cursor-pointer" onClick={() => openDetail(r.backupId)}>
+                      <td className="px-4 py-2 font-medium text-white">{r.deviceName}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-slate-400">{r.deviceIp}</td>
+                      <td className="px-4 py-2 text-slate-300 whitespace-nowrap">{new Date(r.timestamp).toLocaleString("id-ID")}</td>
+                      <td className="px-4 py-2">
+                        <div className="max-h-32 overflow-y-auto text-[11px] font-mono">
+                          {r.matches.slice(0, 5).map((m, i) => (
+                            <div key={i} className="text-amber-300">
+                              L{m.lineNumber}: {m.line.substring(0, 100)}
+                            </div>
+                          ))}
+                          {r.matches.length > 5 && (
+                            <div className="text-slate-500">... +{r.matches.length - 5} lebih</div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {r.storageLocation === 'filesystem' ? (
+                          <span className="px-2 py-0.5 text-xs font-semibold rounded border bg-blue-500/10 text-blue-400 border-blue-500/20">📁 Archived</span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-xs font-semibold rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">💾 Hot</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Health Dashboard */}
       <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -324,12 +515,30 @@ export default function BackupPage() {
               <p className="text-xs text-slate-400">Score (0-100)</p>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-sm text-slate-400">
-            <span>📊 Coverage: {health?.metrics.deviceCoverage ?? '—'}%</span>
-            <span>✅ Success: {health?.metrics.successRate ?? '—'}%</span>
-            <span>⚡ Avg: {health?.metrics.avgDuration ? `${(health.metrics.avgDuration / 1000).toFixed(1)}s` : '—'}</span>
-            <span>🗜️ Efficiency: {health?.metrics.storageEfficiency ?? '—'}%</span>
-            <span>🔴 Critical: {health?.metrics.criticalChangesRate ?? '—'}%</span>
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            <div className="flex items-center gap-4 text-sm text-slate-400">
+              <span>📊 Coverage: {health?.metrics.deviceCoverage ?? '—'}%</span>
+              <span>✅ Success: {health?.metrics.successRate ?? '—'}%</span>
+              <span>⚡ Avg: {health?.metrics.avgDuration ? `${(health.metrics.avgDuration / 1000).toFixed(1)}s` : '—'}</span>
+              <span>🗜️ Efficiency: {health?.metrics.storageEfficiency ?? '—'}%</span>
+              <span>🔴 Critical: {health?.metrics.criticalChangesRate ?? '—'}%</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => downloadReport('pdf')}
+                disabled={searchLoading}
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+              >
+                📄 PDF Report
+              </button>
+              <button
+                onClick={() => downloadReport('xlsx')}
+                disabled={searchLoading}
+                className="px-3 py-1.5 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+              >
+                📊 Excel Report
+              </button>
+            </div>
           </div>
         </div>
         {(health?.issues?.length ?? 0) > 0 && (
