@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/auth';
 import { diffTexts, diffStats } from '@/lib/diff';
 import { getBackupContent } from '@/lib/backup-storage';
 import { logAudit, getClientIp } from '@/lib/audit';
+import { analyzeConfigChanges } from '@/lib/backup-analysis';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -14,6 +15,7 @@ interface Params {
  * Returns one backup snapshot, its full config content, and a diff vs the
  * previous snapshot of the same device (when available).
  * Supports tiered storage (database + filesystem).
+ * Includes intelligent change analysis with severity classification.
  */
 export async function GET(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const auth = await requireSession();
@@ -76,6 +78,16 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
 
     const diff = previous ? diffTexts(prevContent, configContent) : null;
 
+    // Analyze changes for critical/high severity items
+    let changeAnalysis = null;
+    if (diff) {
+      const analysis = analyzeConfigChanges(diff);
+      changeAnalysis = {
+        summary: analysis.summary,
+        criticalChanges: analysis.changes.filter(c => c.severity === 'CRITICAL' || c.severity === 'HIGH'),
+      };
+    }
+
     return NextResponse.json({
       data: {
         id: backup.id,
@@ -94,6 +106,9 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
         storageLocation: backup.storageLocation,
         filePath: backup.filePath,
         archivedAt: backup.archivedAt,
+        changesSummary: backup.changesSummary,
+        criticalChanges: backup.criticalChanges,
+        riskScore: backup.riskScore,
         device: backup.device,
       },
       previous: previous ?? null,
@@ -102,6 +117,7 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
           ? {
               lines: diff,
               stats: diffStats(diff),
+              analysis: changeAnalysis,
             }
           : null,
     });

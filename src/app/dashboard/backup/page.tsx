@@ -39,12 +39,29 @@ interface BackupDetail {
   sshConnectMs: number | null;
   storageLocation: string;
   archivedAt: string | null;
+  riskScore: number | null;
+  changesSummary: { critical: number; high: number; medium: number; low: number; totalChanges: number; riskScore: number } | null;
+  criticalChanges: { severity: string; section: string; preview: string; patterns: string[] }[] | null;
   device: { id: string; name: string; ip: string; type: string; vendor: string | null };
 }
 
 interface DiffLine {
   kind: "same" | "add" | "del";
   text: string;
+}
+
+interface BackupHealth {
+  score: number;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  issues: string[];
+  metrics: {
+    deviceCoverage: number;
+    successRate: number;
+    avgDuration: number;
+    storageEfficiency: number;
+    criticalChangesRate: number;
+  };
+  recommendations: string[];
 }
 
 function formatBytes(bytes: number | null): string {
@@ -59,6 +76,48 @@ const STATUS_STYLE: Record<string, string> = {
   FAILED: "bg-rose-500/10 text-rose-400 border-rose-500/20",
 };
 
+function getGradeColor(grade: string): string {
+  switch (grade) {
+    case 'A': return 'text-emerald-400';
+    case 'B': return 'text-blue-400';
+    case 'C': return 'text-amber-400';
+    case 'D': return 'text-orange-400';
+    case 'F': return 'text-rose-400';
+    default: return 'text-slate-400';
+  }
+}
+
+function getGradeBg(grade: string): string {
+  switch (grade) {
+    case 'A': return 'bg-emerald-500/10 border-emerald-500/20';
+    case 'B': return 'bg-blue-500/10 border-blue-500/20';
+    case 'C': return 'bg-amber-500/10 border-amber-500/20';
+    case 'D': return 'bg-orange-500/10 border-orange-500/20';
+    case 'F': return 'bg-rose-500/10 border-rose-500/20';
+    default: return 'bg-slate-500/10 border-slate-500/20';
+  }
+}
+
+function getSeverityBadge(severity: string): string {
+  switch (severity) {
+    case 'CRITICAL': return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+    case 'HIGH': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+    case 'MEDIUM': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+    case 'LOW': return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
+    default: return 'bg-slate-800 text-slate-400 border-slate-700';
+  }
+}
+
+function getSeverityIcon(severity: string): string {
+  switch (severity) {
+    case 'CRITICAL': return '🔴';
+    case 'HIGH': return '🟠';
+    case 'MEDIUM': return '🔵';
+    case 'LOW': return '⚪';
+    default: return '⚪';
+  }
+}
+
 export default function BackupPage() {
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [devices, setDevices] = useState<{ id: string; name: string; ip: string }[]>([]);
@@ -70,12 +129,28 @@ export default function BackupPage() {
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<{ backup: BackupDetail; diff: DiffLine[] | null } | null>(null);
   const [triggering, setTriggering] = useState(false);
+  const [restoring, setRestoring] = useState<string | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [health, setHealth] = useState<BackupHealth | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
 
   const showToast = (ok: boolean, msg: string) => {
     setToast({ ok, msg });
     setTimeout(() => setToast(null), 5000);
   };
+
+  const fetchHealth = useCallback(async () => {
+    setHealthLoading(true);
+    try {
+      const res = await fetch(`/api/backups/health`);
+      if (res.ok) {
+        const json = await res.json();
+        setHealth(json.data);
+      }
+    } catch { /* silent */ } finally {
+      setHealthLoading(false);
+    }
+  }, []);
 
   const fetchBackups = useCallback(async () => {
     setLoading(true);
@@ -97,7 +172,8 @@ export default function BackupPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchBackups();
-  }, [fetchBackups]);
+    void fetchHealth();
+  }, [fetchBackups, fetchHealth]);
 
   useEffect(() => {
     let active = true;
@@ -139,6 +215,29 @@ export default function BackupPage() {
       showToast(false, err instanceof Error ? err.message : "Backup gagal");
     } finally {
       setTriggering(false);
+    }
+  };
+
+  const restoreBackup = async (backupId: string, dryRun: boolean = false) => {
+    if (!deviceId) {
+      showToast(false, "Pilih device terlebih dahulu");
+      return;
+    }
+    setRestoring(backupId);
+    try {
+      const res = await fetch(`/api/devices/${deviceId}/restore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backupId, dryRun }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? "Restore gagal");
+      showToast(true, dryRun ? json.message ?? "Dry-run selesai" : json.message ?? "Restore selesai");
+      if (!dryRun) await fetchBackups();
+    } catch (err) {
+      showToast(false, err instanceof Error ? err.message : "Restore gagal");
+    } finally {
+      setRestoring(null);
     }
   };
 
@@ -209,6 +308,54 @@ export default function BackupPage() {
           {toast.msg}
         </div>
       )}
+
+      {/* Health Dashboard */}
+      <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className={`px-4 py-3 rounded-xl border ${getGradeBg(health?.grade ?? 'F')}`}>
+              <span className={`text-3xl font-bold ${getGradeColor(health?.grade ?? 'F')}`}>
+                {health ? health.grade : '—'}
+              </span>
+              <span className="ml-2 text-sm text-slate-400">Backup Health</span>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-white">{health?.score ?? '—'}</p>
+              <p className="text-xs text-slate-400">Score (0-100)</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-sm text-slate-400">
+            <span>📊 Coverage: {health?.metrics.deviceCoverage ?? '—'}%</span>
+            <span>✅ Success: {health?.metrics.successRate ?? '—'}%</span>
+            <span>⚡ Avg: {health?.metrics.avgDuration ? `${(health.metrics.avgDuration / 1000).toFixed(1)}s` : '—'}</span>
+            <span>🗜️ Efficiency: {health?.metrics.storageEfficiency ?? '—'}%</span>
+            <span>🔴 Critical: {health?.metrics.criticalChangesRate ?? '—'}%</span>
+          </div>
+        </div>
+        {(health?.issues?.length ?? 0) > 0 && (
+          <div className="mt-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+            <p className="text-xs font-semibold text-rose-400 mb-2">⚠️ Issues Detected:</p>
+            <ul className="text-xs text-rose-300 space-y-1">
+              {health?.issues.map((issue, i) => (
+                <li key={i} className="flex items-center gap-2">• {issue}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {(health?.recommendations?.length ?? 0) > 0 && (
+          <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+            <p className="text-xs font-semibold text-amber-400 mb-2">💡 Recommendations:</p>
+            <ul className="text-xs text-amber-300 space-y-1">
+              {health?.recommendations.map((rec, i) => (
+                <li key={i} className="flex items-center gap-2">• {rec}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {healthLoading && (
+          <div className="mt-4 text-center text-slate-500 text-sm">Loading health metrics...</div>
+        )}
+      </div>
 
       {/* Table */}
       <div className="bg-slate-900 border border-slate-800/80 rounded-xl overflow-hidden">
@@ -332,6 +479,58 @@ export default function BackupPage() {
                 )}
               </div>
               <hr className="border-slate-800" />
+              
+              {/* Critical Changes Summary */}
+              {(detail.backup.criticalChanges?.length ?? 0) > 0 && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+                  <p className="text-xs font-semibold text-rose-400 mb-2 flex items-center gap-2">
+                    🔴 {(detail.backup.criticalChanges?.length ?? 0)} Perubahan Kritis/Tinggi Terdeteksi
+                  </p>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {detail.backup.criticalChanges?.map((change, i) => (
+                      <div key={i} className={`px-2 py-1 text-[10px] rounded ${getSeverityBadge(change.severity)}`}>
+                        <span className="flex items-center gap-2">
+                          <span>{getSeverityIcon(change.severity)}</span>
+                          <span className="font-medium">{change.severity}</span>
+                          <span className="text-slate-400">|</span>
+                          <span>{change.section}</span>
+                          <span className="text-slate-400">|</span>
+                          <span>{change.preview}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Risk Score */}
+              {detail.backup.changesSummary && (
+                <div className="grid grid-cols-5 gap-2 text-xs">
+                  <div className="px-2 py-1 bg-rose-500/10 text-rose-400 rounded text-center">
+                    <p className="font-bold">{detail.backup.changesSummary.critical}</p>
+                    <p className="text-slate-400">Critical</p>
+                  </div>
+                  <div className="px-2 py-1 bg-amber-500/10 text-amber-400 rounded text-center">
+                    <p className="font-bold">{detail.backup.changesSummary.high}</p>
+                    <p className="text-slate-400">High</p>
+                  </div>
+                  <div className="px-2 py-1 bg-blue-500/10 text-blue-400 rounded text-center">
+                    <p className="font-bold">{detail.backup.changesSummary.medium}</p>
+                    <p className="text-slate-400">Medium</p>
+                  </div>
+                  <div className="px-2 py-1 bg-slate-500/10 text-slate-400 rounded text-center">
+                    <p className="font-bold">{detail.backup.changesSummary.low}</p>
+                    <p className="text-slate-400">Low</p>
+                  </div>
+                  <div className="px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded text-center">
+                    <p className="font-bold">{detail.backup.riskScore ?? 0}</p>
+                    <p className="text-slate-400">Risk Score</p>
+                  </div>
+                </div>
+              )}
+
+              <hr className="border-slate-800" />
+              
               {detail.diff ? (
                 <div>
                   <p className="text-xs font-semibold text-slate-400 uppercase mb-2">
@@ -360,6 +559,20 @@ export default function BackupPage() {
               )}
             </div>
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-800">
+              <button
+                onClick={() => restoreBackup(detail.backup.id, true)}
+                disabled={restoring === detail.backup.id}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors"
+              >
+                {restoring === detail.backup.id ? "⏳ Dry-run…" : "🔍 Dry-run Restore"}
+              </button>
+              <button
+                onClick={() => restoreBackup(detail.backup.id, false)}
+                disabled={restoring === detail.backup.id}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors"
+              >
+                {restoring === detail.backup.id ? "⏳ Restoring…" : "🔄 Restore Config"}
+              </button>
               <button onClick={() => setDetail(null)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium rounded-xl transition-colors">Tutup</button>
             </div>
           </div>

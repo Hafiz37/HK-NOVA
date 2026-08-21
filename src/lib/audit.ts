@@ -12,7 +12,8 @@ export type AuditAction =
   | 'EXECUTE'
   | 'BACKUP'
   | 'BACKUP_VIEW'
-  | 'BACKUP_RESTORE';
+  | 'BACKUP_RESTORE'
+  | 'BACKUP_RESTORE_PREVIEW';
 
 export type AuditEntity =
   | 'User'
@@ -24,7 +25,8 @@ export type AuditEntity =
   | 'Metric'
   | 'AuditLog'
   | 'Backup'
-  | 'ProvisioningLog';
+  | 'ProvisioningLog'
+  | 'BackupRestore';
 
 export interface AuditDetails {
   before?: Record<string, unknown>;
