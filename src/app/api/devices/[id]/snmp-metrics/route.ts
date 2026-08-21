@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/auth';
 import { getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { parsePositiveNumberParam } from '@/lib/utils';
+import { lttb } from '@/lib/downsample';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -164,6 +165,18 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
       }
     }
 
+    const downsampleLimit = parsePositiveNumberParam(searchParams.get('limit'), 300, 50, 1000);
+
+    const sampledMetrics =
+      metrics.length > downsampleLimit
+        ? lttb(
+            metrics,
+            downsampleLimit,
+            (m) => new Date(m.timestamp).getTime(),
+            (m) => m.cpuUtil ?? m.memUtil
+          )
+        : metrics;
+
     return NextResponse.json({
       device: {
         id: device.id,
@@ -174,8 +187,8 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
         snmpVersion: device.credentials?.snmpVersion ?? null,
       },
       period: { hours, since: since.toISOString() },
-      summary,
-      data: metrics,
+      summary: { ...summary, returnedPoints: sampledMetrics.length },
+      data: sampledMetrics,
       ...(includeBandwidth ? { bandwidthTimeSeries } : {}),
     });
   } catch (error) {

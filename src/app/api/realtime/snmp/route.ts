@@ -40,6 +40,32 @@ export async function GET(request: Request): Promise<Response> {
         }
       };
 
+      // Fetch active alerts for SNMP devices
+      const fetchAlerts = async () => {
+        if (closed) return;
+        try {
+          const alerts = await prisma.alert.findMany({
+            where: {
+              status: 'ACTIVE',
+              type: { in: ['HIGH_CPU', 'HIGH_MEMORY', 'HIGH_UTILIZATION', 'INTERFACE_DOWN', 'INTERFACE_ERRORS'] },
+            },
+            select: {
+              id: true,
+              type: true,
+              severity: true,
+              message: true,
+              createdAt: true,
+              device: { select: { id: true, name: true, ip: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+          });
+          return alerts;
+        } catch {
+          return [];
+        }
+      };
+
       // Fetch and stream SNMP summary
       const fetchAndSend = async () => {
         if (closed) return;
@@ -133,6 +159,8 @@ export async function GET(request: Request): Promise<Response> {
             return count;
           };
 
+          const alerts = await fetchAlerts();
+
           send('snmp-update', {
             worker: { active: isActive, lastHeartbeat: latestSnmpRecord?.timestamp ?? null },
             aggregate: {
@@ -144,6 +172,7 @@ export async function GET(request: Request): Promise<Response> {
               highUtilAlerts,
             },
             devices,
+            alerts,
             updatedAt: new Date().toISOString(),
           });
         } catch (err) {

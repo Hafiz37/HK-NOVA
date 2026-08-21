@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
 import { getPollingIntervalMs, intervalToLabel, DEFAULT_POLL_INTERVAL_MS } from '@/lib/polling-config';
+import { getQueueStatus } from '@/lib/redis-queue';
 
 export const dynamic = 'force-dynamic';
 
@@ -131,7 +132,18 @@ export async function GET(): Promise<NextResponse> {
     const icmpHealth = computeCycleHealth(windowStart, now, intervalMs, ICMP_BUCKET_MS, icmpTsMs);
     const snmpHealth = computeCycleHealth(windowStart, now, intervalMs, SNMP_BUCKET_MS, snmpTsMs);
 
-    // ── Backup Worker ─────────────────────────────────────────────────────────
+    const [icmpQueue, snmpQueue] = await Promise.all([
+      getQueueStatus('icmp').catch(() => ({ backend: 'memory' as const, connected: false, queueLength: 0, workerType: 'icmp' as const })),
+      getQueueStatus('snmp').catch(() => ({ backend: 'memory' as const, connected: false, queueLength: 0, workerType: 'snmp' as const })),
+    ]);
+    const calcHealthScore = (health: typeof icmpHealth, isActive: boolean) => {
+      if (!isActive) return 0;
+      if (health.expectedCycles === 0) return 100;
+      const cycleRatio = Math.min(1, health.actualCycles / health.expectedCycles);
+      const lagPenalty = Math.min(50, (health.lagSeconds ?? 0) * 2);
+      return Math.max(0, Math.round(cycleRatio * 100 - lagPenalty));
+    };
+
     const latestBackup = await prisma.backup.findFirst({
       orderBy: { timestamp: 'desc' },
       select: { timestamp: true },
@@ -166,6 +178,9 @@ export async function GET(): Promise<NextResponse> {
           avgCycleDurationMs:  icmpHealth.avgCycleDurationMs,
           lastCycleDurationMs: icmpHealth.lastCycleDurationMs,
           lagSeconds:          icmpHealth.lagSeconds,
+          healthScore:         calcHealthScore(icmpHealth, isIcmpActive),
+          queueDepth:          icmpQueue.queueLength,
+          queueBackend:        icmpQueue.backend,
         },
         detail: isIcmpActive
           ? `Active — polling device reachability (last: ${Math.round((now - lastIcmpMs) / 1000)}s ago)`
@@ -191,6 +206,9 @@ export async function GET(): Promise<NextResponse> {
           avgCycleDurationMs:  snmpHealth.avgCycleDurationMs,
           lastCycleDurationMs: snmpHealth.lastCycleDurationMs,
           lagSeconds:          snmpHealth.lagSeconds,
+          healthScore:         calcHealthScore(snmpHealth, isSnmpActive),
+          queueDepth:          snmpQueue.queueLength,
+          queueBackend:        snmpQueue.backend,
         },
         detail: isSnmpActive
           ? `Active — polling CPU/memory/interfaces (last: ${Math.round((now - lastSnmpMs) / 1000)}s ago)`

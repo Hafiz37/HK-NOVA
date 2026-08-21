@@ -32,6 +32,18 @@ interface SnmpSummary {
     highUtilAlerts: number;
   };
   devices: DeviceSnmp[];
+  alerts?: Alert[];
+  updatedAt: string;
+}
+
+interface Alert {
+  id: string;
+  type: string;
+  severity: string;
+  message: string;
+  status: string;
+  createdAt: string;
+  device: { id: string; name: string; ip: string } | null;
 }
 
 interface MetricPoint {
@@ -177,13 +189,16 @@ export default function SnmpMonitoringPage() {
   const [lastRefresh, setLastRefresh]     = useState('');
   const [selectedInterface, setSelectedInterface] = useState<number | null>(null);
   const [bandwidthSeries, setBandwidthSeries] = useState<BandwidthTimeSeries[]>([]);
+  const [alerts, setAlerts]               = useState<Alert[]>([]);
 
   // Baseline historis (24 jam) untuk metrik SNMP
   const { data: baselineCpu } = useBaseline(selectedDevice || null, 'cpu', timeRange);
   const { data: baselineMem } = useBaseline(selectedDevice || null, 'mem', timeRange);
 
   const handleSnmpUpdate = useCallback((data: unknown) => {
-    setSummary(data as SnmpSummary);
+    const d = data as SnmpSummary;
+    setSummary(d);
+    if (d.alerts) setAlerts(d.alerts);
     setLastRefresh(new Date().toLocaleTimeString('id-ID'));
     setLoading(false);
   }, []);
@@ -214,9 +229,22 @@ export default function SnmpMonitoringPage() {
   // ── Chart data ────────────────────────────────────────────────────────────────
   const chartData = metrics.map((m) => ({
     time:    fmtTime(m.timestamp),
+    timestamp: m.timestamp,
     cpu:     m.cpuUtil  !== null ? Number(m.cpuUtil.toFixed(1))  : null,
     memory:  m.memUtil  !== null ? Number(m.memUtil.toFixed(1))  : null,
   }));
+
+  // ── Alert overlay for SNMP ─────────────────────────────────────────────────
+  const alertOverlays = alerts
+    .filter((a) => a.device?.id === selectedDevice && a.status === 'ACTIVE')
+    .map((a) => ({
+      time: fmtTime(a.createdAt),
+      timestamp: a.createdAt,
+      type: a.type,
+      severity: a.severity,
+      message: a.message,
+      id: a.id,
+    }));
 
   // Latest interface data for selected device
   const latestMetric = metrics[metrics.length - 1];
@@ -429,6 +457,23 @@ export default function SnmpMonitoringPage() {
                     />
                   </>
                 )}
+                {/* Alert timeline overlays */}
+                {alertOverlays.map((alert) => (
+                  <ReferenceLine
+                    key={alert.id + '-cpu'}
+                    x={alert.timestamp}
+                    stroke={alert.severity === 'CRITICAL' ? '#ef4444' : alert.severity === 'HIGH' ? '#f97316' : '#eab308'}
+                    strokeDasharray="4 4"
+                    strokeWidth={1.5}
+                    label={{
+                      value: `⚠ ${alert.type}`,
+                      fill: alert.severity === 'CRITICAL' ? '#ef4444' : alert.severity === 'HIGH' ? '#f97316' : '#eab308',
+                      fontSize: 9,
+                      position: 'insideTop',
+                      offset: -5,
+                    }}
+                  />
+                ))}
                 <Area type="monotone" dataKey="cpu" stroke="#06b6d4" strokeWidth={2}
                   fill="url(#cpuGrad)" dot={false} connectNulls={false} />
               </AreaChart>
@@ -486,6 +531,23 @@ export default function SnmpMonitoringPage() {
                     />
                   </>
                 )}
+                {/* Alert timeline overlays */}
+                {alertOverlays.map((alert) => (
+                  <ReferenceLine
+                    key={alert.id + '-mem'}
+                    x={alert.timestamp}
+                    stroke={alert.severity === 'CRITICAL' ? '#ef4444' : alert.severity === 'HIGH' ? '#f97316' : '#eab308'}
+                    strokeDasharray="4 4"
+                    strokeWidth={1.5}
+                    label={{
+                      value: `⚠ ${alert.type}`,
+                      fill: alert.severity === 'CRITICAL' ? '#ef4444' : alert.severity === 'HIGH' ? '#f97316' : '#eab308',
+                      fontSize: 9,
+                      position: 'insideTop',
+                      offset: -5,
+                    }}
+                  />
+                ))}
                 <Area type="monotone" dataKey="memory" stroke="#a855f7" strokeWidth={2}
                   fill="url(#memGrad)" dot={false} connectNulls={false} />
               </AreaChart>
@@ -560,6 +622,23 @@ export default function SnmpMonitoringPage() {
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12, color: '#94a3b8' }} />
+                  {/* Alert timeline overlays */}
+                  {alertOverlays.map((alert) => (
+                    <ReferenceLine
+                      key={alert.id + '-bw'}
+                      x={alert.timestamp}
+                      stroke={alert.severity === 'CRITICAL' ? '#ef4444' : alert.severity === 'HIGH' ? '#f97316' : '#eab308'}
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                      label={{
+                        value: `⚠ ${alert.type}`,
+                        fill: alert.severity === 'CRITICAL' ? '#ef4444' : alert.severity === 'HIGH' ? '#f97316' : '#eab308',
+                        fontSize: 9,
+                        position: 'insideTop',
+                        offset: -5,
+                      }}
+                    />
+                  ))}
                   <Line
                     type="monotone"
                     dataKey="in"

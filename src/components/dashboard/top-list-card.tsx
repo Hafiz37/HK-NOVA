@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-
 export interface TopItem {
   deviceId: string;
   name: string;
@@ -20,6 +18,7 @@ interface TopListCardProps {
   items: TopItem[];
   loading: boolean;
   formatValue?: (v: number) => string;
+  onSelectDevice?: (deviceId: string) => void;
 }
 
 const ACCENT = {
@@ -65,6 +64,7 @@ export default function TopListCard({
   items,
   loading,
   formatValue,
+  onSelectDevice,
 }: TopListCardProps) {
   const a = ACCENT[accent];
   const maxValue = items.reduce((m, it) => Math.max(m, it.value), 0);
@@ -102,10 +102,15 @@ export default function TopListCard({
           {items.map((item, idx) => {
             const pct = maxValue > 0 ? Math.round((item.value / maxValue) * 100) : 0;
             return (
-              <Link
+              <button
                 key={item.deviceId}
-                href="/dashboard/monitoring"
-                className="block group"
+                type="button"
+                onClick={() => {
+                  if (onSelectDevice) {
+                    onSelectDevice(item.deviceId);
+                  }
+                }}
+                className="w-full text-left block group focus:outline-none"
               >
                 <div className="flex items-center gap-3">
                   <span
@@ -131,7 +136,7 @@ export default function TopListCard({
                     </div>
                   </div>
                 </div>
-              </Link>
+              </button>
             );
           })}
         </div>

@@ -1,5 +1,3 @@
-import { Server, Bell, Zap, Activity, BarChart3, Database, Bot, RefreshCw, Settings, Users, FileText, Search, HardDrive, AlertTriangle, TrendingUp } from "lucide-react";
-
 interface LoadingSkeletonProps {
   type?: "card" | "table" | "circle" | "text";
   rows?: number;

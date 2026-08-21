@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/auth';
 import { getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { parsePositiveNumberParam } from '@/lib/utils';
+import { lttb } from '@/lib/downsample';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -72,12 +73,25 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
         ? packetLossRows.reduce((sum, m) => sum + (m.packetLoss ?? 0), 0) / packetLossRows.length
         : null;
 
+    const downsampleLimit = parsePositiveNumberParam(searchParams.get('limit'), 300, 50, 1000);
+
+    // Apply LTTB downsampling for performance when points > limit
+    const sampledMetrics =
+      metrics.length > downsampleLimit
+        ? lttb(
+            metrics,
+            downsampleLimit,
+            (m) => new Date(m.timestamp).getTime(),
+            (m) => m.latency ?? m.packetLoss
+          )
+        : metrics;
+
     return NextResponse.json({
       device: { id: device.id, name: device.name, ip: device.ip, status: device.status },
       metricType,
       period: { hours, since: since.toISOString() },
-      summary: { avgLatency, maxLatency, minLatency, avgPacketLoss, dataPoints: metrics.length },
-      data: metrics,
+      summary: { avgLatency, maxLatency, minLatency, avgPacketLoss, dataPoints: metrics.length, returnedPoints: sampledMetrics.length },
+      data: sampledMetrics,
     });
   } catch (error) {
     console.error('[API /api/devices/[id]/metrics] Error:', error);

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import TopListCard, { type TopItem } from "@/components/dashboard/top-list-card";
+import DeviceDrawer from "@/components/dashboard/device-drawer";
 import { Server, Bell, Zap, Activity, BarChart3, Database, Bot, RefreshCw, Settings, Users, FileText, Search, HardDrive, AlertTriangle, TrendingUp } from "lucide-react";
 
 interface WorkerHealth {
@@ -13,6 +14,9 @@ interface WorkerHealth {
   avgCycleDurationMs: number | null;
   lastCycleDurationMs: number | null;
   lagSeconds: number | null;
+  healthScore?: number;
+  queueDepth?: number;
+  queueBackend?: string;
 }
 
 interface WorkerStatus {
@@ -61,6 +65,7 @@ export default function DashboardPage() {
   const [loadingWorkers, setLoadingWorkers] = useState(true);
   const [loadingTop, setLoadingTop] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
 
   const fetchSummary = async () => {
     try {
@@ -135,7 +140,8 @@ export default function DashboardPage() {
       : 0;
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
         <div>
@@ -381,6 +387,7 @@ export default function DashboardPage() {
             items={top?.topAlerts ?? []}
             loading={loadingTop}
             formatValue={(v) => `${v} alert`}
+            onSelectDevice={setSelectedDeviceId}
           />
           <TopListCard
             title="Latency Tertinggi"
@@ -390,6 +397,7 @@ export default function DashboardPage() {
             items={top?.topLatency ?? []}
             loading={loadingTop}
             formatValue={(v) => `${Math.round(v)} ms`}
+            onSelectDevice={setSelectedDeviceId}
           />
           <TopListCard
             title="CPU Utilization"
@@ -399,6 +407,7 @@ export default function DashboardPage() {
             items={top?.topCpu ?? []}
             loading={loadingTop}
             formatValue={(v) => `${v.toFixed(1)}%`}
+            onSelectDevice={setSelectedDeviceId}
           />
           <TopListCard
             title="Memory Utilization"
@@ -408,6 +417,7 @@ export default function DashboardPage() {
             items={top?.topMem ?? []}
             loading={loadingTop}
             formatValue={(v) => `${v.toFixed(1)}%`}
+            onSelectDevice={setSelectedDeviceId}
           />
         </div>
       </div>
@@ -613,7 +623,20 @@ export default function DashboardPage() {
                       {worker.detail}
                     </p>
                     {worker.health && isRunning && (
-                      <p className="text-[10px] text-slate-600 mt-1">
+                      <p className="text-[10px] text-slate-600 mt-1 flex flex-wrap gap-2 items-center">
+                        <span
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                            (worker.health.healthScore ?? 0) >= 80
+                              ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                              : (worker.health.healthScore ?? 0) >= 50
+                              ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                              : "bg-rose-500/15 text-rose-400 border-rose-500/30"
+                          }`}
+                        >
+                          {worker.health.healthScore !== undefined
+                            ? `Health: ${worker.health.healthScore}/100`
+                            : `Health: —`}
+                        </span>
                         {worker.health.missedCycles > 0 ? (
                           <span className="text-amber-400">
                             {worker.health.missedCycles} missed
@@ -622,10 +645,20 @@ export default function DashboardPage() {
                           <span className="text-emerald-500/80">on schedule</span>
                         )}
                         {worker.health.lagSeconds != null && worker.health.lagSeconds > 0 && (
-                          <span className="text-amber-400"> · lag {worker.health.lagSeconds}s</span>
+                          <span className="text-amber-400">· lag {worker.health.lagSeconds}s</span>
                         )}
                         {worker.health.avgCycleDurationMs != null && (
-                          <span> · avg {(worker.health.avgCycleDurationMs / 1000).toFixed(1)}s</span>
+                          <span>· avg {(worker.health.avgCycleDurationMs / 1000).toFixed(1)}s</span>
+                        )}
+                        {worker.health.queueDepth != null && worker.health.queueDepth > 0 && (
+                          <span className="text-blue-400">
+                            queue: {worker.health.queueDepth}
+                          </span>
+                        )}
+                        {worker.health.queueBackend && (
+                          <span className="text-[9px] text-slate-500 px-1.5 py-0.5 bg-slate-800 rounded">
+                            {worker.health.queueBackend}
+                          </span>
                         )}
                       </p>
                     )}
@@ -670,5 +703,7 @@ export default function DashboardPage() {
         </p>
       </div>
     </div>
+      <DeviceDrawer deviceId={selectedDeviceId} onClose={() => setSelectedDeviceId(null)} />
+    </>
   );
 }

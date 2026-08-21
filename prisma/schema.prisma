@@ -49,6 +49,10 @@ enum AlertType {
   PROVISIONING_FAILED
   CUSTOM_OID_OUT_OF_RANGE
   RULE_BREACH
+  HIGH_CPU
+  HIGH_MEMORY
+  INTERFACE_DOWN
+  INTERFACE_ERRORS
 }
 
 enum AlertActivityAction {
@@ -226,7 +230,9 @@ model Metric {
 
   @@index([deviceId, timestamp])
   @@index([metricType, timestamp])
+  @@index([deviceId, metricType, timestamp]) // Composite for time-series queries per device & type
   @@index([source])
+  @@index([timestamp]) // For time-range scans
 }
 
 model Backup {
@@ -339,6 +345,7 @@ model Alert {
   escalations  AlertEscalation[]
 
   @@index([status, severity])
+  @@index([status, createdAt])
   @@index([createdAt])
   @@index([dedupKey])
   @@index([correlationKey])

@@ -11,6 +11,7 @@ import {
   AreaChart,
   ReferenceLine,
   ReferenceArea,
+  Brush,
 } from 'recharts';
 import { useRealtimeMonitoring, SSEStatus } from '@/hooks/useSSE';
 import { useBaseline } from '@/hooks/useBaseline';
@@ -51,7 +52,7 @@ interface Alert {
   message: string;
   status: string;
   createdAt: string;
-  device: { name: string; ip: string } | null;
+  device: { id: string; name: string; ip: string } | null;
 }
 
 interface MonitoringUpdate {
@@ -205,9 +206,22 @@ export default function MonitoringPage() {
   // ── Chart data ───────────────────────────────────────────────────────────────
   const chartData = metrics.map((m) => ({
     time: fmtTime(m.timestamp),
+    timestamp: m.timestamp,
     latency: m.latency != null ? Number(m.latency.toFixed(2)) : null,
     packetLoss: m.packetLoss != null ? Number(m.packetLoss.toFixed(1)) : null,
   }));
+
+  // ── Alert overlay data ──────────────────────────────────────────────────────
+  const alertOverlays = alerts
+    .filter((a) => a.device?.id === selectedDevice && a.status === 'ACTIVE')
+    .map((a) => ({
+      time: fmtTime(a.createdAt),
+      timestamp: a.createdAt,
+      type: a.type,
+      severity: a.severity,
+      message: a.message,
+      id: a.id,
+    }));
 
   if (loading) {
     return (
@@ -361,7 +375,25 @@ export default function MonitoringPage() {
                     />
                   </>
                 )}
+                {/* Alert timeline overlays */}
+                {alertOverlays.map((alert) => (
+                  <ReferenceLine
+                    key={alert.id}
+                    x={alert.timestamp}
+                    stroke={alert.severity === 'CRITICAL' ? '#ef4444' : alert.severity === 'HIGH' ? '#f97316' : '#eab308'}
+                    strokeDasharray="4 4"
+                    strokeWidth={1.5}
+                    label={{
+                      value: `⚠ ${alert.type}`,
+                      fill: alert.severity === 'CRITICAL' ? '#ef4444' : alert.severity === 'HIGH' ? '#f97316' : '#eab308',
+                      fontSize: 9,
+                      position: 'insideTop',
+                      offset: -5,
+                    }}
+                  />
+                ))}
                 <Area type="monotone" dataKey="latency" stroke="#3b82f6" strokeWidth={2} fill="url(#latencyGrad)" dot={false} connectNulls={false} />
+                <Brush dataKey="time" height={22} stroke="#3b82f6" fill="#0f172a" tickFormatter={() => ''} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -417,7 +449,25 @@ export default function MonitoringPage() {
                     />
                   </>
                 )}
+                {/* Alert timeline overlays */}
+                {alertOverlays.map((alert) => (
+                  <ReferenceLine
+                    key={alert.id + '-loss'}
+                    x={alert.timestamp}
+                    stroke={alert.severity === 'CRITICAL' ? '#ef4444' : alert.severity === 'HIGH' ? '#f97316' : '#eab308'}
+                    strokeDasharray="4 4"
+                    strokeWidth={1.5}
+                    label={{
+                      value: `⚠ ${alert.type}`,
+                      fill: alert.severity === 'CRITICAL' ? '#ef4444' : alert.severity === 'HIGH' ? '#f97316' : '#eab308',
+                      fontSize: 9,
+                      position: 'insideTop',
+                      offset: -5,
+                    }}
+                  />
+                ))}
                 <Area type="monotone" dataKey="packetLoss" stroke="#ef4444" strokeWidth={2} fill="url(#lossGrad)" dot={false} connectNulls={false} />
+                <Brush dataKey="time" height={22} stroke="#ef4444" fill="#0f172a" tickFormatter={() => ''} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
