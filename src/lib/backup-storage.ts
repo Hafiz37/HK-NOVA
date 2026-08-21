@@ -1,6 +1,13 @@
 import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { gzip, gunzip } from 'zlib';
 import { promisify } from 'util';
+import { promises as fs } from 'fs';
+import path from 'path';
+
+// Turbopack ignore: filesystem access is intentional for server-side backup storage
+const FILESYSTEM_BASE = process.env.BACKUP_FILESYSTEM_PATH || '/var/backups/hk-nova';
+const TIERED_ENABLED = process.env.BACKUP_STORAGE_TIERED === 'true';
+const HOT_DAYS = Number(process.env.BACKUP_HOT_DAYS ?? '30');
 
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
@@ -15,6 +22,15 @@ export interface ProcessedBackup {
   sizeBytes: number;
   compressedBytes: number | null;
   hash: string;
+}
+
+export interface BackupContentSource {
+  id: string;
+  configContent: Buffer | null;
+  storageLocation: string;
+  filePath: string | null;
+  isCompressed: boolean;
+  isEncrypted: boolean;
 }
 
 /**
@@ -94,6 +110,112 @@ export async function retrieveBackupContent(
   }
 
   return data.toString('utf8');
+}
+
+/**
+ * Generate filesystem path for backup
+ * Format: /var/backups/hk-nova/YYYY/MM/device-{deviceId}/backup-{id}.bin
+ */
+export function getBackupFilePath(backup: { id: string; deviceId: string; timestamp: Date | string }): string {
+  const date = backup.timestamp instanceof Date ? backup.timestamp : new Date(backup.timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+
+  return path.join(
+    /* turbopackIgnore: true */ FILESYSTEM_BASE,
+    String(year),
+    month,
+    `device-${backup.deviceId}`,
+    `backup-${backup.id}.bin`
+  );
+}
+
+/**
+ * Save backup content to filesystem
+ */
+export async function saveToFilesystem(
+  backup: { id: string; deviceId: string; timestamp: Date | string },
+  content: Buffer
+): Promise<string> {
+  const filePath = getBackupFilePath(backup);
+  const dir = path.dirname(filePath);
+
+  // Create directory structure
+  await fs.mkdir(dir, { recursive: true });
+
+  // Write file
+  await fs.writeFile(filePath, content);
+
+  // Return relative path (without base)
+  return path.relative(FILESYSTEM_BASE, filePath);
+}
+
+/**
+ * Load backup content from filesystem
+ */
+export async function loadFromFilesystem(relativePath: string): Promise<Buffer> {
+  const fullPath = path.join(/* turbopackIgnore: true */ FILESYSTEM_BASE, relativePath);
+  return await fs.readFile(fullPath);
+}
+
+/**
+ * Archive backup: move from DB to filesystem
+ */
+export async function archiveBackup(
+  backupId: string,
+  prisma: { backup: { findUnique: (args: { where: { id: string }; select: { id: true; deviceId: true; timestamp: true; configContent: true; isCompressed: true; isEncrypted: true } }) => Promise<any>; update: (args: { where: { id: string }; data: { configContent: null; storageLocation: string; filePath: string; archivedAt: Date } }) => Promise<any> } }
+): Promise<void> {
+  const backup = await prisma.backup.findUnique({
+    where: { id: backupId },
+    select: {
+      id: true,
+      deviceId: true,
+      timestamp: true,
+      configContent: true,
+      isCompressed: true,
+      isEncrypted: true,
+    },
+  });
+
+  if (!backup || !backup.configContent) {
+    throw new Error('Backup not found or already archived');
+  }
+
+  // Save to filesystem
+  const relativePath = await saveToFilesystem(backup, backup.configContent as unknown as Buffer);
+
+  // Update DB: clear content, set filePath
+  await prisma.backup.update({
+    where: { id: backupId },
+    data: {
+      configContent: null,
+      storageLocation: 'filesystem',
+      filePath: relativePath,
+      archivedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Retrieve backup content (transparent hot/cold tier)
+ */
+export async function getBackupContent(
+  backup: BackupContentSource
+): Promise<string> {
+  let content: Buffer;
+
+  if (backup.storageLocation === 'filesystem' && backup.filePath) {
+    // Load from filesystem
+    content = await loadFromFilesystem(backup.filePath);
+  } else if (backup.configContent) {
+    // Load from database
+    content = backup.configContent as unknown as Buffer;
+  } else {
+    throw new Error('Backup content not available');
+  }
+
+  // Decrypt + decompress
+  return await retrieveBackupContent(content, backup.isCompressed, backup.isEncrypted);
 }
 
 /**

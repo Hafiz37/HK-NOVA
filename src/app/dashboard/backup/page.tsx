@@ -38,6 +38,7 @@ interface BackupDetail {
   durationMs: number | null;
   sshConnectMs: number | null;
   storageLocation: string;
+  archivedAt: string | null;
   device: { id: string; name: string; ip: string; type: string; vendor: string | null };
 }
 
@@ -323,6 +324,12 @@ export default function BackupPage() {
                   <p className="text-slate-500">SSH Connect</p>
                   <p className="font-medium">{detail.backup.sshConnectMs ? `${detail.backup.sshConnectMs}ms` : '-'}</p>
                 </div>
+                {detail.backup.archivedAt && (
+                  <div className="col-span-2">
+                    <p className="text-slate-500">Diarsipkan</p>
+                    <p className="font-medium">{new Date(detail.backup.archivedAt).toLocaleString("id-ID")}</p>
+                  </div>
+                )}
               </div>
               <hr className="border-slate-800" />
               {detail.diff ? (

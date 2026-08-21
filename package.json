@@ -20,6 +20,7 @@
     "worker:retention": "tsx watch src/workers/retention-worker.ts",
     "worker:backup": "tsx watch src/workers/backup-worker.ts",
     "worker:backup-retention": "tsx watch src/workers/backup-retention-worker.ts",
+    "worker:backup-archive": "tsx watch src/workers/backup-archive-worker.ts",
     "worker:anomaly": "tsx watch src/workers/anomaly-detector.ts",
     "worker:escalator": "tsx watch src/workers/alert-escalator.ts",
     "worker:digest": "tsx watch src/workers/digest-worker.ts",
