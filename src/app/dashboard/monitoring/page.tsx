@@ -17,6 +17,7 @@ import { useRealtimeMonitoring, SSEStatus } from '@/hooks/useSSE';
 import { useBaseline } from '@/hooks/useBaseline';
 import BaselineBadge from '@/components/dashboard/baseline-badge';
 import { ExportMenu } from '@/components/dashboard/export-menu';
+import ExportDashboard from '@/components/dashboard/export-dashboard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DeviceRow {
@@ -138,6 +139,7 @@ export default function MonitoringPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [vendorFilter, setVendorFilter] = useState('');
+  const chartsRef = useRef<HTMLDivElement | null>(null);
 
   // Baseline historis (24 jam) untuk metrik ICMP
   const { data: baselineLatency } = useBaseline(selectedDevice || null, 'latency', timeRange);
@@ -289,6 +291,11 @@ export default function MonitoringPage() {
               }
             />
           )}
+          <ExportDashboard
+            triggerRef={chartsRef}
+            title="ICMP Monitoring"
+            filename="icmp-monitoring"
+          />
         </div>
       </div>
       {lastRefresh && <p className="text-xs text-slate-600 -mt-4">Last updated: {lastRefresh}</p>}
@@ -323,7 +330,7 @@ export default function MonitoringPage() {
 
       {/* ── Charts ── */}
       {selectedDevice && metrics.length > 0 ? (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div ref={chartsRef} className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* Latency Chart */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">

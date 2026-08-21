@@ -9,6 +9,7 @@ import {
 import { useRealtimeSnmp, SSEStatus } from '@/hooks/useSSE';
 import { useBaseline } from '@/hooks/useBaseline';
 import BaselineBadge from '@/components/dashboard/baseline-badge';
+import ExportDashboard from '@/components/dashboard/export-dashboard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DeviceSnmp {
@@ -190,6 +191,7 @@ export default function SnmpMonitoringPage() {
   const [selectedInterface, setSelectedInterface] = useState<number | null>(null);
   const [bandwidthSeries, setBandwidthSeries] = useState<BandwidthTimeSeries[]>([]);
   const [alerts, setAlerts]               = useState<Alert[]>([]);
+  const chartsRef = useRef<HTMLDivElement | null>(null);
 
   // Baseline historis (24 jam) untuk metrik SNMP
   const { data: baselineCpu } = useBaseline(selectedDevice || null, 'cpu', timeRange);
@@ -333,6 +335,11 @@ export default function SnmpMonitoringPage() {
           >
             ↻ Refresh
           </button>
+          <ExportDashboard
+            triggerRef={chartsRef}
+            title="SNMP Monitoring"
+            filename="snmp-monitoring"
+          />
         </div>
       </div>
       {lastRefresh && (
@@ -405,7 +412,7 @@ export default function SnmpMonitoringPage() {
 
       {/* ── CPU + Memory Charts ── */}
       {selectedDevice && chartData.length > 0 ? (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div ref={chartsRef} className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* CPU Chart */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       data: { lastLoginAt: new Date() },
     });
 
-    const token = createSessionToken(user.username);
+    const token = createSessionToken(user.username, user.fullName ?? undefined);
     const response = NextResponse.json({
       data: {
         username: user.username,

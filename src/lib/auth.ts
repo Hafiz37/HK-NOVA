@@ -22,6 +22,13 @@ export interface AuthUser {
   id: string;
   username: string;
   role: UserRole;
+  fullName?: string;
+}
+
+export interface SessionPayload {
+  u: string;      // username
+  n?: string;     // fullName
+  exp: number;    // expiration
 }
 
 export type AuthResult =
@@ -40,7 +47,7 @@ export async function requireAuth(roles?: UserRole[]): Promise<AuthResult> {
 
   const user = await prisma.user.findUnique({
     where: { username: session.username },
-    select: { id: true, username: true, role: true },
+    select: { id: true, username: true, role: true, fullName: true },
   });
 
   if (!user) {
@@ -51,7 +58,7 @@ export async function requireAuth(roles?: UserRole[]): Promise<AuthResult> {
     return { ok: false, response: NextResponse.json({ error: 'Forbidden: insufficient permissions' }, { status: 403 }) };
   }
 
-  return { ok: true, user };
+  return { ok: true, user: { id: user.id, username: user.username, role: user.role, fullName: user.fullName ?? undefined } };
 }
 
 /** Requires any authenticated session. */
@@ -68,14 +75,14 @@ function sign(payload: string): string {
   return createHmac('sha256', getSecret()).update(payload).digest('hex');
 }
 
-export function createSessionToken(username: string): string {
+export function createSessionToken(username: string, fullName?: string): string {
   const exp = Math.floor(Date.now() / 1000) + MAX_AGE_SEC;
-  const body = Buffer.from(JSON.stringify({ u: username, exp }), 'utf8').toString('base64url');
+  const body = Buffer.from(JSON.stringify({ u: username, n: fullName, exp }), 'utf8').toString('base64url');
   const sig = sign(body);
   return `${body}.${sig}`;
 }
 
-export function verifySessionToken(token: string | undefined | null): { username: string } | null {
+export function verifySessionToken(token: string | undefined | null): { username: string; fullName?: string } | null {
   if (!token || !token.includes('.')) return null;
   const [body, sig] = token.split('.');
   if (!body || !sig) return null;
@@ -90,19 +97,16 @@ export function verifySessionToken(token: string | undefined | null): { username
   }
 
   try {
-    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as {
-      u?: string;
-      exp?: number;
-    };
+    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as SessionPayload;
     if (!parsed.u || !parsed.exp) return null;
     if (parsed.exp < Math.floor(Date.now() / 1000)) return null;
-    return { username: parsed.u };
+    return { username: parsed.u, fullName: parsed.n };
   } catch {
     return null;
   }
 }
 
-export async function getSession(): Promise<{ username: string } | null> {
+export async function getSession(): Promise<{ username: string; fullName?: string } | null> {
   const jar = await cookies();
   return verifySessionToken(jar.get(COOKIE_NAME)?.value);
 }
