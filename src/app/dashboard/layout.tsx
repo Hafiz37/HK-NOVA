@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { Menu, X } from "lucide-react";
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const [currentTime, setCurrentTime] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, loading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -37,8 +39,21 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <div className="flex">
-        <aside className="w-64 bg-slate-900 border-r border-slate-800 min-h-screen">
+      <div className="flex flex-col md:flex-row min-h-screen">
+        {/* Mobile Sidebar Overlay */}
+        {mobileMenuOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+
+        {/* Sidebar */}
+        <aside
+          className={`fixed md:static inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 transform transition-transform duration-200 ease-in-out ${
+            mobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          }`}
+        >
           <div className="p-6">
             <h2 className="text-xl font-bold text-white">HK-NOVA</h2>
             <p className="text-xs text-slate-500">NOC Platform</p>
@@ -183,10 +198,19 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           </nav>
         </aside>
 
-        <main className="flex-1">
-          <header className="bg-slate-900 border-b border-slate-800 px-6 py-4">
+        <main className="flex-1 min-w-0">
+          <header className="bg-slate-900 border-b border-slate-800 px-4 sm:px-6 py-4">
             <div className="flex items-center justify-between">
-              <h1 className="text-lg font-semibold text-white">Dashboard</h1>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="p-1.5 rounded-lg bg-slate-800 text-slate-300 md:hidden hover:text-white"
+                >
+                  {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                </button>
+                <h1 className="text-base sm:text-lg font-semibold text-white">Dashboard</h1>
+              </div>
               <div className="flex items-center gap-4">
                 <div className="text-sm text-slate-400">{currentTime || "Loading..."}</div>
                 {user && (

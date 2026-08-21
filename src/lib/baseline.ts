@@ -113,7 +113,61 @@ export async function buildBaseline(
   return { baseline: stats, insufficientData };
 }
 
-// ─── Latest value helper ──────────────────────────────────────────────────────
+// ─── Dynamic Baseline (day-of-week & hour-of-day seasonal baseline) ───────────
+export interface SeasonalBaselineInput {
+  deviceId: string;
+  field: BaselineField;
+  dayOfWeek?: number; // 0 (Sun) - 6 (Sat)
+  hourOfDay?: number;  // 0 - 23
+  lookbackDays?: number; // default 28 days
+}
+
+export async function buildSeasonalBaseline(
+  prisma: PrismaClient,
+  input: SeasonalBaselineInput
+): Promise<BaselineResult> {
+  const { deviceId, field, lookbackDays = 28 } = input;
+  const now = new Date();
+  const targetDay = input.dayOfWeek ?? now.getDay();
+  const targetHour = input.hourOfDay ?? now.getHours();
+
+  const since = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
+  const metricType = field === 'latency' || field === 'packetLoss' ? 'ICMP' : 'SNMP';
+  const column =
+    field === 'latency'
+      ? 'latency'
+      : field === 'packetLoss'
+      ? 'packetLoss'
+      : field === 'cpu'
+      ? 'cpuUtil'
+      : 'memUtil';
+
+  const rows = await prisma.metric.findMany({
+    where: {
+      deviceId,
+      metricType,
+      timestamp: { gte: since },
+    },
+    select: { [column]: true, timestamp: true },
+  });
+
+  const seasonalValues = rows
+    .filter((r) => {
+      if (r[column] == null) return false;
+      const ts = new Date(r.timestamp);
+      return ts.getDay() === targetDay && ts.getHours() === targetHour;
+    })
+    .map((r) => Number(r[column]))
+    .filter((v) => typeof v === 'number' && !Number.isNaN(v));
+
+  // Fallback to standard baseline if insufficient seasonal samples (< 10)
+  if (seasonalValues.length < 10) {
+    return buildBaseline(prisma, { deviceId, field, windowHours: lookbackDays * 24 });
+  }
+
+  const stats = computeBaseline(seasonalValues);
+  return { baseline: stats, insufficientData: false };
+}
 export async function getLatestValue(
   prisma: PrismaClient,
   input: { deviceId: string; field: BaselineField }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
+import { cacheGet, cacheSet } from '@/lib/redis-cache';
 
 /**
  * GET /api/monitoring/summary
@@ -11,6 +12,12 @@ export async function GET(): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
 
   try {
+    const cacheKey = 'monitoring:summary';
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ ...cached, cached: true });
+    }
+
     const [
       totalDevices,
       upDevices,
@@ -54,7 +61,7 @@ export async function GET(): Promise<NextResponse> {
       alertsBySeverity.map((a) => [a.severity, a._count.id])
     );
 
-    return NextResponse.json({
+    const result = {
       devices: {
         total: totalDevices,
         up: upDevices,
@@ -68,7 +75,11 @@ export async function GET(): Promise<NextResponse> {
       },
       avgLatencyMs: avgLatency,
       updatedAt: new Date().toISOString(),
-    });
+    };
+
+    await cacheSet(cacheKey, result, { ttlSeconds: 10 });
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error('[API /api/monitoring/summary] Error:', error);
     return NextResponse.json({ error: 'Failed to fetch summary' }, { status: 500 });

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
 import {
   buildBaseline,
+  buildSeasonalBaseline,
   getLatestValue,
   deviationScore,
   classifyDeviation,
@@ -42,6 +43,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       168
     );
 
+    const seasonal = searchParams.get('seasonal') === 'true';
+
     const devices = await prisma.device.findMany({
       where: { deletedAt: null },
       select: { id: true, name: true, ip: true, type: true, status: true },
@@ -51,7 +54,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       devices.map(async (device) => {
         const [current, { baseline, insufficientData }] = await Promise.all([
           getLatestValue(prisma, { deviceId: device.id, field }),
-          buildBaseline(prisma, { deviceId: device.id, field, windowHours: hours }),
+          seasonal
+            ? buildSeasonalBaseline(prisma, { deviceId: device.id, field })
+            : buildBaseline(prisma, { deviceId: device.id, field, windowHours: hours }),
         ]);
 
         if (current == null || insufficientData) return null;
@@ -81,7 +86,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       normal: ranked.filter((r) => r.deviation.level === 'NORMAL').length,
     };
 
-    return NextResponse.json({ field, n, hours, summary, data: ranked, updatedAt: new Date().toISOString() });
+    return NextResponse.json({ field, n, hours, seasonal, summary, data: ranked, updatedAt: new Date().toISOString() });
   } catch (error) {
     console.error('[API /api/monitoring/baseline] Error:', error);
     return NextResponse.json({ error: 'Failed to fetch baseline overview' }, { status: 500 });
