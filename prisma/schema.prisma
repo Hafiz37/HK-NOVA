@@ -375,12 +375,19 @@ model ProvisioningLog {
   userAgent         String?
   metadata          Json?
 
+  // Sprint 2: Rollback support
+  isRollback        Boolean  @default(false)
+  rollbackLogId     String?
+  rollbackOf        ProvisioningLog? @relation("RollbackRelation", fields: [rollbackLogId], references: [id], onDelete: SetNull)
+  rollbackBy        ProvisioningLog[] @relation("RollbackRelation")
+
   executedAt DateTime @default(now())
   executedBy String?
 
   @@index([deviceId, executedAt])
   @@index([ontSerial])
   @@index([executionMode])
+  @@index([rollbackLogId])
 }
 
 model Anomaly {

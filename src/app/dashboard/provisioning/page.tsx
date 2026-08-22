@@ -27,6 +27,8 @@ interface LogRecord {
   templateName?: string | null;
   executionMode?: "EXECUTE" | "DRY_RUN" | "SCHEDULED";
   executionTimeMs?: number | null;
+  isRollback?: boolean;
+  rollbackLogId?: string | null;
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -168,6 +170,36 @@ if (loading) {
     return status;
   };
 
+  const canRollback = (action: string) => {
+    const rollbackMap: Record<string, string | null> = {
+      create_service: 'terminate_service',
+      suspend_service: 'reactivate_service',
+      reactivate_service: 'suspend_service',
+      terminate_service: null,
+      check_status: null,
+    };
+    return rollbackMap[action] !== null;
+  };
+
+  const handleRollback = async (logId: string, dryRun: boolean) => {
+    try {
+      const res = await fetch(`/api/provisioning/logs/${logId}/rollback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dryRun, reason: dryRun ? 'Preview rollback' : 'Manual rollback via UI' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`Rollback gagal: ${json.error}`);
+      } else {
+        alert(json.message);
+        await fetchLogs();
+      }
+    } catch (err) {
+      alert(`Rollback error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -300,6 +332,28 @@ if (loading) {
                   <p className="text-[11px] text-slate-400 mt-1">⏱️ {l.executionTimeMs} ms</p>
                 )}
                 {l.errorMessage && <p className="text-[11px] text-rose-400 mt-1">{l.errorMessage}</p>}
+                {canRollback(l.action) && !l.isRollback && (
+                  <div className="flex gap-2 mt-2 pt-2 border-t border-slate-800">
+                    <button
+                      onClick={() => handleRollback(l.id, true)}
+                      className="px-2 py-1 text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded hover:bg-blue-500/30 transition-colors"
+                    >
+                      🔍 Preview Rollback
+                    </button>
+                    <button
+                      onClick={() => handleRollback(l.id, false)}
+                      className="px-2 py-1 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/30 transition-colors"
+                    >
+                      ↩️ Execute Rollback
+                    </button>
+                  </div>
+                )}
+                {l.isRollback && (
+                  <p className="text-[11px] text-blue-400 mt-1">↩️ Ini adalah rollback dari log lain</p>
+                )}
+                {l.rollbackLogId && (
+                  <p className="text-[11px] text-blue-400 mt-1">↩️ Sudah di-rollback oleh log: {l.rollbackLogId.slice(0, 8)}...</p>
+                )}
               </div>
             ))}
           </div>

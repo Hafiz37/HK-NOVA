@@ -5,6 +5,8 @@ import type { OLTTemplate } from '@/types/provisioning';
 
 export type TemplateName = 'huawei' | 'zte' | 'generic';
 
+export type { OLTTemplate };
+
 export const OLT_TEMPLATES: Record<TemplateName, OLTTemplate> = {
   huawei: huaweiRaw as OLTTemplate,
   zte: zteRaw as OLTTemplate,

@@ -9,8 +9,21 @@ import {
   type ProvisioningFields,
   type ProvisioningActionKey,
 } from './olt-templates';
+import { validateAllTemplates, getValidationSummary } from './template-validator';
 import { createAlertIfNotDuplicate, correlationKeyFor } from './alert-engine';
 import { DEFAULT_SSH_TIMEOUT } from './constants';
+
+// Validate templates at module load
+const templateValidationResults = validateAllTemplates();
+const validationSummary = getValidationSummary(templateValidationResults);
+if (process.env.NODE_ENV !== 'production') {
+  console.log(validationSummary);
+}
+
+const hasTemplateErrors = Object.values(templateValidationResults).some((r) => !r.valid);
+if (hasTemplateErrors) {
+  console.error('⚠️  Template validation failed! Some templates have errors.');
+}
 
 const ACTION_MAP: Record<ProvisioningActionKey, ProvisioningAction> = {
   create_service: 'CREATE',
@@ -46,6 +59,7 @@ export interface ExecuteProvisioningResult {
     executedAt: Date;
     executionMode: ExecutionMode;
     executionTimeMs: number | null;
+    metadata?: Record<string, unknown> | null;
   };
 }
 

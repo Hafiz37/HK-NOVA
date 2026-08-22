@@ -13,7 +13,9 @@ export type AuditAction =
   | 'BACKUP'
   | 'BACKUP_VIEW'
   | 'BACKUP_RESTORE'
-  | 'BACKUP_RESTORE_PREVIEW';
+  | 'BACKUP_RESTORE_PREVIEW'
+  | 'ROLLBACK_PREVIEW'
+  | 'ROLLBACK_EXECUTE';
 
 export type AuditEntity =
   | 'User'

@@ -6,6 +6,7 @@ import { logAudit, getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { executeProvisioning } from '@/lib/provisioning';
 import { PROVISIONING_ACTIONS, type ProvisioningFields } from '@/lib/olt-templates';
+import { mapErrorToCode, getHttpStatusForError, ProvisioningErrorCode } from '@/lib/provisioning-errors';
 
 /**
  * POST /api/provisioning/execute
@@ -91,19 +92,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (result.fieldErrors && result.fieldErrors.length > 0) {
         return NextResponse.json({ error: result.error, details: result.fieldErrors }, { status: 400 });
       }
-      const message = result.error ?? '';
-      if (message.includes('Device not found')) {
-        return NextResponse.json({ error: message }, { status: 404 });
-      }
-      if (message.includes('Field wajib') || message.includes('SSH credentials')) {
-        return NextResponse.json({ error: message }, { status: 400 });
-      }
-      if (message.includes('feature flag')) {
-        return NextResponse.json({ error: message }, { status: 403 });
-      }
+      const provisioningError = mapErrorToCode(result.error ?? 'Unknown error');
+      const status = getHttpStatusForError(provisioningError.code);
       return NextResponse.json(
-        { error: message || 'Provisioning gagal', data: result.log ?? null },
-        { status: 502 }
+        {
+          error: provisioningError.userMessage,
+          code: provisioningError.code,
+          recoverable: provisioningError.recoverable,
+          details: provisioningError.details,
+          data: result.log ?? null,
+        },
+        { status }
       );
     }
 
@@ -111,7 +110,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ data: result.log, message });
   } catch (error) {
     console.error('[API /api/provisioning/execute] Error:', error);
-    return NextResponse.json({ error: 'Failed to run provisioning' }, { status: 500 });
+    const provisioningError = mapErrorToCode(error);
+    const status = getHttpStatusForError(provisioningError.code);
+    return NextResponse.json(
+      { error: provisioningError.userMessage, code: provisioningError.code },
+      { status }
+    );
   }
 }
 
