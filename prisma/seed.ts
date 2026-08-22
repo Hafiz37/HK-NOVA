@@ -22,6 +22,14 @@ async function main() {
 
   console.log('✅ User created:', user.username);
 
+  // Seed default feature flag for provisioning execution (disabled by default)
+  await prisma.featureFlag.upsert({
+    where: { key: 'PROVISIONING_EXECUTE_ENABLED' },
+    update: { enabled: false, scope: 'GLOBAL', description: 'Enable/disable real SSH execution for OLT provisioning', updatedBy: user.id },
+    create: { key: 'PROVISIONING_EXECUTE_ENABLED', enabled: false, scope: 'GLOBAL', description: 'Enable/disable real SSH execution for OLT provisioning', updatedBy: user.id },
+  });
+  console.log('✅ Feature flag seeded: PROVISIONING_EXECUTE_ENABLED = false');
+
   const initialDevices = [
     {
       name: 'Google Public DNS (Reachable)',

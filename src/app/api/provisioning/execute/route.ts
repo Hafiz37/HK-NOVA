@@ -9,11 +9,12 @@ import { PROVISIONING_ACTIONS, type ProvisioningFields } from '@/lib/olt-templat
 
 /**
  * POST /api/provisioning/execute
- * Body: { deviceId, action, template?, onSerial/ponPort/ontSlot/vlan/serviceProfile/... }
- * Runs an OLT provisioning workflow over SSH and records it to ProvisioningLog.
+ * Body: { deviceId, action, template?, onSerial/ponPort/ontSlot/vlan/serviceProfile/..., dryRun? }
+ * Runs an OLT provisioning workflow over SSH (or dry-run) and records it to ProvisioningLog.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const clientIp = getClientIp(request) || '127.0.0.1';
+  const userAgent = request.headers.get('user-agent') || undefined;
   const rateLimitError = rateLimitResponse(RATE_LIMITS.provision, 'provisioning:execute', clientIp);
   if (rateLimitError) return rateLimitError;
 
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const deviceId = typeof body.deviceId === 'string' ? body.deviceId.trim() : '';
     const action = typeof body.action === 'string' ? body.action : '';
     const template = typeof body.template === 'string' && body.template ? body.template : undefined;
+    const dryRun = body.dryRun === true;
 
     if (!deviceId) {
       return NextResponse.json({ error: 'Field deviceId wajib diisi' }, { status: 400 });
@@ -62,6 +64,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       template,
       fields,
       executedBy: auth.user.id,
+      dryRun,
+      clientIp,
+      userAgent,
     });
 
     await logAudit({
@@ -73,10 +78,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         deviceId,
         action,
         template: template ?? null,
+        dryRun,
         status: result.log?.status ?? 'N/A',
         error: result.error ?? null,
+        executionMode: result.log?.executionMode ?? 'N/A',
+        executionTimeMs: result.log?.executionTimeMs ?? null,
       },
-      ipAddress: getClientIp(request),
+      ipAddress: clientIp,
     });
 
     if (!result.ok) {
@@ -90,13 +98,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (message.includes('Field wajib') || message.includes('SSH credentials')) {
         return NextResponse.json({ error: message }, { status: 400 });
       }
+      if (message.includes('feature flag')) {
+        return NextResponse.json({ error: message }, { status: 403 });
+      }
       return NextResponse.json(
         { error: message || 'Provisioning gagal', data: result.log ?? null },
         { status: 502 }
       );
     }
 
-    return NextResponse.json({ data: result.log, message: 'Provisioning berhasil dieksekusi' });
+    const message = dryRun ? 'Dry-run preview berhasil' : 'Provisioning berhasil dieksekusi';
+    return NextResponse.json({ data: result.log, message });
   } catch (error) {
     console.error('[API /api/provisioning/execute] Error:', error);
     return NextResponse.json({ error: 'Failed to run provisioning' }, { status: 500 });

@@ -1,4 +1,4 @@
-import type { PrismaClient, ProvisioningAction } from '@prisma/client';
+import type { PrismaClient, ProvisioningAction, ProvisioningStatus, ExecutionMode } from '@prisma/client';
 import { runSshCommands, resolveSshCredentials } from './device-console';
 import {
   OLT_TEMPLATES,
@@ -26,6 +26,9 @@ export interface ExecuteProvisioningInput {
   template?: TemplateName;
   fields: ProvisioningFields;
   executedBy: string;
+  dryRun?: boolean;
+  clientIp?: string;
+  userAgent?: string;
 }
 
 export interface ExecuteProvisioningResult {
@@ -36,12 +39,42 @@ export interface ExecuteProvisioningResult {
   log?: {
     id: string;
     action: ProvisioningAction;
-    status: string;
+    status: ProvisioningStatus;
     command: string;
     response: string | null;
     errorMessage: string | null;
     executedAt: Date;
+    executionMode: ExecutionMode;
+    executionTimeMs: number | null;
   };
+}
+
+/**
+ * Check if provisioning execution is enabled via feature flag.
+ * Returns true if enabled, false if disabled (force dry-run).
+ */
+async function checkProvisioningEnabled(
+  prisma: PrismaClient,
+  deviceId: string,
+  userId: string
+): Promise<boolean> {
+  // Check device-specific flag first
+  const deviceFlag = await prisma.featureFlag.findFirst({
+    where: { key: 'PROVISIONING_EXECUTE_ENABLED', scope: `DEVICE:${deviceId}` },
+  });
+  if (deviceFlag) return deviceFlag.enabled;
+
+  // Check user-specific flag
+  const userFlag = await prisma.featureFlag.findFirst({
+    where: { key: 'PROVISIONING_EXECUTE_ENABLED', scope: `USER:${userId}` },
+  });
+  if (userFlag) return userFlag.enabled;
+
+  // Fallback to global flag
+  const globalFlag = await prisma.featureFlag.findUnique({
+    where: { key: 'PROVISIONING_EXECUTE_ENABLED', scope: 'GLOBAL' },
+  });
+  return globalFlag?.enabled ?? false;
 }
 
 /**
@@ -52,6 +85,7 @@ export async function executeProvisioning(
   prisma: PrismaClient,
   input: ExecuteProvisioningInput
 ): Promise<ExecuteProvisioningResult> {
+  const startTime = Date.now();
   const device = await prisma.device.findFirst({
     where: { id: input.deviceId, deletedAt: null },
     include: { credentials: true },
@@ -72,7 +106,6 @@ export async function executeProvisioning(
     rendered = renderActionCommands(template, input.action, input.fields);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Gagal memvalidasi perintah';
-    // Pisahkan daftar field yang kurang agar API bisa menjawab 400 + details.
     if (message.startsWith('Field wajib')) {
       return {
         ok: false,
@@ -83,22 +116,50 @@ export async function executeProvisioning(
     return { ok: false, error: message };
   }
 
-  const creds = resolveSshCredentials(device.credentials);
-  if (!creds) {
-    return { ok: false, error: 'SSH credentials tidak dikonfigurasi untuk device ini' };
+  // Determine execution mode
+  const isDryRun = input.dryRun === true;
+  const executionMode = isDryRun ? 'DRY_RUN' : 'EXECUTE';
+
+  // Check feature flag if not dry-run
+  if (!isDryRun) {
+    const canExecute = await checkProvisioningEnabled(prisma, device.id, input.executedBy);
+    if (!canExecute) {
+      return {
+        ok: false,
+        error: 'Provisioning execution is disabled by feature flag. Use dry-run mode or contact admin.',
+      };
+    }
   }
 
-  const res = await runSshCommands({
-    host: device.ip,
-    username: creds.username,
-    password: creds.password,
-    port: creds.port,
-    timeoutMs: DEFAULT_SSH_TIMEOUT,
-    commands: rendered.commands,
-  });
+  let res = { ok: true, stdout: '', error: null as string | null };
+  let executionTimeMs: number | null = null;
+
+  if (!isDryRun) {
+    const creds = resolveSshCredentials(device.credentials);
+    if (!creds) {
+      return { ok: false, error: 'SSH credentials tidak dikonfigurasi untuk device ini' };
+    }
+
+    const sshStartTime = Date.now();
+    const sshResult = await runSshCommands({
+      host: device.ip,
+      username: creds.username,
+      password: creds.password,
+      port: creds.port,
+      timeoutMs: DEFAULT_SSH_TIMEOUT,
+      commands: rendered.commands,
+    });
+    res = { ok: sshResult.ok, stdout: sshResult.stdout, error: sshResult.error ?? null };
+    executionTimeMs = Date.now() - sshStartTime;
+  } else {
+    executionTimeMs = Date.now() - startTime;
+  }
 
   const actionEnum = ACTION_MAP[input.action as ProvisioningActionKey] ?? 'STATUS_CHECK';
   const responseTail = res.stdout ? res.stdout.slice(-10_000) : null;
+  const status = isDryRun ? 'DRY_RUN' : (res.ok ? 'SUCCESS' : 'FAILED');
+
+  const templateName = chosen ? input.template : resolveTemplate(device.vendor).name;
 
   const logRow = await prisma.provisioningLog.create({
     data: {
@@ -109,14 +170,24 @@ export async function executeProvisioning(
       vlan: input.fields.vlan ?? null,
       serviceProfile: input.fields.serviceProfile ?? null,
       command: rendered.commands.join('\n'),
-      response: responseTail,
-      status: res.ok ? 'SUCCESS' : 'FAILED',
+      response: isDryRun ? '[DRY-RUN MODE] Command tidak dieksekusi ke device' : responseTail,
+      status: status as ProvisioningStatus,
       errorMessage: res.ok ? null : (res.error ?? 'Provisioning error'),
       executedBy: input.executedBy,
+      templateName,
+      templateVersion: '1.0.0', // TODO: versioning in future sprint
+      executionMode: executionMode as ExecutionMode,
+      executionTimeMs,
+      clientIp: input.clientIp ?? null,
+      userAgent: input.userAgent ?? null,
+      metadata: {
+        templateDescription: template[input.action]?.description ?? null,
+        fieldsUsed: JSON.parse(JSON.stringify(input.fields)),
+      },
     },
   });
 
-  if (!res.ok) {
+  if (!res.ok && !isDryRun) {
     await createAlertIfNotDuplicate(prisma, {
       type: 'PROVISIONING_FAILED',
       deviceId: device.id,
@@ -137,6 +208,8 @@ export async function executeProvisioning(
         response: logRow.response,
         errorMessage: logRow.errorMessage,
         executedAt: logRow.executedAt,
+        executionMode: logRow.executionMode,
+        executionTimeMs: logRow.executionTimeMs,
       },
     };
   }
@@ -151,6 +224,8 @@ export async function executeProvisioning(
       response: logRow.response,
       errorMessage: logRow.errorMessage,
       executedAt: logRow.executedAt,
+      executionMode: logRow.executionMode,
+      executionTimeMs: logRow.executionTimeMs,
     },
   };
 }

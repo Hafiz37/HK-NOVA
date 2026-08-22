@@ -15,7 +15,7 @@ interface TemplateMeta {
 interface LogRecord {
   id: string;
   action: string;
-  status: "SUCCESS" | "FAILED" | "PENDING";
+  status: "SUCCESS" | "FAILED" | "PENDING" | "DRY_RUN";
   ontSerial?: string | null;
   ponPort?: string | null;
   vlan?: number | null;
@@ -24,6 +24,9 @@ interface LogRecord {
   errorMessage?: string | null;
   executedAt: string;
   device: { name: string; ip: string; vendor: string | null };
+  templateName?: string | null;
+  executionMode?: "EXECUTE" | "DRY_RUN" | "SCHEDULED";
+  executionTimeMs?: number | null;
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -61,11 +64,12 @@ export default function ProvisioningPage() {
   const [action, setAction] = useState("create_service");
   const [templateOverride, setTemplateOverride] = useState("");
   const [fields, setFields] = useState<Record<string, string>>({});
+  const [dryRun, setDryRun] = useState(true);
   const [logs, setLogs] = useState<LogRecord[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; message: string; command?: string; response?: string | null } | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; message: string; command?: string; response?: string | null; executionMode?: string; executionTimeMs?: number | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const LOG_PAGE_SIZE = 15;
@@ -119,7 +123,7 @@ export default function ProvisioningPage() {
     setRunning(true);
     setResult(null);
     try {
-      const payload: Record<string, unknown> = { deviceId, action, ...fields };
+      const payload: Record<string, unknown> = { deviceId, action, ...fields, dryRun };
       if (templateOverride) payload.template = templateOverride;
       const res = await fetch("/api/provisioning/execute", {
         method: "POST",
@@ -128,9 +132,9 @@ export default function ProvisioningPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setResult({ ok: false, message: json.error ?? "Provisioning gagal", command: json.data?.command, response: json.data?.response });
+        setResult({ ok: false, message: json.error ?? "Provisioning gagal", command: json.data?.command, response: json.data?.response, executionMode: json.data?.executionMode, executionTimeMs: json.data?.executionTimeMs });
       } else {
-        setResult({ ok: true, message: json.message ?? "Berhasil", command: json.data?.command, response: json.data?.response });
+        setResult({ ok: true, message: json.message ?? "Berhasil", command: json.data?.command, response: json.data?.response, executionMode: json.data?.executionMode, executionTimeMs: json.data?.executionTimeMs });
       }
       await fetchLogs();
     } catch (err) {
@@ -140,9 +144,29 @@ export default function ProvisioningPage() {
     }
   };
 
-  if (loading) {
-    return <div className="p-6 text-slate-400">Memuat template &amp; device…</div>;
+if (loading) {
+    return <div className="p-6 text-slate-400">Memuat template & device…</div>;
   }
+
+  const getStatusColor = (status: string, executionMode?: string) => {
+    if (executionMode === "DRY_RUN" || status === "DRY_RUN") {
+      return "bg-blue-500/10 text-blue-400 border-blue-500/30";
+    }
+    if (status === "SUCCESS") {
+      return "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+    }
+    if (status === "FAILED") {
+      return "bg-rose-500/10 text-rose-400 border-rose-500/30";
+    }
+    return "bg-amber-500/10 text-amber-400 border-amber-500/30";
+  };
+
+  const getStatusLabel = (status: string, executionMode?: string) => {
+    if (executionMode === "DRY_RUN" || status === "DRY_RUN") {
+      return "🔍 DRY RUN";
+    }
+    return status;
+  };
 
   return (
     <div className="space-y-6">
@@ -184,6 +208,19 @@ export default function ProvisioningPage() {
             </div>
           </div>
 
+          <div className="flex items-center gap-3 p-3 bg-slate-950 border border-slate-800 rounded-xl">
+            <input
+              type="checkbox"
+              id="dryRun"
+              checked={dryRun}
+              onChange={(e) => setDryRun(e.target.checked)}
+              className="w-4 h-4 text-blue-600 bg-slate-900 border-slate-700 rounded focus:ring-blue-500"
+            />
+            <label htmlFor="dryRun" className="text-sm text-slate-300 cursor-pointer">
+              🔍 Dry-run mode (preview saja, tidak eksekusi ke device)
+            </label>
+          </div>
+
           {activeAction && (
             <div className="rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-slate-400">{activeAction.description}</div>
           )}
@@ -208,12 +245,22 @@ export default function ProvisioningPage() {
           )}
 
           <button onClick={() => void run()} disabled={running || !deviceId} className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-xl transition-all">
-            {running ? "⏳ Mengeksekusi…" : "▶️ Jalankan Provisioning"}
+            {running ? "⏳ Mengeksekusi…" : (dryRun ? "🔍 Preview (Dry-Run)" : "▶️ Jalankan Provisioning")}
           </button>
 
           {result && (
             <div className={`rounded-xl border p-4 text-sm space-y-2 ${result.ok ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : "bg-rose-500/10 border-rose-500/30 text-rose-300"}`}>
-              <p className="font-semibold">{result.ok ? "✅ " : "❌ "}{result.message}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-semibold">{result.ok ? "✅ " : "❌ "}{result.message}</p>
+                {result.executionMode && (
+                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${result.executionMode === "DRY_RUN" ? "bg-blue-500/10 text-blue-400 border-blue-500/30" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"}`}>
+                    {result.executionMode}
+                  </span>
+                )}
+              </div>
+              {result.executionTimeMs !== undefined && result.executionTimeMs !== null && (
+                <p className="text-xs text-slate-400">⏱️ Waktu eksekusi: {result.executionTimeMs} ms</p>
+              )}
               {result.command && (
                 <pre className="text-[10px] bg-slate-950 p-2 rounded-lg overflow-x-auto text-slate-300">{result.command}</pre>
               )}
@@ -237,13 +284,20 @@ export default function ProvisioningPage() {
               <div key={l.id} className="bg-slate-950 border border-slate-800 rounded-xl p-3">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-white">{ACTION_LABELS[l.action] ?? l.action}</span>
-                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${l.status === "SUCCESS" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : l.status === "FAILED" ? "bg-rose-500/10 text-rose-400 border-rose-500/30" : "bg-amber-500/10 text-amber-400 border-amber-500/30"}`}>{l.status}</span>
+                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${getStatusColor(l.status, l.executionMode)}`}>
+                    {getStatusLabel(l.status, l.executionMode)}
+                  </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">{l.device.name} ({l.device.ip}) · {new Date(l.executedAt).toLocaleString("id-ID")}</p>
                 {(l.ontSerial || l.ponPort || l.vlan) && (
                   <p className="text-[11px] font-mono text-slate-400 mt-1">
                     {l.ontSerial ? `SN:${l.ontSerial}` : ""} {l.ponPort ? `PON:${l.ponPort}` : ""} {l.vlan ? `VLAN:${l.vlan}` : ""}
                   </p>
+                )}
+                {l.templateName && <p className="text-[11px] text-blue-400 mt-1">Template: {l.templateName.toUpperCase()}</p>}
+                {l.executionMode && <p className="text-[11px] text-slate-400 mt-1">Mode: {l.executionMode}</p>}
+                {l.executionTimeMs !== undefined && l.executionTimeMs !== null && (
+                  <p className="text-[11px] text-slate-400 mt-1">⏱️ {l.executionTimeMs} ms</p>
                 )}
                 {l.errorMessage && <p className="text-[11px] text-rose-400 mt-1">{l.errorMessage}</p>}
               </div>

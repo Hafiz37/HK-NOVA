@@ -104,6 +104,13 @@ enum ProvisioningStatus {
   SUCCESS
   FAILED
   PENDING
+  DRY_RUN
+}
+
+enum ExecutionMode {
+  EXECUTE
+  DRY_RUN
+  SCHEDULED
 }
 
 enum BackupStatus {
@@ -129,6 +136,21 @@ model Setting {
   key       String   @unique
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  enabled     Boolean  @default(false)
+  description String?
+  scope       String?  // "GLOBAL" | "DEVICE:<deviceId>" | "USER:<userId>"
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+
+  @@index([key])
+  @@index([scope])
 }
 
 model AlertCooldown {
@@ -333,22 +355,32 @@ model ProvisioningLog {
   deviceId String
   device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
-  action         ProvisioningAction
-  ontSerial      String?
-  ponPort        String?
-  vlan           Int?
-  serviceProfile String?
+  action            ProvisioningAction
+  ontSerial         String?
+  ponPort           String?
+  vlan              Int?
+  serviceProfile    String?
 
-  command      String             @db.Text
-  response     String?            @db.Text
-  status       ProvisioningStatus
-  errorMessage String?            @db.Text
+  command           String             @db.Text
+  response          String?            @db.Text
+  status            ProvisioningStatus
+  errorMessage      String?            @db.Text
+
+  // Sprint 1: Enhanced logging
+  templateName      String?
+  templateVersion   String?
+  executionMode     ExecutionMode      @default(EXECUTE)
+  executionTimeMs   Int?
+  clientIp          String?
+  userAgent         String?
+  metadata          Json?
 
   executedAt DateTime @default(now())
   executedBy String?
 
   @@index([deviceId, executedAt])
   @@index([ontSerial])
+  @@index([executionMode])
 }
 
 model Anomaly {
