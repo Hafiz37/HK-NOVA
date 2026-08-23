@@ -31,7 +31,8 @@ export type AuditEntity =
   | 'BackupRestore'
   | 'ScheduledProvisioning'
   | 'OltTemplateVersion'
-  | 'BatchProvisioning';
+  | 'BatchProvisioning'
+  | 'ProvisioningRequest';
 
 export interface AuditDetails {
   before?: Record<string, unknown>;

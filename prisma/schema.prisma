@@ -128,6 +128,13 @@ enum ScheduledProvisioningStatus {
   CANCELLED
 }
 
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum BackupStatus {
   SUCCESS
   FAILED
@@ -228,6 +235,28 @@ model OltTemplateVersion {
   @@index([name, isActive])
 }
 
+model ProvisioningRequest {
+  id           String            @id @default(cuid())
+  deviceId     String
+  device       Device            @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  action       ProvisioningAction
+  templateName String?
+  fields       Json              // ProvisioningFields
+  status       RequestStatus     @default(PENDING)
+  requestedBy  String
+  requestedAt  DateTime          @default(now())
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  rejectionReason String?        @db.Text
+  logId        String?           @unique
+  log          ProvisioningLog?  @relation(fields: [logId], references: [id], onDelete: SetNull)
+  metadata     Json?
+
+  @@index([status, requestedAt])
+  @@index([deviceId])
+  @@index([requestedBy])
+}
+
 model AlertCooldown {
   id          String   @id @default(cuid())
   deviceId    String
@@ -276,6 +305,7 @@ model Device {
   provisioning           ProvisioningLog[]
   batchProvisioning      BatchProvisioning[]
   scheduledProvisioning  ScheduledProvisioning[]
+  provisioningRequests   ProvisioningRequest[]
   anomalies              Anomaly[]
   alerts                 Alert[]
   MaintenanceWindow      MaintenanceWindow[]
@@ -458,6 +488,7 @@ model ProvisioningLog {
   rollbackOf        ProvisioningLog?      @relation("RollbackRelation", fields: [rollbackLogId], references: [id], onDelete: SetNull)
   rollbackBy        ProvisioningLog[]     @relation("RollbackRelation")
   scheduledBy       ScheduledProvisioning?
+  requestBy         ProvisioningRequest?
 
   executedAt DateTime @default(now())
   executedBy String?
