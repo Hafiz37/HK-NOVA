@@ -7,6 +7,7 @@ import { logAudit, getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { queryUserSchema, createUserSchema } from '@/lib/schemas';
 import { success, paginated, ApiError, ValidationError, ConflictError, InternalServerError } from '@/lib/api-response';
+import { cacheGetOrSet, CacheTags, invalidateOnMutation } from '@/lib/query';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
@@ -16,41 +17,49 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const searchParams = request.nextUrl.searchParams;
     const query = queryUserSchema.parse(Object.fromEntries(searchParams));
 
-    const where: {
-      role?: UserRole;
-      OR?: Array<Record<string, unknown>>;
-    } = {};
+    const cacheKey = `users:list:${JSON.stringify(query)}`;
 
-    if (query.role) where.role = query.role;
+    const result = await cacheGetOrSet(
+      cacheKey,
+      async () => {
+        const where: {
+          role?: UserRole;
+          OR?: Array<Record<string, unknown>>;
+        } = {};
 
-    if (query.search) {
-      where.OR = [
-        { username: { contains: query.search } },
-        { email: { contains: query.search } },
-        { fullName: { contains: query.search } },
-      ];
-    }
+        if (query.role) where.role = query.role;
 
-    const [users, total] = await Promise.all([
-      prisma.user.findMany({
-        where,
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          fullName: true,
-          role: true,
-          createdAt: true,
-          lastLoginAt: true,
-        },
-        orderBy: { [query.sortBy]: query.sortOrder },
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
-      }),
-      prisma.user.count({ where }),
-    ]);
+        if (query.search) {
+          where.OR = [
+            { username: { contains: query.search } },
+            { email: { contains: query.search } },
+            { fullName: { contains: query.search } },
+          ];
+        }
 
-    return NextResponse.json(paginated(users, query.page, query.limit, total));
+        return {
+          data: await prisma.user.findMany({
+            where,
+            select: {
+              id: true,
+              username: true,
+              email: true,
+              fullName: true,
+              role: true,
+              createdAt: true,
+              lastLoginAt: true,
+            },
+            orderBy: { [query.sortBy]: query.sortOrder },
+            skip: (query.page - 1) * query.limit,
+            take: query.limit,
+          }),
+          total: await prisma.user.count({ where }),
+        };
+      },
+      { ttl: 120, tags: [CacheTags.USERS] }
+    );
+
+    return NextResponse.json(paginated(result.data, query.page, query.limit, result.total));
   } catch (err) {
     console.error('[API /api/users GET] Error:', err);
     if (err instanceof ApiError) {
@@ -124,6 +133,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       ipAddress: getClientIp(request),
     });
+
+    await invalidateOnMutation('users', newUser.id);
 
     return NextResponse.json(success(newUser, { message: 'User created successfully' }), { status: 201 });
   } catch (err) {

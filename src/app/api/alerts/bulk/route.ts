@@ -7,6 +7,7 @@ import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { recordAlertActivity } from '@/lib/alert-engine';
 import { bulkAcknowledgeSchema, bulkResolveSchema } from '@/lib/schemas';
 import { success, ApiError, ValidationError, InternalServerError } from '@/lib/api-response';
+import { invalidateOnMutation } from '@/lib/query';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const clientIp = getClientIp(request) || '127.0.0.1';
@@ -94,6 +95,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       ipAddress: getClientIp(request),
     });
+
+    await invalidateOnMutation('alerts');
 
     return NextResponse.json(success(
       { action, requested: uniqueIds.length, updated },

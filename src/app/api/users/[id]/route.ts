@@ -7,9 +7,53 @@ import { logAudit, getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { updateUserSchema, userIdSchema } from '@/lib/schemas';
 import { success, ApiError, ValidationError, NotFoundError, ConflictError, InternalServerError } from '@/lib/api-response';
+import { cacheGetOrSet, CacheTags, invalidateOnMutation } from '@/lib/query';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
+}
+
+export async function GET(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { id } = await params;
+    userIdSchema.parse({ id });
+
+    const cacheKey = `users:detail:${id}`;
+
+    const user = await cacheGetOrSet(
+      cacheKey,
+      async () => {
+        return prisma.user.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            fullName: true,
+            role: true,
+            createdAt: true,
+            lastLoginAt: true,
+          },
+        });
+      },
+      { ttl: 300, tags: [CacheTags.USER(id)] }
+    );
+
+    if (!user) {
+      throw new NotFoundError('User', id);
+    }
+
+    return NextResponse.json(success(user));
+  } catch (err) {
+    console.error('[API /api/users/[id] GET] Error:', err);
+    if (err instanceof ApiError) {
+      return NextResponse.json(err.toResponse(request.nextUrl.pathname), { status: err.statusCode });
+    }
+    return NextResponse.json(new InternalServerError().toResponse(request.nextUrl.pathname), { status: 500 });
+  }
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
@@ -114,6 +158,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
       ipAddress: getClientIp(request),
     });
 
+    await invalidateOnMutation('users', id);
+
     return NextResponse.json(success(updatedUser, { message: 'User updated successfully' }));
   } catch (err) {
     console.error('[API /api/users/[id] PATCH] Error:', err);
@@ -172,6 +218,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams): Pro
       },
       ipAddress: getClientIp(request),
     });
+
+    await invalidateOnMutation('users', id);
 
     return NextResponse.json(success(null, { message: `User ${existingUser.username} deleted successfully` }));
   } catch (err) {

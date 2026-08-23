@@ -8,7 +8,8 @@ import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { normalizeThresholdInput } from '@/lib/thresholds';
 import { isValidIpv4 } from '@/lib/utils';
 import { updateDeviceSchema, deviceIdSchema } from '@/lib/schemas';
-import { success, error, ApiError, ValidationError, NotFoundError, ConflictError, InternalServerError } from '@/lib/api-response';
+import { success, ApiError, ValidationError, NotFoundError, ConflictError, InternalServerError } from '@/lib/api-response';
+import { cacheGetOrSet, CacheTags, invalidateOnMutation } from '@/lib/query';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -22,20 +23,28 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
     const { id } = await params;
     deviceIdSchema.parse({ id });
 
-    const device = await prisma.device.findFirst({
-      where: { id, deletedAt: null },
-      include: {
-        credentials: true,
-        metrics: {
-          orderBy: { timestamp: 'desc' },
-          take: 20,
-        },
-        alerts: {
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-        },
+    const cacheKey = `devices:detail:${id}`;
+
+    const device = await cacheGetOrSet(
+      cacheKey,
+      async () => {
+        return prisma.device.findFirst({
+          where: { id, deletedAt: null },
+          include: {
+            credentials: true,
+            metrics: {
+              orderBy: { timestamp: 'desc' },
+              take: 20,
+            },
+            alerts: {
+              orderBy: { createdAt: 'desc' },
+              take: 10,
+            },
+          },
+        });
       },
-    });
+      { ttl: 120, tags: [CacheTags.DEVICE(id)] }
+    );
 
     if (!device) {
       throw new NotFoundError('Device', id);
@@ -219,6 +228,8 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
       ipAddress: getClientIp(request),
     });
 
+    await invalidateOnMutation('devices', id);
+
     return NextResponse.json(success(sanitizedUpdated, { message: 'Device updated successfully' }));
   } catch (err) {
     console.error('[API /api/devices/[id] PUT/PATCH] Error:', err);
@@ -279,6 +290,8 @@ export async function DELETE(request: NextRequest, { params }: Params): Promise<
       },
       ipAddress: getClientIp(request),
     });
+
+    await invalidateOnMutation('devices', id);
 
     return NextResponse.json(success(null, { message: `Device ${existing.name} deleted successfully` }));
   } catch (err) {

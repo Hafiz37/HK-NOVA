@@ -7,7 +7,77 @@ import { logAudit, getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { normalizeThresholdInput } from '@/lib/thresholds';
 import { queryDeviceSchema, createDeviceSchema } from '@/lib/schemas';
-import { success, error, paginated, ApiError, ValidationError, NotFoundError, ConflictError, InternalServerError } from '@/lib/api-response';
+import { success, paginated, ApiError, ValidationError, ConflictError, InternalServerError } from '@/lib/api-response';
+import { buildPrismaQuery, parseAdvancedFilters } from '@/lib/query';
+import { cacheGetOrSet, CacheTags, invalidateOnMutation } from '@/lib/query';
+
+const deviceSelect = {
+  id: true,
+  name: true,
+  ip: true,
+  type: true,
+  vendor: true,
+  model: true,
+  location: true,
+  status: true,
+  description: true,
+  isDemo: true,
+  cpuThresholdOverride: true,
+  memThresholdOverride: true,
+  cpuResolveThresholdOverride: true,
+  memResolveThresholdOverride: true,
+  createdAt: true,
+  updatedAt: true,
+  metrics: {
+    where: { metricType: 'ICMP' },
+    orderBy: { timestamp: 'desc' },
+    take: 1,
+    select: {
+      latency: true,
+      packetLoss: true,
+      timestamp: true,
+    },
+  },
+  alerts: {
+    where: { status: 'ACTIVE' },
+    orderBy: { createdAt: 'desc' },
+    take: 5,
+    select: {
+      id: true,
+      type: true,
+      severity: true,
+      message: true,
+      createdAt: true,
+    },
+  },
+} satisfies Prisma.DeviceSelect;
+
+type DeviceWithRelations = Prisma.DeviceGetPayload<{ select: typeof deviceSelect }>;
+
+function transformDevice(device: DeviceWithRelations) {
+  return {
+    id: device.id,
+    name: device.name,
+    ip: device.ip,
+    type: device.type,
+    vendor: device.vendor,
+    model: device.model,
+    location: device.location,
+    status: device.status,
+    description: device.description,
+    isDemo: device.isDemo,
+    cpuThresholdOverride: device.cpuThresholdOverride,
+    memThresholdOverride: device.memThresholdOverride,
+    cpuResolveThresholdOverride: device.cpuResolveThresholdOverride,
+    memResolveThresholdOverride: device.memResolveThresholdOverride,
+    createdAt: device.createdAt,
+    updatedAt: device.updatedAt,
+    latestLatency: device.metrics[0]?.latency ?? null,
+    latestPacketLoss: device.metrics[0]?.packetLoss ?? null,
+    lastCheck: device.metrics[0]?.timestamp ?? null,
+    activeAlerts: device.alerts,
+  };
+}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession();
@@ -15,106 +85,102 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const query = queryDeviceSchema.parse(Object.fromEntries(searchParams));
+    const basicQuery = queryDeviceSchema.parse(Object.fromEntries(searchParams));
+    const advancedFilters = parseAdvancedFilters(searchParams);
 
-    const where: Prisma.DeviceWhereInput = { deletedAt: null };
+    const cacheKey = `devices:list:${JSON.stringify({ ...basicQuery, ...advancedFilters })}`;
 
-    if (!query.showDemo) {
-      where.isDemo = false;
-    }
+    const result = await cacheGetOrSet(
+      cacheKey,
+      async () => {
+        const where: Prisma.DeviceWhereInput = { deletedAt: null };
 
-    if (query.search) {
-      where.OR = [
-        { name: { contains: query.search } },
-        { ip: { contains: query.search } },
-        { vendor: { contains: query.search } },
-        { model: { contains: query.search } },
-        { location: { contains: query.search } },
-      ];
-    }
+        if (!basicQuery.showDemo) {
+          where.isDemo = false;
+        }
 
-    if (query.type) {
-      where.type = query.type;
-    }
+        if (basicQuery.search) {
+          where.OR = [
+            { name: { contains: basicQuery.search } },
+            { ip: { contains: basicQuery.search } },
+            { vendor: { contains: basicQuery.search } },
+            { model: { contains: basicQuery.search } },
+            { location: { contains: basicQuery.search } },
+          ];
+        }
 
-    if (query.status) {
-      where.status = query.status;
-    }
+        if (basicQuery.type) {
+          where.type = basicQuery.type;
+        }
 
-    const [devices, total] = await Promise.all([
-      prisma.device.findMany({
-        where,
-        select: {
-          id: true,
-          name: true,
-          ip: true,
-          type: true,
-          vendor: true,
-          model: true,
-          location: true,
-          status: true,
-          description: true,
-          isDemo: true,
-          cpuThresholdOverride: true,
-          memThresholdOverride: true,
-          cpuResolveThresholdOverride: true,
-          memResolveThresholdOverride: true,
-          createdAt: true,
-          updatedAt: true,
-          metrics: {
-            where: { metricType: 'ICMP' },
-            orderBy: { timestamp: 'desc' },
-            take: 1,
-            select: {
-              latency: true,
-              packetLoss: true,
-              timestamp: true,
-            },
-          },
-          alerts: {
-            where: { status: 'ACTIVE' },
-            orderBy: { createdAt: 'desc' },
-            take: 5,
-            select: {
-              id: true,
-              type: true,
-              severity: true,
-              message: true,
-              createdAt: true,
-            },
-          },
-        },
-        orderBy: { [query.sortBy]: query.sortOrder },
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
-      }),
-      prisma.device.count({ where }),
-    ]);
+        if (basicQuery.status) {
+          where.status = basicQuery.status;
+        }
 
-    const response = devices.map((device) => ({
-      id: device.id,
-      name: device.name,
-      ip: device.ip,
-      type: device.type,
-      vendor: device.vendor,
-      model: device.model,
-      location: device.location,
-      status: device.status,
-      description: device.description,
-      isDemo: device.isDemo,
-      cpuThresholdOverride: device.cpuThresholdOverride,
-      memThresholdOverride: device.memThresholdOverride,
-      cpuResolveThresholdOverride: device.cpuResolveThresholdOverride,
-      memResolveThresholdOverride: device.memResolveThresholdOverride,
-      createdAt: device.createdAt,
-      updatedAt: device.updatedAt,
-      latestLatency: device.metrics[0]?.latency ?? null,
-      latestPacketLoss: device.metrics[0]?.packetLoss ?? null,
-      lastCheck: device.metrics[0]?.timestamp ?? null,
-      activeAlerts: device.alerts,
-    }));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dynamicWhere = where as any;
+        if (advancedFilters.filters) {
+          for (const [key, value] of Object.entries(advancedFilters.filters)) {
+            if (typeof value === 'object' && value !== null) {
+              const conditions = value as Record<string, unknown>;
+              const operators = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'nin', 'contains', 'startsWith', 'endsWith', 'not'];
+              const hasOperator = Object.keys(conditions).some(k => operators.includes(k));
+              if (hasOperator) {
+                dynamicWhere[key] = conditions;
+              } else if (conditions.eq !== undefined) {
+                dynamicWhere[key] = conditions.eq;
+              }
+            } else {
+              dynamicWhere[key] = value;
+            }
+          }
+        }
 
-    return NextResponse.json(paginated(response, query.page, query.limit, total));
+        if (advancedFilters.search && advancedFilters.searchFields) {
+          const searchFields = advancedFilters.searchFields.split(',');
+          where.OR = searchFields.map(field => ({
+            [field]: { contains: advancedFilters.search, mode: 'insensitive' as const },
+          }));
+        }
+
+        if (advancedFilters.dateFrom || advancedFilters.dateTo) {
+          const dateField = advancedFilters.dateField || 'createdAt';
+          dynamicWhere[dateField] = {};
+          if (advancedFilters.dateFrom) dynamicWhere[dateField].gte = advancedFilters.dateFrom;
+          if (advancedFilters.dateTo) dynamicWhere[dateField].lte = advancedFilters.dateTo;
+        }
+
+        const baseQuery = buildPrismaQuery(
+          { ...basicQuery, ...advancedFilters },
+          {
+            defaultSortBy: 'createdAt',
+            defaultSortOrder: 'desc',
+            searchableFields: ['name', 'ip', 'vendor', 'model', 'location'],
+            cursorField: 'id',
+            dateField: 'createdAt',
+          }
+        );
+
+        const query = {
+          ...baseQuery,
+          select: deviceSelect,
+        };
+
+        const [devices, total] = await Promise.all([
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          prisma.device.findMany(query as any),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          prisma.device.count({ where: dynamicWhere as any }),
+        ]);
+
+        return { data: devices, total, pagination: { page: basicQuery.page, limit: basicQuery.limit, total } };
+      },
+      { ttl: 60, tags: [CacheTags.DEVICES] }
+    );
+
+    const response = (result.data as unknown as DeviceWithRelations[]).map(transformDevice);
+
+    return NextResponse.json(paginated(response, result.pagination.page || 1, result.pagination.limit, result.pagination.total || 0));
   } catch (err) {
     console.error('[API /api/devices GET] Error:', err);
     if (err instanceof ApiError) {
@@ -209,6 +275,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       ipAddress: getClientIp(request),
     });
+
+    await invalidateOnMutation('devices', newDevice.id);
 
     return NextResponse.json(success(sanitizedDevice, { message: 'Device created successfully' }), { status: 201 });
   } catch (err) {
