@@ -7,7 +7,7 @@ import { PrismaClient } from '@prisma/client';
 import { extractAdvancedFeatures } from '../feature-engineering';
 import { trainModel, TrainedModel } from '../anomaly-service';
 import { createEnsembleEngine, EnsembleEngine } from './ensemble-engine';
-import { buildStatisticalModel } from './statistical';
+import { buildStatisticalModel, scoreStatistical } from './statistical';
 
 export interface HyperparameterSpace {
   isolationForest: {
@@ -146,7 +146,7 @@ function evaluateParams(
   let tp = 0, fp = 0, tn = 0, fn = 0;
 
   for (let i = 0; i < testData.length; i++) {
-    const { combinedScore, isAnomaly } = require('./statistical').scoreStatistical(statModelModified, testData[i]);
+    const { combinedScore, isAnomaly } = scoreStatistical(statModelModified, testData[i]);
     const pred = combinedScore > 0.5 ? 1 : 0;
     const actual = testLabels[i];
 
@@ -179,19 +179,18 @@ export class AutoTuner {
     console.log(`[AutoTuner] Starting hyperparameter tuning for device ${deviceId}...`);
 
     // Fetch training data
-    const { vectors } = await extractAdvancedFeatures(this.prisma, deviceId, 7);
+    const { vectors, featureNames } = await extractAdvancedFeatures(this.prisma, deviceId, 7);
     if (vectors.length < this.config.minSamples) {
       throw new Error(`Insufficient data for tuning: ${vectors.length} < ${this.config.minSamples}`);
     }
 
     const trainData = vectors.map(v => v.features);
-    const featureNames = vectors[0] ? Object.keys(vectors[0] as any) : [];
 
     // Create synthetic labels for evaluation (in practice, use feedback data)
     // For now, use statistical outliers as pseudo-labels
     const statModel = buildStatisticalModel(trainData);
     const labels = trainData.map(row => {
-      const { isAnomaly } = require('./statistical').scoreStatistical(statModel, row);
+      const { isAnomaly } = scoreStatistical(statModel, row);
       return isAnomaly ? 1 : 0;
     });
 
