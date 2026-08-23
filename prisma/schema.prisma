@@ -526,11 +526,46 @@ model Anomaly {
   anomalyScore Float
   severity     AnomalySeverity
 
+  // Enhanced Anomaly fields for Phase 1 & Phase 2
+  explanation          Json?   // { summary, topContributors, recommendation }
+  contributingFeatures Json?   // [{ featureName, value, normalValue, deviation, contribution }]
+  confidence           Float?  // Ensemble confidence (0-1)
+  algorithmVotes       Json?   // { isolationForest: { score, isAnomaly }, lof: { ... } }
+
   autoResolved Boolean   @default(false)
   resolvedAt   DateTime?
 
   @@index([deviceId, timestamp])
   @@index([severity])
+}
+
+model AnomalyModel {
+  id            String   @id @default(cuid())
+  deviceId      String?
+  deviceType    String?  // ROUTER, SWITCH, OLT, ALL
+
+  modelData     Json     // Serialized forest structure & state
+  algorithm     String   @default("ISOLATION_FOREST")
+
+  version       Int      @default(1)
+  trainedAt     DateTime @default(now())
+  trainingSize  Int      // Number of samples used
+
+  featureNames  Json     // Array of feature names used
+  stats         Json     // Normalization stats { mean, std }
+  scoreStats    Json     // Calibration stats { mean, std, p90, p95, p99 }
+
+  performance   Json?    // Performance metrics
+  hyperParams   Json?    // { nTrees, maxSamples, contamination }
+
+  isActive      Boolean  @default(true)
+  replacedBy    String?
+
+  createdAt     DateTime @default(now())
+
+  @@index([deviceId, isActive])
+  @@index([deviceType, isActive])
+  @@index([trainedAt])
 }
 
 model MaintenanceWindow {

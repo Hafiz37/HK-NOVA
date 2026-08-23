@@ -85,7 +85,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const latest = await extractLatestFeatures(prisma, deviceId, 1);
+    const latest = await extractLatestFeatures(prisma, deviceId);
     if (!latest) {
       return NextResponse.json({ error: 'No recent metrics found' }, { status: 400 });
     }

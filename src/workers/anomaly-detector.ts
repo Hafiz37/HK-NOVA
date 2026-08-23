@@ -7,9 +7,9 @@
 
 import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
-import { ANOMALY_POLL_INTERVAL, ANOMALY_MODEL_RETRAIN_HOURS, ANOMALY_ALERT_COOLDOWN_MS } from '../lib/constants';
+import { ANOMALY_POLL_INTERVAL, ANOMALY_ALERT_COOLDOWN_MS } from '../lib/constants';
 import {
-  trainModel,
+  getOrTrainModel,
   extractLatestFeatures,
   scoreMetric,
   classifySeverity,
@@ -44,18 +44,18 @@ async function ensureModel(deviceId: string): Promise<TrainedModel | null> {
   const cached = modelCache.get(deviceId);
   if (cached) {
     const ageHours = (Date.now() - cached.trainedAt.getTime()) / (1000 * 60 * 60);
-    if (ageHours < ANOMALY_MODEL_RETRAIN_HOURS) {
+    if (ageHours < 24) {
       return cached;
     }
   }
 
-  log('INFO', `Training model for device ${deviceId}...`);
-  const model = await trainModel(prisma, deviceId);
+  log('INFO', `Loading/Training model for device ${deviceId}...`);
+  const model = await getOrTrainModel(prisma, deviceId);
   if (model) {
     modelCache.set(deviceId, model);
-    log('INFO', `Model trained successfully for device ${deviceId}`);
+    log('INFO', `Model ready for device ${deviceId} (trainedAt: ${model.trainedAt.toISOString()})`);
   } else {
-    log('WARN', `Failed to train model for device ${deviceId} (insufficient data)`);
+    log('WARN', `Failed to load/train model for device ${deviceId} (insufficient data)`);
   }
   return model;
 }
@@ -73,7 +73,7 @@ async function processDevice(device: { id: string; name: string; ip: string; typ
       return;
     }
 
-    const latest = await extractLatestFeatures(prisma, device.id, 5);
+    const latest = await extractLatestFeatures(prisma, device.id);
     if (!latest) {
       return;
     }
@@ -182,7 +182,7 @@ process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
 log('INFO', `Anomaly Detector starting with schedule: "${ANOMALY_POLL_INTERVAL}"`);
-log('INFO', `Model retrain window: every ${ANOMALY_MODEL_RETRAIN_HOURS} hours`);
+log('INFO', 'Model persistence and re-training enabled (24h window)');
 
 // Run immediately on startup
 void pollCycle();
