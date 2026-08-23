@@ -113,6 +113,21 @@ enum ExecutionMode {
   SCHEDULED
 }
 
+enum BatchStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum ScheduledProvisioningStatus {
+  PENDING
+  EXECUTED
+  FAILED
+  CANCELLED
+}
+
 enum BackupStatus {
   SUCCESS
   FAILED
@@ -151,6 +166,66 @@ model FeatureFlag {
 
   @@index([key])
   @@index([scope])
+}
+
+model BatchProvisioning {
+  id            String      @id @default(cuid())
+  deviceId      String
+  device        Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  action        ProvisioningAction
+  templateName  String?
+  items         Json        // Array of ProvisioningFields
+  status        BatchStatus @default(PENDING)
+  totalItems    Int
+  successCount  Int         @default(0)
+  failedCount   Int         @default(0)
+  continueOnError Boolean  @default(true)
+  parallelExecution Boolean @default(false)
+  createdBy     String
+  createdAt     DateTime    @default(now())
+  startedAt     DateTime?
+  completedAt   DateTime?
+  metadata      Json?
+
+  @@index([deviceId, createdAt])
+  @@index([status])
+  @@index([createdBy])
+}
+
+model ScheduledProvisioning {
+  id          String                    @id @default(cuid())
+  deviceId    String
+  device      Device                    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  action      ProvisioningAction
+  templateName String?
+  fields      Json                      // ProvisioningFields
+  scheduledAt DateTime
+  status      ScheduledProvisioningStatus @default(PENDING)
+  executedAt  DateTime?
+  logId       String?                   @unique
+  log         ProvisioningLog?          @relation(fields: [logId], references: [id], onDelete: SetNull)
+  createdBy   String
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@index([scheduledAt, status])
+  @@index([deviceId])
+  @@index([createdBy])
+}
+
+model OltTemplateVersion {
+  id          String   @id @default(cuid())
+  name        String   // "huawei", "zte", "generic"
+  version     String   // "1.0.0"
+  content     Json     // Template JSON
+  isActive    Boolean  @default(false)
+  changelog   String?  @db.Text
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([name, version])
+  @@index([name, isActive])
 }
 
 model AlertCooldown {
@@ -198,12 +273,14 @@ model Device {
   metrics           Metric[]
   backups           Backup[]
   backupRestores    BackupRestore[]
-  provisioning      ProvisioningLog[]
-  anomalies         Anomaly[]
-  alerts            Alert[]
-  MaintenanceWindow MaintenanceWindow[]
-  customOids        CustomOid[]
-  thresholds        DeviceThreshold[]
+  provisioning           ProvisioningLog[]
+  batchProvisioning      BatchProvisioning[]
+  scheduledProvisioning  ScheduledProvisioning[]
+  anomalies              Anomaly[]
+  alerts                 Alert[]
+  MaintenanceWindow      MaintenanceWindow[]
+  customOids             CustomOid[]
+  thresholds             DeviceThreshold[]
 
   @@index([status])
   @@index([type])
@@ -376,10 +453,11 @@ model ProvisioningLog {
   metadata          Json?
 
   // Sprint 2: Rollback support
-  isRollback        Boolean  @default(false)
+  isRollback        Boolean               @default(false)
   rollbackLogId     String?
-  rollbackOf        ProvisioningLog? @relation("RollbackRelation", fields: [rollbackLogId], references: [id], onDelete: SetNull)
-  rollbackBy        ProvisioningLog[] @relation("RollbackRelation")
+  rollbackOf        ProvisioningLog?      @relation("RollbackRelation", fields: [rollbackLogId], references: [id], onDelete: SetNull)
+  rollbackBy        ProvisioningLog[]     @relation("RollbackRelation")
+  scheduledBy       ScheduledProvisioning?
 
   executedAt DateTime @default(now())
   executedBy String?

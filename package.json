@@ -26,6 +26,7 @@
     "worker:escalator": "tsx watch src/workers/alert-escalator.ts",
     "worker:digest": "tsx watch src/workers/digest-worker.ts",
     "worker:retry": "tsx watch src/workers/delivery-retry.ts",
+    "worker:scheduled-provisioning": "tsx watch src/workers/scheduled-provisioning-worker.ts",
     "demo:generator": "tsx watch src/workers/demo-generator.ts",
     "demo:seed": "tsx scripts/demo-seed.ts",
     "demo:agents": "bash scripts/demo/snmp-agents.sh",
