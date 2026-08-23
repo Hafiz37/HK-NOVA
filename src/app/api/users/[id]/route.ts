@@ -5,6 +5,8 @@ import { UserRole } from '@prisma/client';
 import { requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
+import { updateUserSchema, userIdSchema } from '@/lib/schemas';
+import { success, ApiError, ValidationError, NotFoundError, ConflictError, InternalServerError } from '@/lib/api-response';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -20,15 +22,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
 
   try {
     const { id } = await params;
+    userIdSchema.parse({ id });
+
     const body = await request.json();
-    const { fullName, email, role, password } = body;
+    const validatedData = updateUserSchema.parse(body);
 
     const existingUser = await prisma.user.findUnique({
       where: { id },
     });
 
     if (!existingUser) {
-      return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 });
+      throw new NotFoundError('User', id);
     }
 
     const before = {
@@ -37,48 +41,40 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
       role: existingUser.role,
     };
 
-    // Cegah admin lockout: admin tidak boleh menurunkan role dirinya sendiri,
-    // dan role ADMIN terakhir tidak boleh dicabut.
-    if (role !== undefined && role !== existingUser.role) {
-      const newRole = role as UserRole;
+    if (validatedData.role !== undefined && validatedData.role !== existingUser.role) {
+      const newRole = validatedData.role as UserRole;
       if (id === auth.user.id && existingUser.role === 'ADMIN' && newRole !== 'ADMIN') {
-        return NextResponse.json(
-          { error: 'Tidak dapat menurunkan role akun sendiri' },
-          { status: 400 }
-        );
+        throw new ValidationError('Cannot downgrade your own admin role');
       }
       if (existingUser.role === 'ADMIN' && newRole !== 'ADMIN') {
         const otherAdmins = await prisma.user.count({
           where: { role: 'ADMIN', id: { not: id } },
         });
         if (otherAdmins === 0) {
-          return NextResponse.json(
-            { error: 'Tidak dapat menghapus role ADMIN terakhir' },
-            { status: 400 }
-          );
+          throw new ValidationError('Cannot remove the last ADMIN role');
         }
       }
     }
 
     const dataToUpdate: Record<string, unknown> = {};
 
-    if (fullName !== undefined) dataToUpdate.fullName = fullName ? fullName.trim() : null;
-    if (email !== undefined) {
-      if (email && email.trim() !== existingUser.email) {
+    if (validatedData.fullName !== undefined) dataToUpdate.fullName = validatedData.fullName ? validatedData.fullName.trim() : null;
+    if (validatedData.email !== undefined) {
+      if (validatedData.email && validatedData.email.trim() !== existingUser.email) {
         const existingEmail = await prisma.user.findUnique({
-          where: { email: email.trim() },
+          where: { email: validatedData.email.trim() },
         });
         if (existingEmail) {
-          return NextResponse.json({ error: 'Email sudah digunakan' }, { status: 409 });
+          throw new ConflictError('Email already in use');
         }
       }
-      dataToUpdate.email = email ? email.trim() : null;
+      dataToUpdate.email = validatedData.email ? validatedData.email.trim() : null;
     }
-    if (role !== undefined && Object.values(UserRole).includes(role as UserRole)) {
-      dataToUpdate.role = role as UserRole;
+    if (validatedData.role !== undefined) {
+      dataToUpdate.role = validatedData.role;
     }
-    if (password && typeof password === 'string' && password.length >= 6) {
-      dataToUpdate.passwordHash = await bcrypt.hash(password, 12);
+    if (validatedData.password && typeof validatedData.password === 'string' && validatedData.password.length >= 8) {
+      dataToUpdate.passwordHash = await bcrypt.hash(validatedData.password, 12);
     }
 
     const updatedUser = await prisma.user.update({
@@ -95,10 +91,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     });
 
     const fieldsChanged: string[] = [];
-    if (fullName !== undefined && before.fullName !== updatedUser.fullName) fieldsChanged.push('fullName');
-    if (email !== undefined && before.email !== updatedUser.email) fieldsChanged.push('email');
-    if (role !== undefined && before.role !== updatedUser.role) fieldsChanged.push('role');
-    if (password) fieldsChanged.push('password');
+    if (validatedData.fullName !== undefined && before.fullName !== updatedUser.fullName) fieldsChanged.push('fullName');
+    if (validatedData.email !== undefined && before.email !== updatedUser.email) fieldsChanged.push('email');
+    if (validatedData.role !== undefined && before.role !== updatedUser.role) fieldsChanged.push('role');
+    if (validatedData.password) fieldsChanged.push('password');
 
     await logAudit({
       action: 'UPDATE',
@@ -111,17 +107,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
           fullName: updatedUser.fullName,
           email: updatedUser.email,
           role: updatedUser.role,
-          passwordReset: Boolean(password),
+          passwordReset: Boolean(validatedData.password),
         },
         fieldsChanged,
       },
       ipAddress: getClientIp(request),
     });
 
-    return NextResponse.json({ data: updatedUser, message: 'User berhasil diperbarui' });
-  } catch (error) {
-    console.error('[API /api/users/[id] PATCH] Error:', error);
-    return NextResponse.json({ error: 'Gagal memperbarui user' }, { status: 500 });
+    return NextResponse.json(success(updatedUser, { message: 'User updated successfully' }));
+  } catch (err) {
+    console.error('[API /api/users/[id] PATCH] Error:', err);
+    if (err instanceof ApiError) {
+      return NextResponse.json(err.toResponse(request.nextUrl.pathname), { status: err.statusCode });
+    }
+    if (err instanceof Error && err.name === 'ZodError') {
+      return NextResponse.json(new ValidationError('Validation failed', err).toResponse(request.nextUrl.pathname), { status: 400 });
+    }
+    return NextResponse.json(new InternalServerError().toResponse(request.nextUrl.pathname), { status: 500 });
   }
 }
 
@@ -135,12 +137,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams): Pro
 
   try {
     const { id } = await params;
+    userIdSchema.parse({ id });
 
     if (id === auth.user.id) {
-      return NextResponse.json(
-        { error: 'Tidak dapat menghapus akun Anda sendiri yang sedang digunakan' },
-        { status: 400 }
-      );
+      throw new ValidationError('Cannot delete your own account');
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -148,7 +148,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams): Pro
     });
 
     if (!existingUser) {
-      return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 });
+      throw new NotFoundError('User', id);
     }
 
     const before = {
@@ -173,9 +173,12 @@ export async function DELETE(request: NextRequest, { params }: RouteParams): Pro
       ipAddress: getClientIp(request),
     });
 
-    return NextResponse.json({ message: `User ${existingUser.username} berhasil dihapus` });
-  } catch (error) {
-    console.error('[API /api/users/[id] DELETE] Error:', error);
-    return NextResponse.json({ error: 'Gagal menghapus user' }, { status: 500 });
+    return NextResponse.json(success(null, { message: `User ${existingUser.username} deleted successfully` }));
+  } catch (err) {
+    console.error('[API /api/users/[id] DELETE] Error:', err);
+    if (err instanceof ApiError) {
+      return NextResponse.json(err.toResponse(request.nextUrl.pathname), { status: err.statusCode });
+    }
+    return NextResponse.json(new InternalServerError().toResponse(request.nextUrl.pathname), { status: 500 });
   }
 }

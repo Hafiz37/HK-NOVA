@@ -2,57 +2,55 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { AlertStatus, AlertSeverity, AlertType } from '@prisma/client';
 import { requireSession } from '@/lib/auth';
-import { parsePositiveIntParam } from '@/lib/utils';
+import { queryAlertSchema } from '@/lib/schemas';
+import { success, paginated, ApiError, InternalServerError } from '@/lib/api-response';
 
-/**
- * GET /api/alerts?status=ACTIVE&severity=HIGH&search=...&page=1&limit=50
- * Returns filtered list of alerts (server-side pagination + search).
- */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const statusParam = searchParams.get('status');
-    const severityParam = searchParams.get('severity');
-    const search = searchParams.get('search')?.trim();
-    const deviceId = searchParams.get('deviceId');
-    const page = parsePositiveIntParam(searchParams.get('page'), 1, 1, Number.MAX_SAFE_INTEGER);
-    const limit = parsePositiveIntParam(searchParams.get('limit'), 50, 1, 100);
-    const skip = (page - 1) * limit;
+    const query = queryAlertSchema.parse(Object.fromEntries(searchParams));
 
-    // Build filter
     const where: {
       status?: AlertStatus;
       severity?: AlertSeverity;
+      type?: AlertType;
       deviceId?: string;
+      assigneeId?: string;
       OR?: Array<Record<string, unknown>>;
-    } = {};
+      createdAt?: { gte?: Date; lte?: Date };
+      parentId?: null;
+    } = { parentId: null };
 
-    if (statusParam && ['ACTIVE', 'RESOLVED', 'ACKNOWLEDGED'].includes(statusParam)) {
-      where.status = statusParam as AlertStatus;
+    if (query.status) where.status = query.status;
+    if (query.severity) where.severity = query.severity;
+    if (query.type) where.type = query.type;
+    if (query.deviceId) where.deviceId = query.deviceId;
+    if (query.assigneeId) where.assigneeId = query.assigneeId;
+
+    if (query.startDate || query.endDate) {
+      where.createdAt = {};
+      if (query.startDate) where.createdAt.gte = query.startDate;
+      if (query.endDate) where.createdAt.lte = query.endDate;
     }
-    if (severityParam && ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(severityParam)) {
-      where.severity = severityParam as AlertSeverity;
-    }
-    if (deviceId) where.deviceId = deviceId;
-    if (search) {
-      const upper = search.toUpperCase();
+
+    if (query.search) {
+      const upper = query.search.toUpperCase();
       const typeMatches = Object.values(AlertType).filter((t) => t.includes(upper));
       const or: Array<Record<string, unknown>> = [
-        { message: { contains: search } },
-        { device: { is: { name: { contains: search } } } },
-        { device: { is: { ip: { contains: search } } } },
+        { message: { contains: query.search } },
+        { device: { is: { name: { contains: query.search } } } },
+        { device: { is: { ip: { contains: query.search } } } },
       ];
       if (typeMatches.length > 0) or.push({ type: { in: typeMatches } });
       where.OR = or;
     }
-    const baseWhere: Record<string, unknown> = { ...where, parentId: null };
 
     const [alerts, total] = await Promise.all([
       prisma.alert.findMany({
-        where: baseWhere,
+        where,
         include: {
           device: {
             select: { id: true, name: true, ip: true, type: true, location: true },
@@ -84,24 +82,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             select: { deliveries: true },
           },
         },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
+        orderBy: { [query.sortBy]: query.sortOrder },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
       }),
-      prisma.alert.count({ where: baseWhere }),
+      prisma.alert.count({ where }),
     ]);
 
-    return NextResponse.json({
-      data: alerts,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    console.error('[API /api/alerts] Error:', error);
-    return NextResponse.json({ error: 'Failed to fetch alerts' }, { status: 500 });
+    return NextResponse.json(paginated(alerts, query.page, query.limit, total));
+  } catch (err) {
+    console.error('[API /api/alerts] Error:', err);
+    if (err instanceof ApiError) {
+      return NextResponse.json(err.toResponse(request.nextUrl.pathname), { status: err.statusCode });
+    }
+    return NextResponse.json(new InternalServerError().toResponse(request.nextUrl.pathname), { status: 500 });
   }
 }

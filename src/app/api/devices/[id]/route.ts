@@ -7,21 +7,20 @@ import { logAudit, getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { normalizeThresholdInput } from '@/lib/thresholds';
 import { isValidIpv4 } from '@/lib/utils';
+import { updateDeviceSchema, deviceIdSchema } from '@/lib/schemas';
+import { success, error, ApiError, ValidationError, NotFoundError, ConflictError, InternalServerError } from '@/lib/api-response';
 
 interface Params {
   params: Promise<{ id: string }>;
 }
 
-/**
- * GET /api/devices/[id]
- * Fetch a single device with details, credentials (masked), recent metrics, and alerts.
- */
 export async function GET(_request: NextRequest, { params }: Params): Promise<NextResponse> {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
+    deviceIdSchema.parse({ id });
 
     const device = await prisma.device.findFirst({
       where: { id, deletedAt: null },
@@ -39,10 +38,9 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
     });
 
     if (!device) {
-      return NextResponse.json({ error: 'Device not found' }, { status: 404 });
+      throw new NotFoundError('Device', id);
     }
 
-    // Mask sensitive credential fields
     const sanitizedDevice = {
       ...device,
       credentials: device.credentials ? {
@@ -61,17 +59,16 @@ export async function GET(_request: NextRequest, { params }: Params): Promise<Ne
       } : null,
     };
 
-    return NextResponse.json({ data: sanitizedDevice });
-  } catch (error) {
-    console.error('[API /api/devices/[id] GET] Error:', error);
-    return NextResponse.json({ error: 'Failed to fetch device details' }, { status: 500 });
+    return NextResponse.json(success(sanitizedDevice));
+  } catch (err) {
+    console.error('[API /api/devices/[id] GET] Error:', err);
+    if (err instanceof ApiError) {
+      return NextResponse.json(err.toResponse(_request.nextUrl.pathname), { status: err.statusCode });
+    }
+    return NextResponse.json(new InternalServerError().toResponse(_request.nextUrl.pathname), { status: 500 });
   }
 }
 
-/**
- * PUT /api/devices/[id] or PATCH /api/devices/[id]
- * Update device details or status.
- */
 export async function PUT(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const clientIp = getClientIp(request) || '127.0.0.1';
   const rateLimitError = rateLimitResponse(RATE_LIMITS.mutation, 'devices:mutation', clientIp);
@@ -95,19 +92,19 @@ export async function PATCH(request: NextRequest, { params }: Params): Promise<N
 async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: string }>, auth: { ok: true; user: { id: string } }): Promise<NextResponse> {
   try {
     const { id } = await paramsPromise;
+    deviceIdSchema.parse({ id });
+
     const body = await request.json();
-    const { name, ip, type, vendor, model, location, status, description, credentials,
-      cpuThresholdOverride, memThresholdOverride, cpuResolveThresholdOverride, memResolveThresholdOverride } = body;
+    const validatedData = updateDeviceSchema.parse(body);
 
     const existing = await prisma.device.findFirst({
       where: { id, deletedAt: null },
     });
 
     if (!existing) {
-      return NextResponse.json({ error: 'Device not found' }, { status: 404 });
+      throw new NotFoundError('Device', id);
     }
 
-    // Capture before state for audit log
     const before = {
       name: existing.name,
       ip: existing.ip,
@@ -123,56 +120,56 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
       memResolveThresholdOverride: existing.memResolveThresholdOverride,
     };
 
-    if (ip && ip !== existing.ip) {
-      if (!isValidIpv4(ip.trim())) {
-        return NextResponse.json({ error: 'Invalid IPv4 address format' }, { status: 400 });
+    if (validatedData.ip && validatedData.ip !== existing.ip) {
+      if (!isValidIpv4(validatedData.ip.trim())) {
+        throw new ValidationError('Invalid IPv4 address format');
       }
       const ipCheck = await prisma.device.findFirst({
-        where: { ip: ip.trim(), deletedAt: null, id: { not: id } },
+        where: { ip: validatedData.ip.trim(), deletedAt: null, id: { not: id } },
       });
       if (ipCheck) {
-        return NextResponse.json({ error: `IP ${ip} is already used by another device` }, { status: 409 });
+        throw new ConflictError(`IP ${validatedData.ip} is already used by another device`);
       }
     }
 
     const updated = await prisma.device.update({
       where: { id },
       data: {
-        ...(name ? { name: name.trim() } : {}),
-        ...(ip ? { ip: ip.trim() } : {}),
-        ...(type && Object.values(DeviceType).includes(type) ? { type: type as DeviceType } : {}),
-        ...(vendor !== undefined ? { vendor: vendor ? vendor.trim() : null } : {}),
-        ...(model !== undefined ? { model: model ? model.trim() : null } : {}),
-        ...(location !== undefined ? { location: location ? location.trim() : null } : {}),
-        ...(status && Object.values(DeviceStatus).includes(status) ? { status: status as DeviceStatus } : {}),
-        ...(description !== undefined ? { description: description ? description.trim() : null } : {}),
-        ...(cpuThresholdOverride !== undefined ? { cpuThresholdOverride: normalizeThresholdInput(cpuThresholdOverride) } : {}),
-        ...(memThresholdOverride !== undefined ? { memThresholdOverride: normalizeThresholdInput(memThresholdOverride) } : {}),
-        ...(cpuResolveThresholdOverride !== undefined ? { cpuResolveThresholdOverride: normalizeThresholdInput(cpuResolveThresholdOverride) } : {}),
-        ...(memResolveThresholdOverride !== undefined ? { memResolveThresholdOverride: normalizeThresholdInput(memResolveThresholdOverride) } : {}),
-        ...(credentials
+        ...(validatedData.name ? { name: validatedData.name.trim() } : {}),
+        ...(validatedData.ip ? { ip: validatedData.ip.trim() } : {}),
+        ...(validatedData.type ? { type: validatedData.type } : {}),
+        ...(validatedData.vendor !== undefined ? { vendor: validatedData.vendor ? validatedData.vendor.trim() : null } : {}),
+        ...(validatedData.model !== undefined ? { model: validatedData.model ? validatedData.model.trim() : null } : {}),
+        ...(validatedData.location !== undefined ? { location: validatedData.location ? validatedData.location.trim() : null } : {}),
+        ...(validatedData.status ? { status: validatedData.status } : {}),
+        ...(validatedData.description !== undefined ? { description: validatedData.description ? validatedData.description.trim() : null } : {}),
+        ...(validatedData.cpuThresholdOverride !== undefined ? { cpuThresholdOverride: normalizeThresholdInput(validatedData.cpuThresholdOverride) } : {}),
+        ...(validatedData.memThresholdOverride !== undefined ? { memThresholdOverride: normalizeThresholdInput(validatedData.memThresholdOverride) } : {}),
+        ...(validatedData.cpuResolveThresholdOverride !== undefined ? { cpuResolveThresholdOverride: normalizeThresholdInput(validatedData.cpuResolveThresholdOverride) } : {}),
+        ...(validatedData.memResolveThresholdOverride !== undefined ? { memResolveThresholdOverride: normalizeThresholdInput(validatedData.memResolveThresholdOverride) } : {}),
+        ...(validatedData.credentials
           ? {
               credentials: {
                 upsert: {
                   create: {
-                    snmpVersion: credentials.snmpVersion || 'v2c',
-                    snmpCommunity: credentials.snmpCommunity ? encrypt(credentials.snmpCommunity) : null,
-                    snmpUser: credentials.snmpUser || null,
-                    snmpAuthPass: credentials.snmpAuthPass ? encrypt(credentials.snmpAuthPass) : null,
-                    snmpPrivPass: credentials.snmpPrivPass ? encrypt(credentials.snmpPrivPass) : null,
-                    sshUsername: credentials.sshUsername || null,
-                    sshPassword: credentials.sshPassword ? encrypt(credentials.sshPassword) : null,
-                    sshPort: credentials.sshPort ? Number(credentials.sshPort) : 22,
+                    snmpVersion: validatedData.credentials.snmpVersion || 'v2c',
+                    snmpCommunity: validatedData.credentials.snmpCommunity ? encrypt(validatedData.credentials.snmpCommunity) : null,
+                    snmpUser: validatedData.credentials.snmpUser || null,
+                    snmpAuthPass: validatedData.credentials.snmpAuthPass ? encrypt(validatedData.credentials.snmpAuthPass) : null,
+                    snmpPrivPass: validatedData.credentials.snmpPrivPass ? encrypt(validatedData.credentials.snmpPrivPass) : null,
+                    sshUsername: validatedData.credentials.sshUsername || null,
+                    sshPassword: validatedData.credentials.sshPassword ? encrypt(validatedData.credentials.sshPassword) : null,
+                    sshPort: validatedData.credentials.sshPort ? Number(validatedData.credentials.sshPort) : 22,
                   },
                   update: {
-                    ...(credentials.snmpVersion !== undefined ? { snmpVersion: credentials.snmpVersion } : {}),
-                    ...(credentials.snmpCommunity !== undefined ? { snmpCommunity: credentials.snmpCommunity ? encrypt(credentials.snmpCommunity) : null } : {}),
-                    ...(credentials.snmpUser !== undefined ? { snmpUser: credentials.snmpUser } : {}),
-                    ...(credentials.snmpAuthPass !== undefined ? { snmpAuthPass: credentials.snmpAuthPass ? encrypt(credentials.snmpAuthPass) : null } : {}),
-                    ...(credentials.snmpPrivPass !== undefined ? { snmpPrivPass: credentials.snmpPrivPass ? encrypt(credentials.snmpPrivPass) : null } : {}),
-                    ...(credentials.sshUsername !== undefined ? { sshUsername: credentials.sshUsername } : {}),
-                    ...(credentials.sshPassword !== undefined ? { sshPassword: credentials.sshPassword ? encrypt(credentials.sshPassword) : null } : {}),
-                    ...(credentials.sshPort !== undefined ? { sshPort: Number(credentials.sshPort) } : {}),
+                    ...(validatedData.credentials.snmpVersion !== undefined ? { snmpVersion: validatedData.credentials.snmpVersion } : {}),
+                    ...(validatedData.credentials.snmpCommunity !== undefined ? { snmpCommunity: validatedData.credentials.snmpCommunity ? encrypt(validatedData.credentials.snmpCommunity) : null } : {}),
+                    ...(validatedData.credentials.snmpUser !== undefined ? { snmpUser: validatedData.credentials.snmpUser } : {}),
+                    ...(validatedData.credentials.snmpAuthPass !== undefined ? { snmpAuthPass: validatedData.credentials.snmpAuthPass ? encrypt(validatedData.credentials.snmpAuthPass) : null } : {}),
+                    ...(validatedData.credentials.snmpPrivPass !== undefined ? { snmpPrivPass: validatedData.credentials.snmpPrivPass ? encrypt(validatedData.credentials.snmpPrivPass) : null } : {}),
+                    ...(validatedData.credentials.sshUsername !== undefined ? { sshUsername: validatedData.credentials.sshUsername } : {}),
+                    ...(validatedData.credentials.sshPassword !== undefined ? { sshPassword: validatedData.credentials.sshPassword ? encrypt(validatedData.credentials.sshPassword) : null } : {}),
+                    ...(validatedData.credentials.sshPort !== undefined ? { sshPort: Number(validatedData.credentials.sshPort) } : {}),
                   },
                 },
               },
@@ -184,7 +181,6 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
       },
     });
 
-    // Sanitize credentials in response (don't expose encrypted values)
     const sanitizedUpdated = {
       id: updated.id,
       name: updated.name,
@@ -203,7 +199,6 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
       updatedAt: updated.updatedAt,
     };
 
-    // Determine fields changed
     const fieldsChanged: string[] = [];
     (Object.keys(before) as Array<keyof typeof before>).forEach((key) => {
       if (before[key] !== sanitizedUpdated[key]) {
@@ -224,17 +219,19 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
       ipAddress: getClientIp(request),
     });
 
-    return NextResponse.json({ data: sanitizedUpdated, message: 'Device updated successfully' });
-  } catch (error) {
-    console.error('[API /api/devices/[id] PUT/PATCH] Error:', error);
-    return NextResponse.json({ error: 'Failed to update device' }, { status: 500 });
+    return NextResponse.json(success(sanitizedUpdated, { message: 'Device updated successfully' }));
+  } catch (err) {
+    console.error('[API /api/devices/[id] PUT/PATCH] Error:', err);
+    if (err instanceof ApiError) {
+      return NextResponse.json(err.toResponse(request.nextUrl.pathname), { status: err.statusCode });
+    }
+    if (err instanceof Error && err.name === 'ZodError') {
+      return NextResponse.json(new ValidationError('Validation failed', err).toResponse(request.nextUrl.pathname), { status: 400 });
+    }
+    return NextResponse.json(new InternalServerError().toResponse(request.nextUrl.pathname), { status: 500 });
   }
 }
 
-/**
- * DELETE /api/devices/[id]
- * Soft delete a device. Requires ADMIN role.
- */
 export async function DELETE(request: NextRequest, { params }: Params): Promise<NextResponse> {
   const clientIp = getClientIp(request) || '127.0.0.1';
   const rateLimitError = rateLimitResponse(RATE_LIMITS.mutation, 'devices:mutation', clientIp);
@@ -245,13 +242,14 @@ export async function DELETE(request: NextRequest, { params }: Params): Promise<
 
   try {
     const { id } = await params;
+    deviceIdSchema.parse({ id });
 
     const existing = await prisma.device.findFirst({
       where: { id, deletedAt: null },
     });
 
     if (!existing) {
-      return NextResponse.json({ error: 'Device not found' }, { status: 404 });
+      throw new NotFoundError('Device', id);
     }
 
     const before = {
@@ -282,9 +280,12 @@ export async function DELETE(request: NextRequest, { params }: Params): Promise<
       ipAddress: getClientIp(request),
     });
 
-    return NextResponse.json({ message: `Device ${existing.name} deleted successfully` });
-  } catch (error) {
-    console.error('[API /api/devices/[id] DELETE] Error:', error);
-    return NextResponse.json({ error: 'Failed to delete device' }, { status: 500 });
+    return NextResponse.json(success(null, { message: `Device ${existing.name} deleted successfully` }));
+  } catch (err) {
+    console.error('[API /api/devices/[id] DELETE] Error:', err);
+    if (err instanceof ApiError) {
+      return NextResponse.json(err.toResponse(request.nextUrl.pathname), { status: err.statusCode });
+    }
+    return NextResponse.json(new InternalServerError().toResponse(request.nextUrl.pathname), { status: 500 });
   }
 }
