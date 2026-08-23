@@ -1,4 +1,4 @@
-import { PrismaClient, ProvisioningAction, RequestStatus } from '@prisma/client';
+import { PrismaClient, ProvisioningAction } from '@prisma/client';
 import { executeProvisioning } from './provisioning';
 import type { ProvisioningFields, ProvisioningActionKey, TemplateName } from './olt-templates';
 

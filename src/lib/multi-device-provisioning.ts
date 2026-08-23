@@ -1,4 +1,4 @@
-import { PrismaClient, ProvisioningAction } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { executeProvisioning, type ExecuteProvisioningResult } from './provisioning';
 import type { ProvisioningFields, ProvisioningActionKey, TemplateName } from './olt-templates';
 

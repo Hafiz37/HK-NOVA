@@ -6,7 +6,7 @@ import { executeMultiDeviceProvisioning } from '@/lib/multi-device-provisioning'
 import { createScheduledProvisioning, executeDueScheduledProvisioning } from '@/lib/scheduled-provisioning';
 import { createProvisioningRequest, reviewProvisioningRequest } from '@/lib/approval-workflow';
 import { executeRollback } from '@/lib/rollback';
-import { validateTemplate, validateAllTemplates } from '@/lib/template-validator';
+import { validateAllTemplates } from '@/lib/template-validator';
 import { runTestSuite } from '@/lib/template-playground';
 import { getProvisioningAnalytics } from '@/lib/provisioning-analytics';
 import type { TemplateName } from '@/lib/olt-templates';

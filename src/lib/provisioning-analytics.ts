@@ -1,4 +1,4 @@
-import { PrismaClient, ProvisioningStatus, ExecutionMode } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 export interface ProvisioningStats {
   total: number;
