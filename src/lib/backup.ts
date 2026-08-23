@@ -3,6 +3,7 @@ import { execSshCommand, resolveSshCredentials } from './device-console';
 import { createAlertIfNotDuplicate, correlationKeyFor } from './alert-engine';
 import { DEFAULT_SSH_TIMEOUT } from './constants';
 import { prepareBackupContent } from './backup-storage';
+import { RealtimeEmitter } from './realtime';
 
 const BACKUP_COMMANDS: Record<string, string> = {
   huawei: 'display current-configuration',
@@ -49,8 +50,27 @@ export async function performBackup(
   device: BackupDevice
 ): Promise<BackupResult> {
   const startTime = Date.now();
+
+  RealtimeEmitter.backupStarted({
+    id: 'pending',
+    deviceId: device.id,
+    deviceName: device.name,
+    status: 'IN_PROGRESS',
+    triggerType: 'SCHEDULED',
+    sizeBytes: 0,
+    durationMs: 0,
+  });
+
   const creds = resolveSshCredentials(device.credentials ?? null);
   if (!creds) {
+    RealtimeEmitter.backupFailed({
+      id: 'pending',
+      deviceId: device.id,
+      deviceName: device.name,
+      status: 'FAILED',
+      triggerType: 'SCHEDULED',
+      errorMessage: 'SSH credentials tidak dikonfigurasi',
+    });
     return { status: 'FAILED', saved: false, changed: false, errorMessage: 'SSH credentials tidak dikonfigurasi' };
   }
 
@@ -74,6 +94,16 @@ export async function performBackup(
       dedupKey: `backup:fail:${device.id}`,
       correlationKey: correlationKeyFor(device.id),
     });
+
+    RealtimeEmitter.backupFailed({
+      id: 'pending',
+      deviceId: device.id,
+      deviceName: device.name,
+      status: 'FAILED',
+      triggerType: 'SCHEDULED',
+      errorMessage: res.error ?? 'SSH error',
+    });
+
     return { status: 'FAILED', saved: false, changed: false, errorMessage: res.error ?? 'SSH error' };
   }
 
@@ -85,7 +115,7 @@ export async function performBackup(
   const previous = await prisma.backup.findFirst({
     where: { deviceId: device.id },
     orderBy: { timestamp: 'desc' },
-    select: { configHash: true },
+    select: { configHash: true, id: true },
   });
 
   if (previous && previous.configHash === prepared.hash) {
@@ -93,7 +123,7 @@ export async function performBackup(
     return { status: 'SUCCESS', saved: false, changed: false, hash: prepared.hash };
   }
 
-  await prisma.backup.create({
+  const backup = await prisma.backup.create({
     data: {
       deviceId: device.id,
       configHash: prepared.hash,
@@ -107,6 +137,16 @@ export async function performBackup(
       durationMs: Date.now() - startTime,
       sshConnectMs,
     },
+  });
+
+  RealtimeEmitter.backupCompleted({
+    id: backup.id,
+    deviceId: device.id,
+    deviceName: device.name,
+    status: 'SUCCESS',
+    triggerType: 'SCHEDULED',
+    sizeBytes: prepared.sizeBytes,
+    durationMs: Date.now() - startTime,
   });
 
   return { status: 'SUCCESS', saved: true, changed: true, hash: prepared.hash };

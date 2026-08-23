@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession, requireRole } from '@/lib/auth';
 import { parsePositiveIntParam } from '@/lib/utils';
+import { RealtimeEmitter } from '@/lib/realtime';
 
 /**
  * GET /api/anomalies?deviceId=&severity=&startDate=&endDate=&page=&limit=
@@ -77,7 +78,13 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'ID required' }, { status: 400 });
     }
 
+    const anomaly = await prisma.anomaly.findUnique({ where: { id } });
+
     await prisma.anomaly.delete({ where: { id } });
+
+    if (anomaly) {
+      RealtimeEmitter.anomalyDeleted(id, auth.user.id);
+    }
 
     return NextResponse.json({ message: 'Anomaly deleted' }, { status: 200 });
   } catch (err) {

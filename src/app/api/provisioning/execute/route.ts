@@ -7,6 +7,7 @@ import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { executeProvisioning } from '@/lib/provisioning';
 import { PROVISIONING_ACTIONS, type ProvisioningFields } from '@/lib/olt-templates';
 import { mapErrorToCode, getHttpStatusForError, ProvisioningErrorCode } from '@/lib/provisioning-errors';
+import { RealtimeEmitter } from '@/lib/realtime';
 
 /**
  * POST /api/provisioning/execute
@@ -59,6 +60,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'vlan harus berupa angka 1-4094' }, { status: 400 });
     }
 
+    const device = await prisma.device.findUnique({
+      where: { id: deviceId },
+      select: { name: true },
+    });
+
+    if (!device) {
+      return NextResponse.json({ error: 'Device not found' }, { status: 404 });
+    }
+
+    RealtimeEmitter.provisioningStarted({
+      id: 'pending',
+      deviceId,
+      deviceName: device.name,
+      action,
+      status: 'PENDING',
+      templateName: template,
+      executionMode: dryRun ? 'DRY_RUN' : 'EXECUTE',
+      startedAt: new Date().toISOString(),
+    }, auth.user.id);
+
     const result = await executeProvisioning(prisma, {
       deviceId,
       action,
@@ -107,6 +128,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const message = dryRun ? 'Dry-run preview berhasil' : 'Provisioning berhasil dieksekusi';
+
+    RealtimeEmitter.provisioningCompleted({
+      id: result.log?.id ?? 'unknown',
+      deviceId,
+      deviceName: device.name,
+      action,
+      status: result.log?.status ?? 'SUCCESS',
+      templateName: template,
+      executionMode: dryRun ? 'DRY_RUN' : 'EXECUTE',
+      startedAt: result.log?.executedAt?.toISOString() ?? new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      executionTimeMs: result.log?.executionTimeMs ?? 0,
+    }, auth.user.id);
+
     return NextResponse.json({ data: result.log, message });
   } catch (error) {
     console.error('[API /api/provisioning/execute] Error:', error);

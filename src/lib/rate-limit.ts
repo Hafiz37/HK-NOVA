@@ -55,7 +55,7 @@ function envLimit(key: string, fallback: number): number {
 /**
  * Centralized, environment-tunable rate limit presets.
  */
-export const RATE_LIMITS: Record<'login' | 'test' | 'mutation' | 'users' | 'settings' | 'export' | 'provision' | 'read', RateLimitConfig> = {
+export const RATE_LIMITS: Record<'login' | 'test' | 'mutation' | 'users' | 'settings' | 'export' | 'provision' | 'read' | 'realtime', RateLimitConfig> = {
   // Brute-force protection: 5 attempts / minute / (IP + username)
   login: {
     limit: envLimit('RATE_LIMIT_LOGIN_LIMIT', 5),
@@ -103,6 +103,12 @@ export const RATE_LIMITS: Record<'login' | 'test' | 'mutation' | 'users' | 'sett
     limit: envLimit('RATE_LIMIT_PROVISION_LIMIT', 10),
     windowMs: 60 * 1000,
     loopbackLimit: envLimit('RATE_LIMIT_PROVISION_LOOPBACK_LIMIT', 2000),
+  },
+  // Real-time SSE connections (very strict to prevent abuse)
+  realtime: {
+    limit: envLimit('RATE_LIMIT_REALTIME_LIMIT', 5),
+    windowMs: 60 * 1000,
+    loopbackLimit: envLimit('RATE_LIMIT_REALTIME_LOOPBACK_LIMIT', 100),
   },
 };
 

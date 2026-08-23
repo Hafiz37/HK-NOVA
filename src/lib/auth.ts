@@ -136,3 +136,17 @@ export function clearSessionCookieOptions() {
 }
 
 export { COOKIE_NAME, MAX_AGE_SEC };
+
+export async function getUserFromToken(token: string): Promise<AuthUser | null> {
+  const session = verifySessionToken(token);
+  if (!session) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { username: session.username },
+    select: { id: true, username: true, role: true, fullName: true },
+  });
+
+  if (!user) return null;
+
+  return { id: user.id, username: user.username, role: user.role, fullName: user.fullName ?? undefined };
+}

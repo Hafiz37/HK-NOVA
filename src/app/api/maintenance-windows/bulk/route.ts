@@ -7,6 +7,7 @@ import { getClientIp, logAudit } from '@/lib/audit';
 import { createMaintenanceWindowSchema } from '@/lib/schemas';
 import { success, ApiError, ValidationError, InternalServerError } from '@/lib/api-response';
 import { invalidateOnMutation } from '@/lib/query';
+import { RealtimeEmitter } from '@/lib/realtime';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const clientIp = getClientIp(request) || '127.0.0.1';
@@ -68,6 +69,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .filter(r => r.status === 'rejected')
         .map(r => (r as PromiseRejectedResult).reason?.message ?? 'Unknown error');
 
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          const window = result.value;
+          RealtimeEmitter.maintenanceStarted({
+            id: window.id,
+            name: window.name,
+            deviceId: window.deviceId ?? undefined,
+            startAt: window.startAt.toISOString(),
+            endAt: window.endAt.toISOString(),
+            isActive: window.isActive,
+          });
+        }
+      }
+
       await logAudit({
         action: 'BULK_CREATE',
         entity: 'MaintenanceWindow',
@@ -104,6 +119,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         where: { id: { in: ids } },
       });
 
+      for (const id of ids) {
+        RealtimeEmitter.maintenanceEnded({
+          id,
+          name: '',
+          startAt: '',
+          endAt: '',
+          isActive: false,
+        });
+      }
+
       await logAudit({
         action: 'BULK_DELETE',
         entity: 'MaintenanceWindow',
@@ -130,6 +155,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const { ids } = body;
       if (!ids || !Array.isArray(ids) || ids.length === 0) {
         throw new ValidationError('ids array is required');
+      }
+
+      const windows = await prisma.maintenanceWindow.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, name: true, deviceId: true, startAt: true, endAt: true, isActive: true },
+      });
+
+      for (const window of windows) {
+        if (action === 'activate') {
+          RealtimeEmitter.maintenanceStarted({
+            id: window.id,
+            name: window.name,
+            deviceId: window.deviceId ?? undefined,
+            startAt: window.startAt.toISOString(),
+            endAt: window.endAt.toISOString(),
+            isActive: true,
+          });
+        } else {
+          RealtimeEmitter.maintenanceEnded({
+            id: window.id,
+            name: window.name,
+            deviceId: window.deviceId ?? undefined,
+            startAt: window.startAt.toISOString(),
+            endAt: window.endAt.toISOString(),
+            isActive: false,
+          });
+        }
       }
 
       const updated = await prisma.maintenanceWindow.updateMany({

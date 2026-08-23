@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { requireSession, requireRole } from '@/lib/auth';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/audit';
+import { RealtimeEmitter } from '@/lib/realtime';
 
 export async function GET(request: NextRequest) {
   const auth = await requireSession();
@@ -91,6 +92,16 @@ export async function POST(request: NextRequest) {
           },
         },
       },
+    });
+
+    RealtimeEmitter.maintenanceStarted({
+      id: window.id,
+      name: window.name,
+      deviceId: window.deviceId ?? undefined,
+      deviceName: window.device?.name,
+      startAt: window.startAt.toISOString(),
+      endAt: window.endAt.toISOString(),
+      isActive: window.isActive,
     });
 
     return NextResponse.json({ success: true, data: window });

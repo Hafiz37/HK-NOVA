@@ -8,6 +8,7 @@ import { recordAlertActivity } from '@/lib/alert-engine';
 import { bulkAcknowledgeSchema, bulkResolveSchema } from '@/lib/schemas';
 import { success, ApiError, ValidationError, InternalServerError } from '@/lib/api-response';
 import { invalidateOnMutation } from '@/lib/query';
+import { RealtimeEmitter } from '@/lib/realtime';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const clientIp = getClientIp(request) || '127.0.0.1';
@@ -97,6 +98,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
 
     await invalidateOnMutation('alerts');
+
+    for (const id of eligible) {
+      if (action === 'acknowledge') {
+        RealtimeEmitter.alertAcknowledged({
+          id,
+          type: '',
+          severity: '',
+          status: 'ACKNOWLEDGED',
+          message: '',
+          deviceId: '',
+          deviceName: '',
+          deviceIp: '',
+          acknowledgedAt: new Date().toISOString(),
+        }, auth.user.id);
+      } else {
+        RealtimeEmitter.alertResolved({
+          id,
+          type: '',
+          severity: '',
+          status: 'RESOLVED',
+          message: '',
+          deviceId: '',
+          deviceName: '',
+          deviceIp: '',
+          resolvedAt: new Date().toISOString(),
+        }, auth.user.id);
+      }
+    }
 
     return NextResponse.json(success(
       { action, requested: uniqueIds.length, updated },

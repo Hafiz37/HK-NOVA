@@ -5,6 +5,8 @@ import { requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';
 import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { recordAlertActivity } from '@/lib/alert-engine';
+import { RealtimeEmitter } from '@/lib/realtime';
+import type { AlertEventData } from '@/lib/realtime';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -79,6 +81,18 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
       },
       ipAddress: getClientIp(request),
     });
+
+    RealtimeEmitter.alertAcknowledged({
+      id: updated.id,
+      type: updated.type,
+      severity: updated.severity,
+      status: updated.status,
+      message: updated.message,
+      deviceId: updated.deviceId,
+      deviceName: updated.device?.name ?? '',
+      deviceIp: updated.device?.ip ?? '',
+      acknowledgedAt: updated.acknowledgedAt?.toISOString() ?? null,
+    } as AlertEventData, auth.user.id);
 
     return NextResponse.json({ data: updated });
   } catch (error) {

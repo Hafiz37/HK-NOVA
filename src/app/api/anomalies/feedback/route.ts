@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSession, requireRole } from '@/lib/auth';
+import { RealtimeEmitter } from '@/lib/realtime';
+import type { AnomalyEventData } from '@/lib/realtime';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession();
@@ -40,6 +42,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         tags: tags ?? [],
       },
     });
+
+    RealtimeEmitter.anomalyFeedback({
+      id: anomalyId,
+      deviceId: anomaly.deviceId,
+      deviceName: '',
+      deviceIp: '',
+      severity: anomaly.severity,
+      score: anomaly.anomalyScore,
+      confidence: anomaly.confidence ?? 0,
+      metricType: anomaly.metricType,
+      timestamp: anomaly.timestamp.toISOString(),
+      feedback,
+    } as AnomalyEventData, auth.user.id);
 
     return NextResponse.json({
       success: true,

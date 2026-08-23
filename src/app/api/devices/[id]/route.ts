@@ -10,6 +10,7 @@ import { isValidIpv4 } from '@/lib/utils';
 import { updateDeviceSchema, deviceIdSchema } from '@/lib/schemas';
 import { success, ApiError, ValidationError, NotFoundError, ConflictError, InternalServerError } from '@/lib/api-response';
 import { cacheGetOrSet, CacheTags, invalidateOnMutation } from '@/lib/query';
+import { RealtimeEmitter } from '@/lib/realtime';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -230,6 +231,30 @@ async function updateDevice(request: NextRequest, paramsPromise: Promise<{ id: s
 
     await invalidateOnMutation('devices', id);
 
+    const statusChanged = before.status !== sanitizedUpdated.status;
+
+    RealtimeEmitter.deviceUpdated({
+      id: updated.id,
+      name: updated.name,
+      ip: updated.ip,
+      type: updated.type,
+      status: updated.status,
+      vendor: updated.vendor,
+      location: updated.location,
+    }, auth.user.id);
+
+    if (statusChanged) {
+      RealtimeEmitter.deviceStatusChanged({
+        id: updated.id,
+        name: updated.name,
+        ip: updated.ip,
+        type: updated.type,
+        status: updated.status,
+        vendor: updated.vendor,
+        location: updated.location,
+      }, auth.user.id);
+    }
+
     return NextResponse.json(success(sanitizedUpdated, { message: 'Device updated successfully' }));
   } catch (err) {
     console.error('[API /api/devices/[id] PUT/PATCH] Error:', err);
@@ -292,6 +317,8 @@ export async function DELETE(request: NextRequest, { params }: Params): Promise<
     });
 
     await invalidateOnMutation('devices', id);
+
+    RealtimeEmitter.deviceDeleted(id, auth.user.id);
 
     return NextResponse.json(success(null, { message: `Device ${existing.name} deleted successfully` }));
   } catch (err) {

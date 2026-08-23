@@ -10,6 +10,7 @@ import { queryDeviceSchema, createDeviceSchema } from '@/lib/schemas';
 import { success, paginated, ApiError, ValidationError, ConflictError, InternalServerError } from '@/lib/api-response';
 import { buildPrismaQuery, parseAdvancedFilters } from '@/lib/query';
 import { cacheGetOrSet, CacheTags, invalidateOnMutation } from '@/lib/query';
+import { RealtimeEmitter } from '@/lib/realtime';
 
 const deviceSelect = {
   id: true,
@@ -277,6 +278,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
 
     await invalidateOnMutation('devices', newDevice.id);
+
+    RealtimeEmitter.deviceCreated({
+      id: newDevice.id,
+      name: newDevice.name,
+      ip: newDevice.ip,
+      type: newDevice.type,
+      status: newDevice.status,
+      vendor: newDevice.vendor,
+      location: newDevice.location,
+    }, auth.user.id);
 
     return NextResponse.json(success(sanitizedDevice, { message: 'Device created successfully' }), { status: 201 });
   } catch (err) {
