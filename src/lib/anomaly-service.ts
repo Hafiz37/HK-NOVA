@@ -346,4 +346,4 @@ export function formatExplanation(result: EnsembleResult): {
   return { summary, topContributors: topFeatures, recommendation };
 }
 
-export { EnsembleEngine, createEnsembleEngine };
+export { EnsembleEngine, createEnsembleEngine, extractAdvancedFeatures };

@@ -540,6 +540,9 @@ model Anomaly {
 
   @@index([deviceId, timestamp])
   @@index([severity])
+  @@index([deviceId, severity, timestamp])
+  @@index([metricType, timestamp])
+  @@index([timestamp])
 }
 
 model AnomalyModel {
@@ -569,6 +572,8 @@ model AnomalyModel {
   @@index([deviceId, isActive])
   @@index([deviceType, isActive])
   @@index([trainedAt])
+  @@index([isActive, trainedAt])
+  @@index([algorithm, isActive])
 }
 
 enum FeedbackType {
@@ -594,6 +599,7 @@ model AnomalyFeedback {
 
   @@index([feedback])
   @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 model CorrelationPattern {
@@ -611,6 +617,9 @@ model CorrelationPattern {
   @@index([confidence])
   @@index([support])
   @@index([lastSeen])
+  @@index([patternType])
+  @@index([confidence, support])
+  @@index([occurrences])
 }
 
 model AnomalyRiskPrediction {
@@ -630,6 +639,9 @@ model AnomalyRiskPrediction {
 
   @@index([deviceId, predictedAt])
   @@index([riskScore])
+  @@index([riskLevel, predictedAt])
+  @@index([deviceId, riskLevel, predictedAt])
+  @@index([validatedAt])
 }
 
 model MaintenanceWindow {
