@@ -8,6 +8,7 @@ import {
 import { loadActiveModelFromDb, saveModelToDb } from './model-persistence';
 import { extractAdvancedFeatures } from './feature-engineering';
 import { getDeviceTypeConfig } from './device-model-config';
+import { EnsembleEngine, createEnsembleEngine, type EnsembleResult, type FeatureContribution } from './algorithms';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const isoForestModule = require('isolation-forest');
@@ -43,6 +44,11 @@ export interface AnomalyScore {
   severity: AnomalySeverity;
   metricType: string;
   timestamp: Date;
+}
+
+export interface EnsemblePrediction {
+  result: EnsembleResult;
+  featureNames: string[];
 }
 
 function normalizeFeatures(
@@ -276,3 +282,68 @@ export async function extractLatestFeatures(
     timestamp: latestVector.timestamp,
   };
 }
+
+export async function trainEnsembleModels(
+  prisma: PrismaClient,
+  deviceId: string
+): Promise<{ ensemble: EnsembleEngine; trainData: number[][]; featureNames: string[] } | null> {
+  const device = await prisma.device.findUnique({
+    where: { id: deviceId },
+    select: { type: true },
+  });
+
+  const config = getDeviceTypeConfig(device?.type);
+  const { vectors, featureNames } = await extractAdvancedFeatures(prisma, deviceId, config.trainingDays || ANOMALY_TRAINING_DAYS);
+
+  const minSamples = config.minSamples || ANOMALY_MIN_SAMPLES;
+  if (vectors.length < minSamples) {
+    console.warn(
+      `[Anomaly Service] Device ${deviceId}: insufficient samples for ensemble (${vectors.length} < ${minSamples})`
+    );
+    return null;
+  }
+
+  const trainData = vectors.map((v) => v.features);
+
+  // Train Isolation Forest
+  const iforestModel = await trainModel(prisma, deviceId);
+
+  // Create and train ensemble
+  const ensemble = createEnsembleEngine();
+  await ensemble.train(deviceId, trainData, featureNames, iforestModel ?? undefined);
+
+  return { ensemble, trainData, featureNames };
+}
+
+export async function predictWithEnsemble(
+  ensemble: EnsembleEngine,
+  features: number[]
+): Promise<EnsemblePrediction> {
+  const result = ensemble.predict(features);
+  const model = ensemble.getModels();
+  return {
+    result,
+    featureNames: model.isolationForest?.featureNames ?? [],
+  };
+}
+
+export function formatExplanation(result: EnsembleResult): {
+  summary: string;
+  topContributors: FeatureContribution[];
+  recommendation: string;
+} {
+  const contributors = result.explanation ?? [];
+  const topFeatures = contributors.slice(0, 3);
+
+  const summary = topFeatures.length > 0
+    ? `Anomaly driven by ${topFeatures.map((f) => f.featureName).join(', ')}`
+    : 'Anomaly detected by ensemble';
+
+  const recommendation = topFeatures.length > 0
+    ? `Investigate ${topFeatures[0].featureName} (${topFeatures[0].severity} deviation: ${topFeatures[0].deviation.toFixed(1)}σ)`
+    : 'Review device metrics and system health';
+
+  return { summary, topContributors: topFeatures, recommendation };
+}
+
+export { EnsembleEngine, createEnsembleEngine };

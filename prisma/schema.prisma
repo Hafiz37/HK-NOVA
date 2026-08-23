@@ -535,6 +535,8 @@ model Anomaly {
   autoResolved Boolean   @default(false)
   resolvedAt   DateTime?
 
+  feedback   AnomalyFeedback?
+
   @@index([deviceId, timestamp])
   @@index([severity])
 }
@@ -566,6 +568,31 @@ model AnomalyModel {
   @@index([deviceId, isActive])
   @@index([deviceType, isActive])
   @@index([trainedAt])
+}
+
+enum FeedbackType {
+  TRUE_POSITIVE
+  FALSE_POSITIVE
+  UNKNOWN
+  EXPECTED_BEHAVIOR
+}
+
+model AnomalyFeedback {
+  id        String      @id @default(cuid())
+  anomalyId String      @unique
+  anomaly   Anomaly     @relation(fields: [anomalyId], references: [id], onDelete: Cascade)
+
+  feedback  FeedbackType
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+
+  comment   String?
+  tags      Json?       // ["maintenance", "expected"]
+
+  createdAt DateTime    @default(now())
+
+  @@index([feedback])
+  @@index([createdAt])
 }
 
 model MaintenanceWindow {
@@ -730,6 +757,7 @@ model User {
 
   assignedAlerts Alert[]         @relation("AlertAssignee")
   backupRestores BackupRestore[]
+  anomalyFeedbacks AnomalyFeedback[]
 }
 
 // ─── Custom SNMP OID per device / vendor ─────────────────────────────────────

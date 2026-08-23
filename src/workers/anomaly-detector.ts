@@ -6,7 +6,7 @@
  */
 
 import cron from 'node-cron';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { ANOMALY_POLL_INTERVAL, ANOMALY_ALERT_COOLDOWN_MS } from '../lib/constants';
 import {
   getOrTrainModel,
@@ -14,6 +14,10 @@ import {
   scoreMetric,
   classifySeverity,
   saveAnomaly,
+  trainEnsembleModels,
+  predictWithEnsemble,
+  formatExplanation,
+  EnsembleEngine,
   TrainedModel,
 } from '../lib/anomaly-service';
 import { processAnomalyAlert, resolveAnomalyAlert } from '../lib/alert-engine';
@@ -32,6 +36,7 @@ function log(level: 'INFO' | 'WARN' | 'ERROR', message: string, meta?: unknown):
 
 // ─── In-memory model cache ───────────────────────────────────────────────────
 const modelCache = new Map<string, TrainedModel>();
+const ensembleCache = new Map<string, EnsembleEngine>();
 
 async function getActiveDevices() {
   return prisma.device.findMany({
@@ -40,24 +45,27 @@ async function getActiveDevices() {
   });
 }
 
-async function ensureModel(deviceId: string): Promise<TrainedModel | null> {
+async function ensureModel(deviceId: string): Promise<{ model: TrainedModel; ensemble: EnsembleEngine } | null> {
   const cached = modelCache.get(deviceId);
-  if (cached) {
+  const cachedEnsemble = ensembleCache.get(deviceId);
+  if (cached && cachedEnsemble) {
     const ageHours = (Date.now() - cached.trainedAt.getTime()) / (1000 * 60 * 60);
     if (ageHours < 24) {
-      return cached;
+      return { model: cached, ensemble: cachedEnsemble };
     }
   }
 
-  log('INFO', `Loading/Training model for device ${deviceId}...`);
-  const model = await getOrTrainModel(prisma, deviceId);
-  if (model) {
-    modelCache.set(deviceId, model);
-    log('INFO', `Model ready for device ${deviceId} (trainedAt: ${model.trainedAt.toISOString()})`);
+  log('INFO', `Loading/Training ensemble for device ${deviceId}...`);
+  const trained = await trainEnsembleModels(prisma, deviceId);
+  if (trained) {
+    modelCache.set(deviceId, trained.ensemble.getModels().isolationForest!);
+    ensembleCache.set(deviceId, trained.ensemble);
+    log('INFO', `Ensemble ready for device ${deviceId}`);
+    return { model: trained.ensemble.getModels().isolationForest!, ensemble: trained.ensemble };
   } else {
-    log('WARN', `Failed to load/train model for device ${deviceId} (insufficient data)`);
+    log('WARN', `Failed to load/train ensemble for device ${deviceId} (insufficient data)`);
+    return null;
   }
-  return model;
 }
 
 async function processDevice(device: { id: string; name: string; ip: string; type: string }) {
@@ -68,8 +76,8 @@ async function processDevice(device: { id: string; name: string; ip: string; typ
       return;
     }
 
-    const model = await ensureModel(device.id);
-    if (!model) {
+    const trained = await ensureModel(device.id);
+    if (!trained) {
       return;
     }
 
@@ -78,27 +86,44 @@ async function processDevice(device: { id: string; name: string; ip: string; typ
       return;
     }
 
-    const score = scoreMetric(model, latest.features);
-    const severity = classifySeverity(score, model);
+    // Use ensemble prediction
+    const { result } = await predictWithEnsemble(trained.ensemble, latest.features);
+    const score = result.finalScore;
+    const severity = result.severity;
 
     if (severity === 'LOW' || severity === 'MEDIUM') {
       await resolveAnomalyAlert(prisma, device.id, latest.metricType);
       return;
     }
 
-    const anomaly = await saveAnomaly(
-      prisma,
-      device.id,
-      latest.metricType,
-      score,
-      severity,
-      latest.timestamp
-    );
+    // Format explanation for storage
+    const explanation = formatExplanation(result);
+
+    const anomaly = await prisma.anomaly.create({
+      data: {
+        deviceId: device.id,
+        metricType: latest.metricType,
+        anomalyScore: score,
+        severity,
+        timestamp: latest.timestamp,
+        explanation: {
+          summary: explanation.summary,
+          topContributors: explanation.topContributors as unknown as Prisma.InputJsonValue,
+          recommendation: explanation.recommendation,
+        },
+        contributingFeatures: explanation.topContributors as unknown as Prisma.InputJsonValue,
+        confidence: result.confidence,
+        algorithmVotes: result.algorithms.reduce((acc, algo) => {
+          acc[algo.algorithm] = { score: algo.score, isAnomaly: algo.isAnomaly };
+          return acc;
+        }, {} as Record<string, { score: number; isAnomaly: boolean }>),
+      },
+    });
 
     log(
       'INFO',
       `Anomaly detected: ${device.name} (${device.ip}) - ${latest.metricType} ` +
-        `score=${score.toFixed(3)} severity=${severity}`
+        `score=${score.toFixed(3)} severity=${severity} confidence=${result.confidence.toFixed(2)}`
     );
 
     const alertResult = await processAnomalyAlert(prisma, device, {
