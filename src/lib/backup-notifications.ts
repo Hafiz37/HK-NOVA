@@ -1,6 +1,24 @@
 import { PrismaClient } from '@prisma/client';
 import { calculateBackupHealth } from './backup-health';
 
+interface BackupWithChangesSummary {
+  id: string;
+  deviceId: string;
+  timestamp: Date;
+  status: string;
+  errorMessage: string | null;
+  compressedBytes: number | null;
+  riskScore: number | null;
+  changesSummary: { critical?: number; high?: number } | null;
+  criticalChanges: Array<{ severity: string; section: string; preview: string; patterns: string[] }> | null;
+}
+
+interface DeviceBasic {
+  id: string;
+  name: string;
+  ip: string;
+}
+
 export interface NotificationConfig {
   enabled: boolean;
   channels: ('telegram' | 'email' | 'webhook')[];
@@ -101,6 +119,8 @@ export async function generateDailyDigest(
       changesSummary: true,
       sizeBytes: true,
       compressedBytes: true,
+      timestamp: true,
+      criticalChanges: true,
     },
   });
 
@@ -111,8 +131,8 @@ export async function generateDailyDigest(
   // Get critical/high changes
   let criticalChanges = 0;
   let highChanges = 0;
-  for (const backup of successfulBackups) {
-    const cs = backup.changesSummary as any;
+  for (const backup of successfulBackups as BackupWithChangesSummary[]) {
+    const cs = backup.changesSummary;
     if (cs) {
       criticalChanges += cs.critical || 0;
       highChanges += cs.high || 0;
@@ -172,11 +192,11 @@ export async function getCriticalChangesForAlert(
       criticalChanges: true,
       changesSummary: true,
     },
-  });
+  }) as BackupWithChangesSummary[];
 
   const alerts: CriticalChangeAlert[] = [];
   for (const backup of backups) {
-    const cc = backup.criticalChanges as any[];
+    const cc = backup.criticalChanges;
     if (cc && cc.length > 0) {
       // Get device info
       const device = await prisma.device.findUnique({
@@ -260,7 +280,7 @@ async function sendTelegram(subject: string, message: string): Promise<void> {
   }
 }
 
-async function sendEmail(recipients: string[], subject: string, message: string): Promise<void> {
+async function sendEmail(recipients: string[], subject: string, _message: string): Promise<void> {
   // This would integrate with your email service (nodemailer, etc.)
   // For now, just log
   console.log(`[NOTIFICATION] Email to ${recipients.join(', ')}: ${subject}`);

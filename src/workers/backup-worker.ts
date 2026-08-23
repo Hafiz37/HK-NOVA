@@ -66,7 +66,6 @@ async function runBackupCycle(): Promise<void> {
   // Filter devices by schedule (if custom schedule set)
   const now = new Date();
   const currentHour = now.getHours();
-  const currentDayOfWeek = now.getDay(); // 0 = Sunday
 
   const candidates = devices
     .filter((d) => resolveSshCredentials(d.credentials) !== null)

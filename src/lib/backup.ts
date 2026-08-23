@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import type { PrismaClient } from '@prisma/client';
 import { execSshCommand, resolveSshCredentials } from './device-console';
 import { createAlertIfNotDuplicate, correlationKeyFor } from './alert-engine';

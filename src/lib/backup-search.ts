@@ -1,5 +1,31 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, BackupStatus } from '@prisma/client';
 import { getBackupContent } from './backup-storage';
+
+interface BackupForSearch {
+  id: string;
+  deviceId: string;
+  timestamp: Date;
+  configContent: Buffer | null;
+  isCompressed: boolean;
+  isEncrypted: boolean;
+  storageLocation: string;
+  filePath: string | null;
+}
+
+interface DeviceBasic {
+  id: string;
+  name: string;
+  ip: string;
+  type: string;
+  vendor: string | null;
+}
+
+interface PrismaWhere {
+  deletedAt: null | { not: null };
+  status: BackupStatus;
+  deviceId?: { in: string[] };
+  timestamp?: { gte?: Date; lte?: Date };
+}
 
 export interface SearchOptions {
   query: string;
@@ -63,9 +89,9 @@ export async function searchBackups(
   } = options;
 
   // Build where clause for backups
-  const where: any = {
+  const where: PrismaWhere = {
     deletedAt: null,
-    status: 'SUCCESS',
+    status: BackupStatus.SUCCESS,
   };
 
   if (deviceIds && deviceIds.length > 0) {
@@ -79,7 +105,7 @@ export async function searchBackups(
   }
 
   // Get devices for filtering by type/vendor
-  let deviceWhere: any = { deletedAt: null };
+  const deviceWhere = { deletedAt: null } as Record<string, unknown>;
   if (deviceTypes && deviceTypes.length > 0) {
     deviceWhere.type = { in: deviceTypes };
   }
@@ -235,7 +261,7 @@ export async function searchLatestConfigs(
 
   // Get device info
   const deviceIdsInResults = [...new Set(filteredBackups.map(b => b.deviceId))];
-  let deviceWhere: any = { id: { in: deviceIdsInResults }, deletedAt: null };
+  const deviceWhere = { id: { in: deviceIdsInResults }, deletedAt: null } as Record<string, unknown>;
   if (deviceTypes?.length) deviceWhere.type = { in: deviceTypes };
   if (vendors?.length) deviceWhere.vendor = { in: vendors };
 

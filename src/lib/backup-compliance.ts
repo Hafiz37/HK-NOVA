@@ -1,9 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import { getBackupContent } from './backup-storage';
-import { analyzeConfigChanges } from './backup-analysis';
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
-import { Readable } from 'stream';
 
 export interface ComplianceReportOptions {
   startDate: Date;
@@ -11,6 +8,28 @@ export interface ComplianceReportOptions {
   deviceIds?: string[];
   format: 'pdf' | 'xlsx';
   includeDetails?: boolean;
+}
+
+interface BackupWithChanges {
+  id: string;
+  deviceId: string;
+  timestamp: Date;
+  status: string;
+  errorMessage: string | null;
+  sizeBytes: number | null;
+  compressedBytes: number | null;
+  storageLocation: string;
+  riskScore: number | null;
+  changesSummary: { critical?: number; high?: number } | null;
+  criticalChanges: Array<{ severity: string; section: string; preview: string; patterns: string[] }> | null;
+}
+
+interface DeviceBasic {
+  id: string;
+  name: string;
+  ip: string;
+  type: string;
+  vendor: string | null;
 }
 
 export interface ComplianceReportData {
@@ -89,7 +108,7 @@ export async function generateComplianceReport(
 ): Promise<ComplianceReportData> {
   const { startDate, endDate, deviceIds, includeDetails = true } = options;
 
-  const where: any = {
+  const where: Record<string, unknown> = {
     deletedAt: null,
     timestamp: { gte: startDate, lte: endDate },
   };
@@ -115,17 +134,17 @@ export async function generateComplianceReport(
       criticalChanges: true,
     },
     orderBy: { timestamp: 'desc' },
-  });
+  }) as BackupWithChanges[];
 
   // Get all devices
-  const deviceWhere: any = { deletedAt: null };
+  const deviceWhere = { deletedAt: null };
   if (deviceIds && deviceIds.length > 0) {
-    deviceWhere.id = { in: deviceIds };
+    (deviceWhere as Record<string, unknown>).id = { in: deviceIds };
   }
   const devices = await prisma.device.findMany({
-    where: deviceWhere,
+    where: deviceWhere as Record<string, unknown>,
     select: { id: true, name: true, ip: true, type: true, vendor: true },
-  });
+  }) as DeviceBasic[];
   const deviceMap = new Map(devices.map(d => [d.id, d]));
 
   // Calculate summary
@@ -145,13 +164,13 @@ export async function generateComplianceReport(
       : 999;
 
     const criticalChanges = deviceBackups.reduce((sum, b) => {
-      const cs = b.changesSummary as any;
-      return sum + (cs?.critical || 0);
+      const cs = b.changesSummary;
+      return sum + (cs?.critical ?? 0);
     }, 0);
 
     const highChanges = deviceBackups.reduce((sum, b) => {
-      const cs = b.changesSummary as any;
-      return sum + (cs?.high || 0);
+      const cs = b.changesSummary;
+      return sum + (cs?.high ?? 0);
     }, 0);
 
     const riskScores = deviceBackups.map(b => b.riskScore).filter((r): r is number => r !== null);
@@ -184,7 +203,7 @@ export async function generateComplianceReport(
   const criticalChanges: CriticalChangeDetail[] = [];
   if (includeDetails) {
     for (const backup of backups) {
-      const cc = backup.criticalChanges as any[];
+      const cc = backup.criticalChanges;
       if (cc && cc.length > 0) {
         const device = deviceMap.get(backup.deviceId);
         for (const change of cc) {
@@ -245,8 +264,8 @@ export async function generateComplianceReport(
     totalStorageUsed: Math.round(backups.reduce((sum, b) => sum + (b.compressedBytes || 0), 0) / 1024 / 1024 * 100) / 100,
     criticalChangesCount: criticalChanges.length,
     highChangesCount: backups.reduce((sum, b) => {
-      const cs = b.changesSummary as any;
-      return sum + (cs?.high || 0);
+      const cs = b.changesSummary;
+      return sum + (cs?.high ?? 0);
     }, 0),
     devicesNeverBackedUp: totalDevices - devicesWithBackupsCount,
   };

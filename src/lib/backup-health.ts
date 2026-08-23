@@ -17,7 +17,6 @@ export interface BackupHealthScore {
 export async function calculateBackupHealth(prisma: PrismaClient): Promise<BackupHealthScore> {
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   // Total active devices with backup enabled
   const totalDevices = await prisma.device.count({
