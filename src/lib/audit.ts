@@ -32,7 +32,8 @@ export type AuditEntity =
   | 'ScheduledProvisioning'
   | 'OltTemplateVersion'
   | 'BatchProvisioning'
-  | 'ProvisioningRequest';
+  | 'ProvisioningRequest'
+  | 'ExportTemplate';
 
 export interface AuditDetails {
   before?: Record<string, unknown>;

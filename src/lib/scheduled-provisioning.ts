@@ -1,6 +1,7 @@
 import { PrismaClient, ProvisioningAction, ScheduledProvisioningStatus } from '@prisma/client';
 import { executeProvisioning } from './provisioning';
 import type { ProvisioningFields, ProvisioningActionKey, TemplateName } from './olt-templates';
+import { broadcastScheduledUpdate } from '@/app/api/provisioning/events/route';
 
 export interface CreateScheduledInput {
   deviceId: string;
@@ -36,7 +37,7 @@ export async function createScheduledProvisioning(
   });
 }
 
-export async function executeDueScheduledProvisioning(prisma: PrismaClient) {
+export async function executeDueScheduledProvisioning(prisma: PrismaClient, dryRun: boolean = false) {
   const now = new Date();
   const dueJobs = await prisma.scheduledProvisioning.findMany({
     where: {
@@ -66,7 +67,7 @@ export async function executeDueScheduledProvisioning(prisma: PrismaClient) {
       template: job.templateName as TemplateName ?? undefined,
       fields,
       executedBy: job.createdBy,
-      dryRun: false,
+      dryRun,
     });
 
     const status: ScheduledProvisioningStatus = result.ok ? 'EXECUTED' : 'FAILED';
@@ -78,6 +79,13 @@ export async function executeDueScheduledProvisioning(prisma: PrismaClient) {
         executedAt: new Date(),
         logId: result.log?.id,
       },
+    });
+
+    broadcastScheduledUpdate(job.id, {
+      status,
+      executedAt: new Date().toISOString(),
+      logId: result.log?.id,
+      deviceId: job.deviceId,
     });
 
     results.push({ job, result });

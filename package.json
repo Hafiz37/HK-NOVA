@@ -40,6 +40,7 @@
     "test:phase1": "tsx scripts/test-phase1.ts",
     "test:phase2": "tsx scripts/test-phase2-snmp.ts",
     "test:anomaly": "tsx scripts/test-anomaly.ts",
+    "test:provisioning": "vitest run tests/integration/provisioning",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

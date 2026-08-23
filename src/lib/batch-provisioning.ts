@@ -1,6 +1,7 @@
 import { PrismaClient, ProvisioningAction, BatchStatus } from '@prisma/client';
 import { executeProvisioning, type ExecuteProvisioningResult } from './provisioning';
 import type { ProvisioningFields, ProvisioningActionKey, TemplateName } from './olt-templates';
+import { broadcastBatchUpdate } from '@/app/api/provisioning/events/route';
 
 export interface BatchProvisioningItem extends ProvisioningFields {
   [key: string]: unknown;
@@ -117,6 +118,14 @@ export async function executeBatchProvisioning(
           break;
         }
       }
+
+      broadcastBatchUpdate(batchRecord.id, {
+        status: 'RUNNING',
+        successCount,
+        failedCount,
+        totalItems: input.items.length,
+        deviceId: input.deviceId,
+      });
     }
   }
 
@@ -135,6 +144,14 @@ export async function executeBatchProvisioning(
       failedCount,
       completedAt: new Date(),
     },
+  });
+
+  broadcastBatchUpdate(batchRecord.id, {
+    status: finalStatus,
+    successCount,
+    failedCount,
+    totalItems: input.items.length,
+    deviceId: input.deviceId,
   });
 
   return {

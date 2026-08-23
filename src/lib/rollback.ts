@@ -10,6 +10,15 @@ const ROLLBACK_ACTION_MAP: Record<ProvisioningActionKey, ProvisioningActionKey |
   check_status: null,
 };
 
+// Map Prisma enum to action key
+const ACTION_ENUM_TO_KEY: Record<ProvisioningAction, ProvisioningActionKey> = {
+  CREATE: 'create_service',
+  SUSPEND: 'suspend_service',
+  REACTIVATE: 'reactivate_service',
+  TERMINATE: 'terminate_service',
+  STATUS_CHECK: 'check_status',
+};
+
 export interface RollbackResult {
   ok: boolean;
   error?: string;
@@ -17,17 +26,25 @@ export interface RollbackResult {
   originalLogId: string;
 }
 
-function extractFieldsFromLog(log: {
-  ontSerial: string | null;
-  ponPort: string | null;
-  vlan: number | null;
-  serviceProfile: string | null;
-}): ProvisioningFields {
+function extractFieldsFromLog(log: Record<string, unknown>): ProvisioningFields {
+  const meta = (log.metadata as Record<string, unknown> | null) ?? null;
+  const fieldsUsed = (meta?.fieldsUsed as Record<string, unknown> | undefined) ?? undefined;
+
+  const getString = (val: unknown): string | undefined => {
+    if (typeof val === 'string') return val;
+    return undefined;
+  };
+
   return {
-    ontSerial: log.ontSerial ?? undefined,
-    ponPort: log.ponPort ?? undefined,
-    vlan: log.vlan ?? undefined,
-    serviceProfile: log.serviceProfile ?? undefined,
+    ontSerial: getString(log.ontSerial),
+    ponPort: getString(log.ponPort),
+    vlan: typeof log.vlan === 'number' ? log.vlan : undefined,
+    serviceProfile: getString(log.serviceProfile),
+    lineProfile: getString(log.lineProfile),
+    tcontProfile: getString(log.tcontProfile),
+    ontType: getString(log.ontType),
+    servicePort: getString(log.servicePort) ?? getString(fieldsUsed?.servicePort),
+    ontSlot: getString(fieldsUsed?.ontSlot),
   };
 }
 
@@ -52,7 +69,8 @@ export async function executeRollback(
   }
 
   const action = originalLog.action;
-  const rollbackActionKey = ROLLBACK_ACTION_MAP[action as ProvisioningActionKey];
+  const actionKey = ACTION_ENUM_TO_KEY[action];
+  const rollbackActionKey = actionKey ? ROLLBACK_ACTION_MAP[actionKey] : null;
 
   if (!rollbackActionKey) {
     return { ok: false, error: `Action "${action}" tidak memiliki rollback otomatis`, originalLogId };

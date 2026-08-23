@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { ExportMenu } from "@/components/dashboard/export-menu";
 
 interface TemplateMeta {
@@ -63,6 +63,8 @@ export default function ProvisioningPage() {
   const [devices, setDevices] = useState<DevicesOption[]>([]);
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [deviceId, setDeviceId] = useState("");
+  const [deviceIds, setDeviceIds] = useState<string[]>([]);
+  const [mode, setMode] = useState<'single' | 'multi'>('single');
   const [action, setAction] = useState("create_service");
   const [templateOverride, setTemplateOverride] = useState("");
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -118,6 +120,45 @@ export default function ProvisioningPage() {
     void fetchLogs();
   }, [fetchLogs]);
 
+  // SSE for real-time updates
+  const eventSourceRef = useRef<EventSource | null>(null);
+  
+  useEffect(() => {
+    if (!deviceId) return;
+    
+    const es = new EventSource(`/api/provisioning/events?type=all&deviceId=${deviceId}`);
+    eventSourceRef.current = es;
+    
+    es.onmessage = (event) => {
+      // Handle ping messages
+    };
+    
+    es.addEventListener('provisioning_update', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setLogs((prev) => prev.map((log) => 
+          log.id === data.logId 
+            ? { ...log, status: data.status, executionMode: data.executionMode, executionTimeMs: data.executionTimeMs }
+            : log
+        ));
+      } catch {}
+    });
+    
+    es.addEventListener('batch_update', (event) => {
+      // Could show batch progress toast or update a batch status panel
+      console.log('Batch update:', JSON.parse(event.data));
+    });
+    
+    es.addEventListener('scheduled_update', (event) => {
+      console.log('Scheduled update:', JSON.parse(event.data));
+    });
+    
+    return () => {
+      es.close();
+      eventSourceRef.current = null;
+    };
+  }, [deviceId]);
+
   const setField = (key: string, value: string) => setFields((prev) => ({ ...prev, [key]: value }));
 
   const run = async () => {
@@ -137,6 +178,32 @@ export default function ProvisioningPage() {
         setResult({ ok: false, message: json.error ?? "Provisioning gagal", command: json.data?.command, response: json.data?.response, executionMode: json.data?.executionMode, executionTimeMs: json.data?.executionTimeMs });
       } else {
         setResult({ ok: true, message: json.message ?? "Berhasil", command: json.data?.command, response: json.data?.response, executionMode: json.data?.executionMode, executionTimeMs: json.data?.executionTimeMs });
+      }
+      await fetchLogs();
+    } catch (err) {
+      setResult({ ok: false, message: err instanceof Error ? err.message : "Terjadi kesalahan" });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const runMulti = async () => {
+    if (deviceIds.length === 0 || !action) return;
+    setRunning(true);
+    setResult(null);
+    try {
+      const payload: Record<string, unknown> = { deviceIds, action, ...fields, dryRun };
+      if (templateOverride) payload.template = templateOverride;
+      const res = await fetch("/api/provisioning/multi-device", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResult({ ok: false, message: json.error ?? "Multi-device provisioning gagal", command: undefined, response: JSON.stringify(json.data) });
+      } else {
+        setResult({ ok: true, message: json.message ?? "Berhasil", command: undefined, response: JSON.stringify(json.data) });
       }
       await fetchLogs();
     } catch (err) {
@@ -213,14 +280,42 @@ if (loading) {
         {/* Left: form */}
         <div className="bg-slate-900 border border-slate-800/80 rounded-2xl p-6 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">Device OLT</label>
-            <select value={deviceId} onChange={(e) => { setDeviceId(e.target.value); setResult(null); }} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-blue-500">
-              <option value="">— Pilih Device —</option>
-              {devices.map((d) => (
-                <option key={d.id} value={d.id}>{d.name} ({d.ip}){d.vendor ? ` · ${d.vendor}` : ""}</option>
-              ))}
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">Mode Eksekusi</label>
+            <select value={mode} onChange={(e) => { setMode(e.target.value as 'single' | 'multi'); setResult(null); }} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-blue-500">
+              <option value="single">🖥️ Single Device</option>
+              <option value="multi">🌐 Multi-Device (hingga 20 OLT)</option>
             </select>
           </div>
+
+          {mode === 'single' ? (
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Device OLT</label>
+              <select value={deviceId} onChange={(e) => { setDeviceId(e.target.value); setResult(null); }} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-blue-500">
+                <option value="">— Pilih Device —</option>
+                {devices.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name} ({d.ip}){d.vendor ? ` · ${d.vendor}` : ""}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Pilih Device OLT (Multiple)</label>
+              <div className="max-h-48 overflow-y-auto bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+                {devices.map((d) => (
+                  <label key={d.id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={deviceIds.includes(d.id)}
+                      onChange={(e) => setDeviceIds(e.target.checked ? [...deviceIds, d.id] : deviceIds.filter((id) => id !== d.id))}
+                      className="w-4 h-4 text-blue-600 bg-slate-900 border-slate-700 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-slate-300">{d.name} ({d.ip}){d.vendor ? ` · ${d.vendor}` : ""}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">{deviceIds.length} device dipilih</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -276,8 +371,8 @@ if (loading) {
             <p className="text-xs text-slate-500">Tidak ada field tambahan untuk aksi ini.</p>
           )}
 
-          <button onClick={() => void run()} disabled={running || !deviceId} className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-xl transition-all">
-            {running ? "⏳ Mengeksekusi…" : (dryRun ? "🔍 Preview (Dry-Run)" : "▶️ Jalankan Provisioning")}
+          <button onClick={() => void (mode === 'single' ? run() : runMulti())} disabled={running || (mode === 'single' ? !deviceId : deviceIds.length === 0) || !action} className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-xl transition-all">
+            {running ? "⏳ Mengeksekusi…" : (dryRun ? "🔍 Preview (Dry-Run)" : mode === 'single' ? "▶️ Jalankan Provisioning" : "🌐 Jalankan Multi-Device")}
           </button>
 
           {result && (
