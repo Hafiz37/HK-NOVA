@@ -33,3 +33,20 @@ export const queryBackupSearchSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+export const bulkCreateBackupSchema = z.object({
+  deviceIds: z.array(z.string().min(1)).min(1).max(50),
+  triggerType: z.enum(['MANUAL', 'SCHEDULED']).default('MANUAL'),
+});
+
+export const bulkDeleteBackupSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100),
+  confirm: z.boolean().refine(val => val === true, 'Confirmation required'),
+});
+
+export const bulkRestoreBackupSchema = z.object({
+  items: z.array(z.object({
+    backupId: z.string().min(1),
+    confirm: z.boolean().refine(val => val === true, 'Confirmation required'),
+  })).min(1).max(20),
+});

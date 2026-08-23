@@ -15,7 +15,22 @@ export type AuditAction =
   | 'BACKUP_RESTORE'
   | 'BACKUP_RESTORE_PREVIEW'
   | 'ROLLBACK_PREVIEW'
-  | 'ROLLBACK_EXECUTE';
+  | 'ROLLBACK_EXECUTE'
+  | 'BULK_CREATE'
+  | 'BULK_UPDATE'
+  | 'BULK_DELETE'
+  | 'BULK_ACKNOWLEDGE'
+  | 'BULK_RESOLVE'
+  | 'BULK_FEEDBACK'
+  | 'BULK_INJECT'
+  | 'BULK_SCHEDULE'
+  | 'BULK_ROLLBACK'
+  | 'BULK_RETRY'
+  | 'BULK_ENABLE'
+  | 'BULK_DISABLE'
+  | 'BULK_ACTIVATE'
+  | 'BULK_DEACTIVATE'
+  | 'BULK_RESTORE';
 
 export type AuditEntity =
   | 'User'
@@ -33,7 +48,10 @@ export type AuditEntity =
   | 'OltTemplateVersion'
   | 'BatchProvisioning'
   | 'ProvisioningRequest'
-  | 'ExportTemplate';
+  | 'ExportTemplate'
+  | 'FeatureFlag'
+  | 'Anomaly'
+  | 'AnomalyFeedback';
 
 export interface AuditDetails {
   before?: Record<string, unknown>;
@@ -51,27 +69,25 @@ export interface LogAuditParams {
   ipAddress?: string;
 }
 
+import type { InputJsonValue } from '@prisma/client/runtime/library';
+
 export async function logAudit(params: LogAuditParams): Promise<void> {
-  try {
-    await prisma.auditLog.create({
-      data: {
-        action: params.action,
-        entity: params.entity,
-        entityId: params.entityId ?? null,
-        userId: params.userId,
-        details: params.details ? JSON.parse(JSON.stringify(params.details)) : null,
-        ipAddress: params.ipAddress ?? null,
-      },
-    });
-  } catch (error) {
-    console.error('[AUDIT] Failed to log audit:', error);
-  }
+  await prisma.auditLog.create({
+    data: {
+      action: params.action,
+      entity: params.entity,
+      entityId: params.entityId ?? '',
+      userId: params.userId,
+      details: (params.details ?? {}) as InputJsonValue,
+      ipAddress: params.ipAddress,
+    },
+  });
 }
 
-export function getClientIp(request: Request): string | undefined {
+export function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
     return forwarded.split(',')[0].trim();
   }
-  return request.headers.get('x-real-ip') ?? undefined;
+  return request.headers.get('x-real-ip') || 'unknown';
 }

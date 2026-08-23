@@ -72,3 +72,27 @@ export const reviewProvisioningRequestSchema = z.object({
   decision: z.enum(['APPROVED', 'REJECTED']),
   reviewerNote: z.string().max(1000).optional(),
 });
+
+// Bulk operations
+export const bulkScheduleProvisioningSchema = z.object({
+  items: z.array(z.object({
+    deviceId: z.string().min(1),
+    action: provisioningActionEnum,
+    parameters: recordUnknown,
+    templateName: z.string().optional(),
+    scheduledAt: z.coerce.date(),
+    timezone: z.string().default('UTC'),
+    recurring: z.boolean().default(false),
+    cronExpression: z.string().optional(),
+  })).min(1).max(20),
+});
+
+export const bulkRollbackProvisioningSchema = z.object({
+  logIds: z.array(z.string().min(1)).min(1).max(50),
+  confirm: z.boolean().refine(val => val === true, 'Confirmation required'),
+});
+
+export const bulkRetryProvisioningSchema = z.object({
+  logIds: z.array(z.string().min(1)).min(1).max(50),
+  dryRun: z.boolean().default(false),
+});
