@@ -328,6 +328,7 @@ model Device {
   MaintenanceWindow      MaintenanceWindow[]
   customOids             CustomOid[]
   thresholds             DeviceThreshold[]
+  anomalyRiskPredictions AnomalyRiskPrediction[]
 
   @@index([status])
   @@index([type])
@@ -593,6 +594,42 @@ model AnomalyFeedback {
 
   @@index([feedback])
   @@index([createdAt])
+}
+
+model CorrelationPattern {
+  id            String   @id @default(cuid())
+  pattern       String   @unique
+  devices       Json     // Array of device IDs
+  support       Float
+  confidence    Float
+  timeWindow    Int      // seconds
+  occurrences   Int      @default(1)
+  lastSeen      DateTime
+  patternType   String   // cascade, cooccurrence, periodic, dependency
+  metadata      Json     // { avgTimeDiff, stdTimeDiff, directionality }
+
+  @@index([confidence])
+  @@index([support])
+  @@index([lastSeen])
+}
+
+model AnomalyRiskPrediction {
+  id          String   @id @default(cuid())
+  deviceId    String
+  device      Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  riskScore   Float    // 0-1
+  riskLevel   String   // LOW, MEDIUM, HIGH, CRITICAL
+
+  predictedAt DateTime
+  horizon     Int      // Minutes ahead (default 60)
+
+  // Outcome tracking (for model validation)
+  actualAnomaly Boolean?
+  validatedAt   DateTime?
+
+  @@index([deviceId, predictedAt])
+  @@index([riskScore])
 }
 
 model MaintenanceWindow {

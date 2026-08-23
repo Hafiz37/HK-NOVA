@@ -76,5 +76,9 @@ module.exports = {
     app('hk-nova-retry-worker', 'tsx', 'src/workers/delivery-retry.ts', {
       env: { NODE_ENV: 'production', RETRY_INTERVAL: '*/2 * * * *' },
     }),
+    app('hk-nova-advanced-ml-worker', 'tsx', 'src/workers/advanced-ml-worker.ts', {
+      env: { NODE_ENV: 'production' },
+      max_memory_restart: '2G',
+    }),
   ],
 };
