@@ -10,5 +10,10 @@ export * from './realtime';
 export * from './query';
 export * from './cache';
 export * from './cache-middleware';
-export * from './query-builder';
+// export * from './query-builder'; // exported via query
 export * from './schemas';
+export * from './versioning';
+export * from './scheduled-operations';
+export * from './workflow-engine';
+export * from './concurrency';
+export * from './notifications';

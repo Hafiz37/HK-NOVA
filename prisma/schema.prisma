@@ -857,3 +857,193 @@ model DeviceThreshold {
   @@index([deviceId])
   @@index([computedAt])
 }
+
+// ─── Entity Version History ────────────────────────────────────────────────────
+model EntityVersion {
+  id          String   @id @default(cuid())
+  entityType  String
+  entityId    String
+  version     Int
+  data        Json
+  changedBy   String
+  changeType  String // CREATE | UPDATE | DELETE | RESTORE
+  changedAt   DateTime @default(now())
+
+  @@unique([entityType, entityId, version])
+  @@index([entityType, entityId])
+  @@index([changedAt])
+  @@index([changedBy])
+}
+
+// ─── Scheduled Operations ──────────────────────────────────────────────────────
+model ScheduledOperation {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  entityType      String
+  entityId        String?
+  operation       String
+  payload         Json
+  frequency       String
+  cronExpression  String?
+  startAt         DateTime
+  endAt           DateTime?
+  timezone        String   @default("UTC")
+  maxRetries      Int      @default(3)
+  retryDelayMs    Int      @default(60000)
+  status          String   @default("PENDING")
+  nextRunAt       DateTime?
+  lastRunAt       DateTime?
+  lastRunStatus   String?
+  lastRunError    String?
+  runCount        Int      @default(0)
+  tags            Json
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  runs            ScheduledOperationRun[]
+
+  @@index([status])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([nextRunAt])
+  @@index([createdBy])
+  @@index([status, nextRunAt])
+}
+
+model ScheduledOperationRun {
+  id            String   @id @default(cuid())
+  operationId   String
+  operation     ScheduledOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  status        String
+  startedAt     DateTime
+  completedAt   DateTime?
+  error         String?
+  result        Json?
+  durationMs    Int?
+
+  @@index([operationId])
+  @@index([startedAt])
+  @@index([status])
+}
+
+// ─── Workflow Automation ───────────────────────────────────────────────────────
+model WorkflowDefinition {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  version     Int      @default(1)
+  status      String   @default("DRAFT")
+  trigger     Json
+  nodes       Json
+  edges       Json
+  variables   Json?
+  settings    Json?
+  createdBy   String
+  updatedBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  publishedAt DateTime?
+
+  executions  WorkflowExecution[]
+
+  @@index([status])
+  @@index([createdBy])
+  @@index([createdAt])
+}
+
+model WorkflowExecution {
+  id              String   @id @default(cuid())
+  workflowId      String
+  workflow        WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  workflowVersion Int
+  status          String   @default("PENDING")
+  triggerData     Json?
+  variables       Json
+  currentNodeId   String?
+  completedNodes  Json
+  failedNodeId    String?
+  error           String?
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  durationMs      Int?
+
+  steps           WorkflowStepExecution[]
+
+  @@index([workflowId])
+  @@index([status])
+  @@index([startedAt])
+  @@index([workflowId, status])
+}
+
+model WorkflowStepExecution {
+  id            String   @id @default(cuid())
+  executionId   String
+  execution     WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  nodeId        String
+  nodeType      String
+  status        String   @default("PENDING")
+  input         Json?
+  output        Json?
+  error         String?
+  startedAt     DateTime @default(now())
+  completedAt   DateTime?
+  durationMs    Int?
+  retryCount    Int      @default(0)
+
+  @@index([executionId])
+  @@index([nodeId])
+  @@index([status])
+  @@index([executionId, nodeId])
+}
+
+// ─── Notifications ──────────────────────────────────────────────────────────────
+model NotificationSubscription {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  events          Json
+  entityTypes     Json
+  entityIds       Json
+  channel         String
+  config          Json
+  filter          String?
+  isActive        Boolean  @default(true)
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastTriggeredAt DateTime?
+  triggerCount    Int      @default(0)
+
+  logs            NotificationLog[]
+
+  @@index([isActive])
+  @@index([channel])
+  @@index([createdBy])
+  @@index([createdAt])
+}
+
+model NotificationLog {
+  id                String   @id @default(cuid())
+  subscriptionId    String
+  subscription      NotificationSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  event             String
+  entityType        String
+  entityId          String
+  status            String   @default("PENDING")
+  payload           Json
+  response          Json?
+  error             String?
+  attempts          Int      @default(0)
+  createdAt         DateTime @default(now())
+  sentAt            DateTime?
+  nextRetryAt       DateTime?
+
+  @@index([subscriptionId])
+  @@index([event])
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([subscriptionId, status])
+}
