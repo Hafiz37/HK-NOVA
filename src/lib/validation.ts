@@ -1,5 +1,5 @@
-import { z, ZodSchema, ZodError } from 'zod';
-import { NextRequest, NextResponse } from 'next/server';
+import { z, ZodSchema, ZodError, ZodTypeAny } from 'zod';
+import { NextRequest } from 'next/server';
 import { ValidationError } from '@/lib/api-response';
 
 export type ValidationTarget = 'body' | 'query' | 'params' | 'headers';
@@ -11,7 +11,7 @@ export interface ValidatedRequest<T = unknown> {
   headers?: T;
 }
 
-export function validateRequest<T extends ZodSchema>(
+export function validateRequest<T extends ZodTypeAny>(
   schema: T,
   target: ValidationTarget = 'body'
 ) {
@@ -50,15 +50,15 @@ export function validateRequest<T extends ZodSchema>(
   };
 }
 
-export function validateQuery<T extends ZodSchema>(schema: T) {
+export function validateQuery<T extends ZodTypeAny>(schema: T) {
   return validateRequest(schema, 'query');
 }
 
-export function validateParams<T extends ZodSchema>(schema: T) {
+export function validateParams<T extends ZodTypeAny>(schema: T) {
   return validateRequest(schema, 'params');
 }
 
-export function validateHeaders<T extends ZodSchema>(schema: T) {
+export function validateHeaders<T extends ZodTypeAny>(schema: T) {
   return validateRequest(schema, 'headers');
 }
 
@@ -96,7 +96,7 @@ export function parseQueryParams(searchParams: URLSearchParams): Record<string, 
   return params;
 }
 
-export async function withValidation<T extends ZodSchema>(
+export async function withValidation<T extends ZodTypeAny>(
   request: NextRequest,
   schema: T,
   target: ValidationTarget = 'body'
@@ -105,31 +105,31 @@ export async function withValidation<T extends ZodSchema>(
   return validator(request);
 }
 
-export function createValidator<T extends ZodSchema>(schema: T, target: ValidationTarget = 'body') {
+export function createValidator<T extends ZodTypeAny>(schema: T, target: ValidationTarget = 'body') {
   return async (request: NextRequest) => {
     return validateRequest(schema, target)(request);
   };
 }
 
 export class RequestValidator {
-  private validators: Map<ValidationTarget, ZodSchema> = new Map();
+  private validators: Map<ValidationTarget, ZodTypeAny> = new Map();
 
-  body<T extends ZodSchema>(schema: T): this {
+  body<T extends ZodTypeAny>(schema: T): this {
     this.validators.set('body', schema);
     return this;
   }
 
-  query<T extends ZodSchema>(schema: T): this {
+  query<T extends ZodTypeAny>(schema: T): this {
     this.validators.set('query', schema);
     return this;
   }
 
-  params<T extends ZodSchema>(schema: T): this {
+  params<T extends ZodTypeAny>(schema: T): this {
     this.validators.set('params', schema);
     return this;
   }
 
-  headers<T extends ZodSchema>(schema: T): this {
+  headers<T extends ZodTypeAny>(schema: T): this {
     this.validators.set('headers', schema);
     return this;
   }
