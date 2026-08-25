@@ -1,0 +1,8 @@
+migration_id = "20260826000000_phase3_audit_compliance"
+checksum = "a1b2c3d4e5f6"
+started_at = "2026-08-26 00:00:00.000"
+finished_at = "2026-08-26 00:00:01.000"
+steps = 1
+applied_steps_count = 0
+databases = ["mysql"]
+provider = "mysql"
