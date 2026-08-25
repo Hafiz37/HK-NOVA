@@ -10,6 +10,7 @@ import {
   incrementChallengeAttempts,
   markChallengeVerified,
 } from '@/lib/mfa/challenge';
+import { Prisma } from '@prisma/client';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ok = true;
         await prisma.user.update({
           where: { id: user.id },
-          data: { totpBackupCodes: backupResult.remainingHashedCodes as any },
+          data: { totpBackupCodes: backupResult.remainingHashedCodes as Prisma.InputJsonValue },
         });
       }
     } else {

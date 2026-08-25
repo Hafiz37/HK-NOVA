@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { getUserSessions, terminateAllOtherSessions } from '@/lib/auth/session-manager';
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(_request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 

@@ -29,7 +29,7 @@ interface PubSubMessage {
 const CACHE_PREFIX = 'hk-nova:cache:';
 const PUBSUB_PREFIX = 'hk-nova:events:';
 
-function getRedisClient(): Redis | null {
+export function getRedisClient(): Redis | null {
   if (redisInitialized) return redisAvailable ? redisClient : null;
   redisInitialized = true;
 

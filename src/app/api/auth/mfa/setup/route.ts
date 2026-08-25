@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
 import { requireSession } from '@/lib/auth';
 import { generateTOTPSecret, hashBackupCodes, verifyTOTPToken } from '@/lib/mfa/totp';
+import { Prisma } from '@prisma/client';
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function POST(_request: NextRequest): Promise<NextResponse> {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
@@ -67,7 +67,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         mfaEnabled: true,
         mfaMethod: 'totp',
         totpVerifiedAt: new Date(),
-        totpBackupCodes: hashedCodes as any,
+        totpBackupCodes: hashedCodes as Prisma.InputJsonValue,
       },
     });
 

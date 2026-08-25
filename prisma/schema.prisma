@@ -825,17 +825,22 @@ model User {
   lockedReason        String?
   lockedUntil         DateTime?
 
-  assignedAlerts    Alert[]           @relation("AlertAssignee")
-  backupRestores    BackupRestore[]
-  anomalyFeedbacks  AnomalyFeedback[]
-  refreshTokens     RefreshToken[]
-  userSessions      UserSession[]
-  mfaDevices        MfaDevice[]
-  accountLockouts   AccountLockout[]
-  passwordHistories PasswordHistory[]
-  securityEvents    SecurityEvent[]
-  loginHistories    LoginHistory[]
-  securityTimelines SecurityTimeline[]
+  // Phase 2 relations
+  assignedAlerts        Alert[]               @relation("AlertAssignee")
+  backupRestores        BackupRestore[]
+  anomalyFeedbacks      AnomalyFeedback[]
+  refreshTokens         RefreshToken[]
+  userSessions          UserSession[]
+  mfaDevices            MfaDevice[]
+  accountLockouts       AccountLockout[]
+  passwordHistories     PasswordHistory[]
+  securityEvents        SecurityEvent[]
+  loginHistories        LoginHistory[]
+  securityTimelines     SecurityTimeline[]
+  resourcePermissions   ResourcePermission[]
+  permissionGroups      UserPermissionGroup[]
+  apiKeys               ApiKey[]
+  ipAccessControls      IpAccessControl[]
 }
 
 // ─── Phase 1 Security & Authentication Models ─────────────────────────────────
@@ -1038,6 +1043,185 @@ model SecurityTimeline {
 
   @@index([userId, timestamp])
   @@index([severity, acknowledged])
+}
+
+// ─── Phase 2: Advanced RBAC, API Keys & IP Security ──────────────────────────
+
+model Permission {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  resource    String
+  action      String
+  description String?
+  category    String?
+
+  rolePermissions RolePermission[]
+
+  @@index([resource, action])
+}
+
+model RolePermission {
+  id           String      @id @default(cuid())
+  role         UserRole
+  permissionId String
+  permission   Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  conditions   Json?
+
+  @@unique([role, permissionId])
+  @@index([role])
+}
+
+model ResourcePermission {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceType String
+  resourceId   String
+  permissions  Json
+  grantedBy    String?
+  grantedAt    DateTime @default(now())
+  expiresAt    DateTime?
+
+  @@unique([userId, resourceType, resourceId])
+  @@index([userId])
+  @@index([resourceType, resourceId])
+  @@index([expiresAt])
+}
+
+model PermissionGroup {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  permissions Json
+  isSystem    Boolean  @default(false)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       UserPermissionGroup[]
+}
+
+model UserPermissionGroup {
+  id         String             @id @default(cuid())
+  userId     String
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId    String
+  group      PermissionGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  assignedBy String?
+  assignedAt DateTime           @default(now())
+  expiresAt  DateTime?
+
+  @@unique([userId, groupId])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AttributePolicy {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  role         UserRole
+  resourceType String
+  conditions   Json
+  permissions  Json
+  priority     Int      @default(0)
+  enabled      Boolean  @default(true)
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([role, resourceType])
+  @@index([enabled])
+}
+
+model ApiKey {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  keyPrefix     String       @unique
+  keyHash       String       @unique @db.VarChar(500)
+  scopes        Json
+  resourceFilters Json?
+  rateLimit     Int          @default(100)
+  allowedIps    Json?
+  isActive      Boolean      @default(true)
+  lastUsedAt    DateTime?
+  usageCount    Int          @default(0)
+  createdAt     DateTime     @default(now())
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  revokedBy     String?
+  revokedReason String?
+  usages        ApiKeyUsage[]
+
+  @@index([keyPrefix])
+  @@index([userId, isActive])
+  @@index([expiresAt])
+}
+
+model ApiKeyUsage {
+  id        String   @id @default(cuid())
+  apiKeyId  String
+  apiKey    ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  timestamp DateTime @default(now())
+  endpoint  String
+  method    String
+  statusCode Int
+  responseTime Int?
+  ipAddress String
+  userAgent String?  @db.Text
+  error     String?  @db.Text
+
+  @@index([apiKeyId, timestamp])
+  @@index([timestamp])
+}
+
+model IpAccessControl {
+  id             String    @id @default(cuid())
+  type           String    // "whitelist", "blacklist"
+  scope          String    // "global", "user", "role"
+  userId         String?
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           UserRole?
+  ipAddress      String?
+  ipCidr         String?
+  ipRange        Json?
+  allowedCountries Json?
+  blockedCountries Json?
+  blockVpn       Boolean   @default(false)
+  blockProxy     Boolean   @default(false)
+  blockTor       Boolean   @default(false)
+  description    String?
+  isActive       Boolean   @default(true)
+  priority       Int       @default(0)
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([type, scope])
+  @@index([userId])
+  @@index([isActive])
+}
+
+model IpReputation {
+  id              String   @id @default(cuid())
+  ipAddress       String   @unique
+  isVpn           Boolean  @default(false)
+  isProxy         Boolean  @default(false)
+  isTor           Boolean  @default(false)
+  isHosting       Boolean  @default(false)
+  riskScore       Float    @default(0)
+  threatLevel     String   // "low", "medium", "high", "critical"
+  country         String?
+  isp             String?
+  failedLoginCount Int     @default(0)
+  lastFailedLogin DateTime?
+  blockedAt       DateTime?
+  abuseConfidence Float?
+  lastChecked     DateTime @default(now())
+
+  @@index([threatLevel])
+  @@index([riskScore])
 }
 
 // ─── Custom SNMP OID per device / vendor ─────────────────────────────────────
