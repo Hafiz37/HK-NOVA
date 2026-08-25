@@ -804,9 +804,240 @@ model User {
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
 
-  assignedAlerts Alert[]         @relation("AlertAssignee")
-  backupRestores BackupRestore[]
-  anomalyFeedbacks AnomalyFeedback[]
+  // MFA fields
+  mfaEnabled          Boolean   @default(false)
+  mfaEnforcedAt       DateTime?
+  mfaMethod           String?   // "totp", "email", "sms"
+  totpSecret          String?   @db.Text
+  totpBackupCodes     Json?     // Hashed backup codes
+  totpVerifiedAt      DateTime?
+  recoveryEmail       String?
+  recoveryPhone       String?
+
+  // Password policy & Lockout fields
+  passwordChangedAt   DateTime?
+  passwordExpiresAt   DateTime?
+  mustChangePassword  Boolean   @default(false)
+  passwordResetToken  String?   @unique
+  passwordResetExpires DateTime?
+
+  isLocked            Boolean   @default(false)
+  lockedReason        String?
+  lockedUntil         DateTime?
+
+  assignedAlerts    Alert[]           @relation("AlertAssignee")
+  backupRestores    BackupRestore[]
+  anomalyFeedbacks  AnomalyFeedback[]
+  refreshTokens     RefreshToken[]
+  userSessions      UserSession[]
+  mfaDevices        MfaDevice[]
+  accountLockouts   AccountLockout[]
+  passwordHistories PasswordHistory[]
+  securityEvents    SecurityEvent[]
+  loginHistories    LoginHistory[]
+  securityTimelines SecurityTimeline[]
+}
+
+// ─── Phase 1 Security & Authentication Models ─────────────────────────────────
+
+model RefreshToken {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token         String       @unique @db.VarChar(500)
+  deviceId      String
+  userAgent     String?      @db.Text
+  ipAddress     String
+  location      Json?
+  expiresAt     DateTime
+  lastUsedAt    DateTime     @default(now())
+  createdAt     DateTime     @default(now())
+  revokedAt     DateTime?
+  revokedBy     String?
+  revokedReason String?
+  userSession   UserSession?
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model UserSession {
+  id                String       @id @default(cuid())
+  userId            String
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenId    String       @unique
+  refreshToken      RefreshToken @relation(fields: [refreshTokenId], references: [id], onDelete: Cascade)
+
+  deviceFingerprint String
+  deviceName        String?
+  deviceType        String?
+  browser           String?
+  os                String?
+
+  ipAddress         String
+  country           String?
+  city              String?
+  isp               String?
+  vpnDetected       Boolean      @default(false)
+
+  isActive          Boolean      @default(true)
+  lastActivityAt    DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  expiresAt         DateTime
+
+  isNewDevice       Boolean      @default(false)
+  isNewLocation     Boolean      @default(false)
+  isSuspicious      Boolean      @default(false)
+
+  @@index([userId, isActive])
+  @@index([deviceFingerprint])
+  @@index([expiresAt])
+}
+
+model MfaDevice {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String    // "totp", "backup_codes"
+  name       String
+  secret     String?   @db.Text
+  isActive   Boolean   @default(true)
+  isPrimary  Boolean   @default(false)
+  lastUsedAt DateTime?
+  usageCount Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, isActive])
+}
+
+model MfaChallenge {
+  id           String    @id @default(cuid())
+  userId       String
+  sessionToken String    @unique
+  method       String    // "totp", "email", "sms", "backup_code"
+  challenge    String?
+  attempts     Int       @default(0)
+  maxAttempts  Int       @default(3)
+  verified     Boolean   @default(false)
+  verifiedAt   DateTime?
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+  ipAddress    String?
+  userAgent    String?   @db.Text
+
+  @@index([sessionToken])
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  id                String   @id @default(cuid())
+  username          String
+  userId            String?
+  success           Boolean
+  ipAddress         String
+  userAgent         String?  @db.Text
+  country           String?
+  city              String?
+  deviceFingerprint String?
+  failureReason     String?
+  timestamp         DateTime @default(now())
+
+  @@index([username, timestamp])
+  @@index([ipAddress, timestamp])
+  @@index([success, timestamp])
+}
+
+model AccountLockout {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isLocked       Boolean   @default(true)
+  lockReason     String
+  lockedAt       DateTime  @default(now())
+  lockedUntil    DateTime
+  failedAttempts Int       @default(0)
+  lastAttemptAt  DateTime?
+  unlockMethod   String?
+  unlockedAt     DateTime?
+  unlockedBy     String?
+
+  @@index([userId, isLocked])
+  @@index([lockedUntil])
+}
+
+model PasswordHistory {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passwordHash String   @db.Text
+  createdAt    DateTime @default(now())
+  changedBy    String?
+  changeReason String?
+
+  @@index([userId, createdAt])
+}
+
+model SecurityEvent {
+  id          String    @id @default(cuid())
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  eventType   String
+  severity    String
+  description String    @db.Text
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?   @db.Text
+  timestamp   DateTime  @default(now())
+  reviewed    Boolean   @default(false)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  reviewNotes String?   @db.Text
+
+  @@index([userId, timestamp])
+  @@index([eventType, timestamp])
+  @@index([severity, reviewed])
+}
+
+model LoginHistory {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  success           Boolean
+  timestamp         DateTime @default(now())
+  deviceFingerprint String
+  deviceName        String?
+  ipAddress         String
+  country           String?
+  city              String?
+  isNewDevice       Boolean  @default(false)
+  isNewLocation     Boolean  @default(false)
+  isSuspicious      Boolean  @default(false)
+  riskScore         Float?
+  failureReason     String?
+  sessionId         String?
+
+  @@index([userId, timestamp])
+  @@index([success, timestamp])
+}
+
+model SecurityTimeline {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventType      String
+  severity       String
+  title          String
+  description    String    @db.Text
+  metadata       Json?
+  ipAddress      String?
+  deviceName     String?
+  location       String?
+  timestamp      DateTime  @default(now())
+  acknowledged   Boolean   @default(false)
+  acknowledgedAt DateTime?
+
+  @@index([userId, timestamp])
+  @@index([severity, acknowledged])
 }
 
 // ─── Custom SNMP OID per device / vendor ─────────────────────────────────────
