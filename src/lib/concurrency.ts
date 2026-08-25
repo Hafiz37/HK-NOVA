@@ -65,7 +65,7 @@ export class OptimisticConcurrencyControl {
       });
 
       return { success: true, data: result, currentVersion: expectedVersion + 1 };
-    }, maxRetries);
+    });
   }
 
   private async executeWithRetry(maxRetries: number, fn: (attempt: number) => Promise<any>): Promise<any> {

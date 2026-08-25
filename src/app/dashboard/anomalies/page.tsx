@@ -319,19 +319,6 @@ export default function AnomaliesPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "charts">("table");
 
-  // Real-time anomaly streaming
-  const { toasts, unreadCount, handleNewAnomalies, markRead, dismiss } = useAnomalyToasts();
-  useAnomalyStream({
-    onNewAnomalies: handleNewAnomalies,
-    enabled: true,
-    filterSeverity: ["HIGH", "CRITICAL"],
-  });
-
-  useRealtimeMonitoring(() => {
-    void fetchAnomalies();
-    void fetchStats();
-  }, true);
-
   const fetchAnomalies = useCallback(async () => {
     try {
       const params = new URLSearchParams({
@@ -412,6 +399,19 @@ export default function AnomaliesPage() {
       // Silent fail
     }
   }, []);
+
+  // Real-time anomaly streaming
+  const { toasts, unreadCount, handleNewAnomalies, markRead, dismiss } = useAnomalyToasts();
+  useAnomalyStream({
+    onNewAnomalies: handleNewAnomalies,
+    enabled: true,
+    filterSeverity: ["HIGH", "CRITICAL"],
+  });
+
+  useRealtimeMonitoring(() => {
+    void fetchAnomalies();
+    void fetchStats();
+  }, true);
 
   useEffect(() => {
     void fetchDevices();

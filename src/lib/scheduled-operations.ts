@@ -1,5 +1,7 @@
-import { PrismaClient } from '@prisma/client';
-import cron from 'node-cron';
+import { PrismaClient, Prisma } from '@prisma/client';
+import * as cron from 'node-cron';
+import { CronJob } from 'cron';
+import { PaginatedResult } from './common-types';
 
 export type ScheduledOperationStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type ScheduledOperationFrequency = 'ONCE' | 'MINUTE' | 'HOURLY' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CRON';
@@ -58,21 +60,60 @@ export interface ScheduledOperationQueryOptions {
   sortOrder?: 'asc' | 'desc';
 }
 
-export interface PaginatedResult<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
+interface CronTask {
+  stop: () => void;
+  destroy: () => void;
+  start: () => void;
 }
 
 export class ScheduledOperationsService {
   private prisma: PrismaClient;
-  private jobs: Map<string, cron.ScheduledTask> = new Map();
+  private jobs: Map<string, cron.ScheduledTask | CronTask> = new Map();
   private isRunning = false;
 
   constructor(prisma: PrismaClient) {
     this.prisma = prisma;
+  }
+
+  private mapOperation(op: any): ScheduledOperation {
+    return {
+      id: op.id,
+      name: op.name,
+      description: op.description ?? undefined,
+      entityType: op.entityType,
+      entityId: op.entityId ?? undefined,
+      operation: op.operation as ScheduledOperationInput['operation'],
+      payload: (op.payload as unknown as Record<string, any>) || {},
+      frequency: op.frequency as ScheduledOperationFrequency,
+      cronExpression: op.cronExpression ?? undefined,
+      startAt: op.startAt,
+      endAt: op.endAt ?? undefined,
+      timezone: op.timezone,
+      maxRetries: op.maxRetries,
+      retryDelayMs: op.retryDelayMs,
+      status: op.status as ScheduledOperationStatus,
+      nextRunAt: op.nextRunAt ?? null,
+      lastRunAt: op.lastRunAt ?? null,
+      lastRunStatus: (op.lastRunStatus as ScheduledOperationStatus) ?? null,
+      lastRunError: op.lastRunError ?? undefined,
+      runCount: op.runCount,
+      tags: (op.tags as unknown as string[]) || [],
+      createdBy: op.createdBy,
+      createdAt: op.createdAt,
+      updatedAt: op.updatedAt,
+    };
+  }
+
+  private mapRun(run: any): ScheduledOperationRun {
+    return {
+      id: run.id,
+      operationId: run.operationId,
+      status: run.status as ScheduledOperationStatus,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt ?? undefined,
+      error: run.error ?? undefined,
+      result: run.result ? (run.result as unknown as Record<string, any>) : undefined,
+    };
   }
 
   async createOperation(input: ScheduledOperationInput): Promise<ScheduledOperation> {
@@ -94,35 +135,41 @@ export class ScheduledOperationsService {
 
     const operation = await this.prisma.scheduledOperation.create({
       data: {
-        ...rest,
-        entityId: input.entityId || null,
-        description: input.description || null,
-        endAt: input.endAt || null,
-        cronExpression: input.cronExpression || null,
+        name: input.name,
+        description: input.description ?? null,
+        entityType: input.entityType,
+        entityId: input.entityId ?? null,
+        operation: input.operation,
+        payload: input.payload as unknown as Prisma.InputJsonValue,
+        frequency: input.frequency,
+        cronExpression: input.cronExpression ?? null,
+        startAt: input.startAt,
+        endAt: input.endAt ?? null,
         timezone: input.timezone || 'UTC',
         maxRetries: input.maxRetries ?? 3,
         retryDelayMs: input.retryDelayMs ?? 60000,
-        tags: input.tags || [],
+        tags: (input.tags || []) as unknown as Prisma.InputJsonValue,
+        createdBy: input.createdBy,
         nextRunAt,
         status: nextRunAt ? 'PENDING' : 'COMPLETED',
         runCount: 0,
       },
     });
 
+    const mapped = this.mapOperation(operation);
+
     if (nextRunAt) {
-      this.scheduleOperation(operation);
+      this.scheduleOperation(mapped);
     }
 
-    return operation as ScheduledOperation;
+    return mapped;
   }
 
-  private calculateNextCronRun(cronExpression: string, fromDate: Date): Date | null {
+  private calculateNextCronRun(cronExpression: string, fromDate?: Date): Date | null {
     try {
-      const interval = cron.validate(cronExpression);
-      if (!interval) return null;
-      
-      const next = cron.schedule(cronExpression, () => {}).next(1, fromDate);
-      return next.toDate();
+      const job = new CronJob(cronExpression, () => {});
+      const nextDate = job.nextDate();
+      return nextDate.toJSDate();
     } catch {
       return null;
     }
@@ -167,15 +214,13 @@ export class ScheduledOperationsService {
       return;
     }
 
-    let task: cron.ScheduledTask;
-
     if (operation.frequency === 'CRON' && operation.cronExpression) {
-      task = cron.schedule(operation.cronExpression, () => {
+      const task = cron.schedule(operation.cronExpression, () => {
         this.executeOperation(jobId);
       }, {
-        scheduled: true,
         timezone: operation.timezone,
       });
+      this.jobs.set(jobId, task);
     } else {
       const delay = operation.nextRunAt ? operation.nextRunAt.getTime() - Date.now() : 0;
       if (delay > 0) {
@@ -183,29 +228,30 @@ export class ScheduledOperationsService {
           this.executeOperation(jobId);
         }, delay);
         
-        task = {
+        const task = {
           stop: () => clearTimeout(timeout),
           destroy: () => clearTimeout(timeout),
           start: () => {},
-        } as unknown as cron.ScheduledTask;
+        };
+        this.jobs.set(jobId, task);
       } else {
         this.executeOperation(jobId);
         return;
       }
     }
-
-    this.jobs.set(jobId, task);
   }
 
   async executeOperation(operationId: string): Promise<void> {
-    const operation = await this.prisma.scheduledOperation.findUnique({
+    const operationRecord = await this.prisma.scheduledOperation.findUnique({
       where: { id: operationId },
     });
 
-    if (!operation) {
+    if (!operationRecord) {
       console.warn(`Scheduled operation ${operationId} not found`);
       return;
     }
+
+    const operation = this.mapOperation(operationRecord);
 
     if (operation.status === 'CANCELLED') {
       return;
@@ -240,12 +286,12 @@ export class ScheduledOperationsService {
         startedAt: new Date(Date.now() - duration),
         completedAt: new Date(),
         error,
-        result,
+        result: result ? (result as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         durationMs: duration,
       },
     });
 
-    await this.updateOperationAfterRun(operationId, status, error, result);
+    await this.updateOperationAfterRun(operationId, status, error, result || {});
 
     if (operation.frequency === 'ONCE') {
       this.unscheduleOperation(operationId);
@@ -274,10 +320,10 @@ export class ScheduledOperationsService {
 
   private async executeCreate(operation: ScheduledOperation): Promise<Record<string, any>> {
     const { entityType, payload } = operation;
-    const model = this.getPrismaModel(entityType);
+    const model = this.getPrismaModel(operation.entityType);
     if (!model) throw new Error(`Unknown entity type: ${entityType}`);
     
-    const created = await this.prisma[model].create({ data: payload });
+    const created = await (this.prisma as any)[model].create({ data: payload });
     return { id: created.id, ...created };
   }
 
@@ -285,10 +331,10 @@ export class ScheduledOperationsService {
     const { entityType, entityId, payload } = operation;
     if (!entityId) throw new Error('entityId required for UPDATE operation');
     
-    const model = this.getPrismaModel(entityType);
-    if (!model) throw new Error(`Unknown entity type: ${entityType}`);
+    const model = this.getPrismaModel(operation.entityType);
+    if (!model) throw new Error(`Unknown entity type: ${operation.entityType}`);
     
-    const updated = await this.prisma[model].update({
+    const updated = await (this.prisma as any)[model].update({
       where: { id: entityId },
       data: payload,
     });
@@ -299,10 +345,10 @@ export class ScheduledOperationsService {
     const { entityType, entityId } = operation;
     if (!entityId) throw new Error('entityId required for DELETE operation');
     
-    const model = this.getPrismaModel(entityType);
-    if (!model) throw new Error(`Unknown entity type: ${entityType}`);
+    const model = this.getPrismaModel(operation.entityType);
+    if (!model) throw new Error(`Unknown entity type: ${operation.entityType}`);
     
-    await this.prisma[model].delete({ where: { id: entityId } });
+    await (this.prisma as any)[model].delete({ where: { id: entityId } });
     return { id: entityId, deleted: true };
   }
 
@@ -339,11 +385,12 @@ export class ScheduledOperationsService {
     error?: string,
     result?: Record<string, any>
   ): Promise<void> {
-    const operation = await this.prisma.scheduledOperation.findUnique({
+    const operationRecord = await this.prisma.scheduledOperation.findUnique({
       where: { id: operationId },
     });
 
-    if (!operation) return;
+    if (!operationRecord) return;
+    const operation = this.mapOperation(operationRecord);
 
     let nextRunAt: Date | null = null;
     let newStatus = status;
@@ -367,25 +414,22 @@ export class ScheduledOperationsService {
       newStatus = 'COMPLETED';
     }
 
-    await this.prisma.scheduledOperation.update({
+    const updated = await this.prisma.scheduledOperation.update({
       where: { id: operation.id },
       data: {
         status: newStatus,
         nextRunAt,
         lastRunAt: new Date(),
         lastRunStatus: status,
-        lastRunError: error,
+        lastRunError: error ?? null,
         runCount: { increment: 1 },
       },
     });
 
+    const mappedUpdated = this.mapOperation(updated);
+
     if (nextRunAt) {
-      this.scheduleOperation({
-        ...operation,
-        status: newStatus,
-        nextRunAt,
-        runCount: operation.runCount + 1,
-      } as any);
+      this.scheduleOperation(mappedUpdated);
     } else {
       this.unscheduleOperation(operation.id);
     }
@@ -406,7 +450,7 @@ export class ScheduledOperationsService {
       sortOrder = 'desc'
     } = options;
 
-    const where: any = {};
+    const where: Prisma.ScheduledOperationWhereInput = {};
 
     if (status) where.status = status;
     if (entityType) where.entityType = entityType;
@@ -431,36 +475,58 @@ export class ScheduledOperationsService {
     ]);
 
     return {
-      data: operations as ScheduledOperation[],
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
+      data: operations.map(op => this.mapOperation(op)),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
     };
   }
 
   async getOperationById(id: string): Promise<ScheduledOperation | null> {
-    return this.prisma.scheduledOperation.findUnique({ where: { id } }) as Promise<ScheduledOperation | null>;
+    const op = await this.prisma.scheduledOperation.findUnique({ where: { id } });
+    return op ? this.mapOperation(op) : null;
   }
 
   async updateOperation(id: string, data: Partial<ScheduledOperationInput>): Promise<ScheduledOperation> {
     const existing = await this.prisma.scheduledOperation.findUnique({ where: { id } });
     if (!existing) throw new Error('Operation not found');
 
+    const updateData: Prisma.ScheduledOperationUpdateInput = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.entityType !== undefined) updateData.entityType = data.entityType;
+    if (data.entityId !== undefined) updateData.entityId = data.entityId;
+    if (data.operation !== undefined) updateData.operation = data.operation;
+    if (data.payload !== undefined) updateData.payload = data.payload as unknown as Prisma.InputJsonValue;
+    if (data.frequency !== undefined) updateData.frequency = data.frequency;
+    if (data.cronExpression !== undefined) updateData.cronExpression = data.cronExpression;
+    if (data.startAt !== undefined) {
+      updateData.startAt = data.startAt;
+      updateData.nextRunAt = data.startAt;
+    }
+    if (data.endAt !== undefined) updateData.endAt = data.endAt;
+    if (data.timezone !== undefined) updateData.timezone = data.timezone;
+    if (data.maxRetries !== undefined) updateData.maxRetries = data.maxRetries;
+    if (data.retryDelayMs !== undefined) updateData.retryDelayMs = data.retryDelayMs;
+    if (data.tags !== undefined) updateData.tags = data.tags as unknown as Prisma.InputJsonValue;
+
     const updated = await this.prisma.scheduledOperation.update({
       where: { id },
-      data: {
-        ...data,
-        nextRunAt: data.startAt || existing.nextRunAt,
-      },
+      data: updateData,
     });
 
+    const mapped = this.mapOperation(updated);
     this.unscheduleOperation(id);
-    if (updated.nextRunAt) {
-      this.scheduleOperation(updated as ScheduledOperation);
+    if (mapped.nextRunAt) {
+      this.scheduleOperation(mapped);
     }
 
-    return updated as ScheduledOperation;
+    return mapped;
   }
 
   async cancelOperation(id: string): Promise<void> {
@@ -487,22 +553,24 @@ export class ScheduledOperationsService {
   }
 
   async getRuns(operationId: string, limit = 50): Promise<ScheduledOperationRun[]> {
-    return this.prisma.scheduledOperationRun.findMany({
+    const runs = await this.prisma.scheduledOperationRun.findMany({
       where: { operationId },
       orderBy: { startedAt: 'desc' },
       take: limit,
-    }) as Promise<ScheduledOperationRun[]>;
+    });
+    return runs.map(r => this.mapRun(r));
   }
 
   async getUpcomingOperations(limit = 50): Promise<ScheduledOperation[]> {
-    return this.prisma.scheduledOperation.findMany({
+    const ops = await this.prisma.scheduledOperation.findMany({
       where: {
         status: 'PENDING',
         nextRunAt: { not: null, lte: new Date(Date.now() + 24 * 60 * 60 * 1000) },
       },
       orderBy: { nextRunAt: 'asc' },
       take: limit,
-    }) as Promise<ScheduledOperation[]>;
+    });
+    return ops.map(op => this.mapOperation(op));
   }
 
   async getStats(): Promise<{

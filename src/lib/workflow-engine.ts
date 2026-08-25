@@ -1,4 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
+import { PaginatedResult } from './common-types';
 
 export type WorkflowStatus = 'ACTIVE' | 'INACTIVE' | 'DRAFT' | 'ARCHIVED';
 export type TriggerType = 'EVENT' | 'SCHEDULE' | 'WEBHOOK' | 'MANUAL' | 'CONDITION';
@@ -11,7 +12,7 @@ export interface WorkflowNode {
   description?: string;
   config: Record<string, any>;
   position: { x: number; y: number };
-  next: string[]; // next node IDs
+  next: string[];
   retryPolicy?: {
     maxRetries: number;
     delayMs: number;
@@ -25,7 +26,7 @@ export interface WorkflowEdge {
   id: string;
   source: string;
   target: string;
-  condition?: string; // expression to evaluate
+  condition?: string;
   label?: string;
 }
 
@@ -100,13 +101,6 @@ export interface WorkflowExecutionQueryOptions {
   sortOrder?: 'asc' | 'desc';
 }
 
-export interface PaginatedResult<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
 
 export class WorkflowEngine {
   private prisma: PrismaClient;
@@ -116,34 +110,107 @@ export class WorkflowEngine {
     this.prisma = prisma;
   }
 
+  private mapWorkflow(wf: any): WorkflowDefinition {
+    return {
+      id: wf.id,
+      name: wf.name,
+      description: wf.description ?? undefined,
+      version: wf.version,
+      status: wf.status as WorkflowStatus,
+      trigger: (wf.trigger as unknown as WorkflowDefinition['trigger']) || { type: 'MANUAL', config: {} },
+      nodes: (wf.nodes as unknown as WorkflowNode[]) || [],
+      edges: (wf.edges as unknown as WorkflowEdge[]) || [],
+      variables: (wf.variables as unknown as Record<string, any>) || undefined,
+      settings: (wf.settings as unknown as WorkflowDefinition['settings']) || undefined,
+      createdBy: wf.createdBy,
+      updatedBy: wf.updatedBy,
+      createdAt: wf.createdAt,
+      updatedAt: wf.updatedAt,
+      publishedAt: wf.publishedAt ?? undefined,
+    };
+  }
+
+  private mapExecution(ex: any): WorkflowExecution {
+    return {
+      id: ex.id,
+      workflowId: ex.workflowId,
+      workflowVersion: ex.workflowVersion,
+      status: ex.status as WorkflowExecution['status'],
+      triggerData: ex.triggerData ? (ex.triggerData as unknown as Record<string, any>) : undefined,
+      variables: (ex.variables as unknown as Record<string, any>) || {},
+      currentNodeId: ex.currentNodeId ?? undefined,
+      completedNodes: (ex.completedNodes as unknown as string[]) || [],
+      failedNodeId: ex.failedNodeId ?? undefined,
+      error: ex.error ?? undefined,
+      startedAt: ex.startedAt,
+      completedAt: ex.completedAt ?? undefined,
+      durationMs: ex.durationMs ?? undefined,
+    };
+  }
+
+  private mapStepExecution(step: any): WorkflowStepExecution {
+    return {
+      id: step.id,
+      executionId: step.executionId,
+      nodeId: step.nodeId,
+      nodeType: step.nodeType as ActionType,
+      status: step.status as WorkflowStepExecution['status'],
+      input: step.input ? (step.input as unknown as Record<string, any>) : undefined,
+      output: step.output ? (step.output as unknown as Record<string, any>) : undefined,
+      error: step.error ?? undefined,
+      startedAt: step.startedAt,
+      completedAt: step.completedAt ?? undefined,
+      durationMs: step.durationMs ?? undefined,
+      retryCount: step.retryCount,
+    };
+  }
+
   async createWorkflow(definition: Omit<WorkflowDefinition, 'id' | 'version' | 'createdAt' | 'updatedAt'>): Promise<WorkflowDefinition> {
     const workflow = await this.prisma.workflowDefinition.create({
       data: {
-        ...definition,
+        name: definition.name,
+        description: definition.description ?? null,
         version: 1,
         status: definition.status || 'DRAFT',
+        trigger: definition.trigger as unknown as Prisma.InputJsonValue,
+        nodes: definition.nodes as unknown as Prisma.InputJsonValue,
+        edges: definition.edges as unknown as Prisma.InputJsonValue,
+        variables: definition.variables ? (definition.variables as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        settings: definition.settings ? (definition.settings as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        createdBy: definition.createdBy,
+        updatedBy: definition.updatedBy || definition.createdBy,
       },
     });
-    return workflow as WorkflowDefinition;
+    return this.mapWorkflow(workflow);
   }
 
   async updateWorkflow(id: string, updates: Partial<WorkflowDefinition>): Promise<WorkflowDefinition> {
     const workflow = await this.prisma.workflowDefinition.findUnique({ where: { id } });
     if (!workflow) throw new Error('Workflow not found');
 
+    const data: Prisma.WorkflowDefinitionUpdateInput = {};
+    if (updates.name !== undefined) data.name = updates.name;
+    if (updates.description !== undefined) data.description = updates.description;
+    if (updates.status !== undefined) data.status = updates.status;
+    if (updates.trigger !== undefined) data.trigger = updates.trigger as unknown as Prisma.InputJsonValue;
+    if (updates.nodes !== undefined) data.nodes = updates.nodes as unknown as Prisma.InputJsonValue;
+    if (updates.edges !== undefined) data.edges = updates.edges as unknown as Prisma.InputJsonValue;
+    if (updates.variables !== undefined) data.variables = updates.variables as unknown as Prisma.InputJsonValue;
+    if (updates.settings !== undefined) data.settings = updates.settings as unknown as Prisma.InputJsonValue;
+    if (updates.publishedAt !== undefined) data.publishedAt = updates.publishedAt;
+    data.version = workflow.version + 1;
+    data.updatedBy = updates.updatedBy || 'system';
+
     const updated = await this.prisma.workflowDefinition.update({
       where: { id },
-      data: {
-        ...updates,
-        version: workflow.version + 1,
-        updatedBy: updates.updatedBy || 'system',
-      },
+      data,
     });
-    return updated as WorkflowDefinition;
+    return this.mapWorkflow(updated);
   }
 
   async getWorkflow(id: string): Promise<WorkflowDefinition | null> {
-    return this.prisma.workflowDefinition.findUnique({ where: { id } }) as Promise<WorkflowDefinition | null>;
+    const wf = await this.prisma.workflowDefinition.findUnique({ where: { id } });
+    return wf ? this.mapWorkflow(wf) : null;
   }
 
   async getWorkflows(
@@ -152,7 +219,7 @@ export class WorkflowEngine {
     page = 1,
     limit = 20
   ): Promise<PaginatedResult<WorkflowDefinition>> {
-    const where: any = {};
+    const where: Prisma.WorkflowDefinitionWhereInput = {};
     if (status) where.status = status;
     if (createdBy) where.createdBy = createdBy;
 
@@ -166,7 +233,17 @@ export class WorkflowEngine {
       this.prisma.workflowDefinition.count({ where }),
     ]);
 
-    return { data: workflows as WorkflowDefinition[], total, page, limit, totalPages: Math.ceil(total / limit) };
+    return {
+      data: workflows.map(wf => this.mapWorkflow(wf)),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+    };
   }
 
   async publishWorkflow(id: string, publishedBy: string): Promise<WorkflowDefinition> {
@@ -187,13 +264,17 @@ export class WorkflowEngine {
     if (!workflow) throw new Error('Workflow not found');
     if (workflow.status !== 'ACTIVE') throw new Error('Workflow is not active');
 
+    const workflowVariables = workflow.variables || {};
+    const mergedVariables = { ...workflowVariables, ...variables };
+
     const execution = await this.prisma.workflowExecution.create({
       data: {
         workflowId,
         workflowVersion: workflow.version,
         status: 'RUNNING',
-        triggerData,
-        variables: { ...workflow.variables, ...variables },
+        triggerData: triggerData as unknown as Prisma.InputJsonValue,
+        variables: mergedVariables as unknown as Prisma.InputJsonValue,
+        completedNodes: [] as unknown as Prisma.InputJsonValue,
         startedAt: new Date(),
       },
     });
@@ -203,7 +284,7 @@ export class WorkflowEngine {
 
     this.executeWorkflowAsync(execution.id, workflow, abortController.signal);
 
-    return execution as WorkflowExecution;
+    return this.mapExecution(execution);
   }
 
   private async executeWorkflowAsync(
@@ -243,14 +324,14 @@ export class WorkflowEngine {
     node: WorkflowNode,
     signal: AbortSignal,
     variables: Record<string, any> = {}
-  ): Promise<Record<string, any>> {
+  ): Promise<any> {
     const stepExecution = await this.prisma.workflowStepExecution.create({
       data: {
         executionId,
         nodeId: node.id,
         nodeType: node.type,
         status: 'RUNNING',
-        input: variables,
+        input: variables as unknown as Prisma.InputJsonValue,
         startedAt: new Date(),
         retryCount: 0,
       },
@@ -289,7 +370,7 @@ export class WorkflowEngine {
     node: WorkflowNode,
     variables: Record<string, any>,
     signal: AbortSignal
-  ): Promise<Record<string, any>> {
+  ): Promise<any> {
     switch (node.type) {
       case 'CREATE':
         return this.executeCreate(node.config, variables);
@@ -314,23 +395,23 @@ export class WorkflowEngine {
     }
   }
 
-  private async executeCreate(config: Record<string, any>, variables: Record<string, any>): Promise<Record<string, any>> {
+  private async executeCreate(config: any, variables: any): Promise<any> {
     return { created: true, entityType: config.entityType, data: this.resolveVariables(config.data, variables) };
   }
 
-  private async executeUpdate(config: Record<string, any>, variables: Record<string, any>): Promise<Record<string, any>> {
+  private async executeUpdate(config: any, variables: any): Promise<any> {
     return { updated: true, entityType: config.entityType, entityId: config.entityId, data: this.resolveVariables(config.data, variables) };
   }
 
-  private async executeDelete(config: Record<string, any>, variables: Record<string, any>): Promise<Record<string, any>> {
+  private async executeDelete(config: any, variables: any): Promise<any> {
     return { deleted: true, entityType: config.entityType, entityId: config.entityId };
   }
 
-  private async executeNotify(config: Record<string, any>, variables: Record<string, any>): Promise<Record<string, any>> {
+  private async executeNotify(config: any, variables: any): Promise<any> {
     return { notified: true, channel: config.channel, message: this.resolveVariables(config.message, variables) };
   }
 
-  private async executeWebhook(config: Record<string, any>, variables: Record<string, any>): Promise<Record<string, any>> {
+  private async executeWebhook(config: any, variables: any): Promise<any> {
     const url = this.resolveVariables(config.url, variables);
     const method = config.method || 'POST';
     const headers = this.resolveVariables(config.headers || {}, variables);
@@ -346,11 +427,11 @@ export class WorkflowEngine {
     return { webhook: true, status: response.status, response: await response.json().catch(() => response.text()) };
   }
 
-  private async executeCustom(config: Record<string, any>, variables: Record<string, any>): Promise<Record<string, any>> {
+  private async executeCustom(config: any, variables: any): Promise<any> {
     return { custom: true, result: this.resolveVariables(config, variables) };
   }
 
-  private async executeDelay(config: Record<string, any>, signal: AbortSignal): Promise<Record<string, any>> {
+  private async executeDelay(config: any, signal: AbortSignal): Promise<any> {
     const ms = config.ms || 1000;
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(resolve, ms);
@@ -362,15 +443,15 @@ export class WorkflowEngine {
     return { delayed: true, ms };
   }
 
-  private async executeCondition(config: Record<string, any>, variables: Record<string, any>): Promise<Record<string, any>> {
+  private async executeCondition(config: any, variables: any): Promise<any> {
     const condition = config.condition;
     const result = this.evaluateCondition(condition, variables);
     return { conditionResult: result, branch: result ? 'true' : 'false' };
   }
 
-  private async executeLoop(config: Record<string, any>, variables: Record<string, any>, signal: AbortSignal): Promise<Record<string, any>> {
-    const items = this.resolveVariables(config.items, variables) as any[];
-    const body = config.body as WorkflowNode[];
+  private async executeLoop(config: any, variables: any, signal: AbortSignal): Promise<any> {
+    const items = (this.resolveVariables(config.items, variables) as any[]) || [];
+    const body = (config.body as WorkflowNode[]) || [];
     const results = [];
 
     for (const item of items) {
@@ -379,7 +460,8 @@ export class WorkflowEngine {
       
       for (const node of body) {
         if (signal.aborted) break;
-        await this.executeNodeLogic(node, { ...itemVariables, ...(await this.executeNodeLogic({...config, type: node.type, config: node.config} as WorkflowNode, itemVariables, signal)) }, signal);
+        const res = await this.executeNodeLogic(node, itemVariables, signal);
+        Object.assign(itemVariables, res);
       }
       results.push(item);
     }
@@ -387,7 +469,7 @@ export class WorkflowEngine {
     return { loop: true, iterations: items.length, results };
   }
 
-  private evaluateCondition(condition: string, variables: Record<string, any>): boolean {
+  private evaluateCondition(condition: string, variables: any): boolean {
     try {
       const func = new Function('vars', `with (vars) { return ${condition}; }`);
       return Boolean(func(variables));
@@ -396,7 +478,7 @@ export class WorkflowEngine {
     }
   }
 
-  private resolveVariables(obj: any, variables: Record<string, any>): any {
+  private resolveVariables(obj: any, variables: any): any {
     if (typeof obj === 'string') {
       return obj.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] ?? '');
     }
@@ -413,7 +495,7 @@ export class WorkflowEngine {
     return obj;
   }
 
-  private getNextNodes(workflow: WorkflowDefinition, nodeId: string, output: Record<string, any>): WorkflowNode[] {
+  private getNextNodes(workflow: WorkflowDefinition, nodeId: string, output: any): WorkflowNode[] {
     const edges = workflow.edges.filter(e => e.source === nodeId);
     const nextNodes: WorkflowNode[] = [];
 
@@ -432,10 +514,13 @@ export class WorkflowEngine {
   private async updateStepExecution(
     stepId: string,
     status: 'COMPLETED' | 'FAILED' | 'SKIPPED',
-    data: { output?: Record<string, any>; error?: string }
+    data: { output?: any; error?: string }
   ): Promise<void> {
-    const updateData: any = { status, completedAt: new Date() };
-    if (data.output) updateData.output = data.output;
+    const updateData: Prisma.WorkflowStepExecutionUpdateInput = {
+      status,
+      completedAt: new Date(),
+    };
+    if (data.output) updateData.output = data.output as unknown as Prisma.InputJsonValue;
     if (data.error) updateData.error = data.error;
 
     await this.prisma.workflowStepExecution.update({
@@ -445,14 +530,16 @@ export class WorkflowEngine {
   }
 
   private async completeExecution(executionId: string, status: 'COMPLETED' | 'FAILED', error?: string): Promise<void> {
+    const startTime = await this.getExecutionStartTime(executionId);
+    const updateData: Prisma.WorkflowExecutionUpdateInput = {
+      status,
+      completedAt: new Date(),
+      durationMs: Date.now() - startTime,
+      error: error ?? null,
+    };
     await this.prisma.workflowExecution.update({
       where: { id: executionId },
-      data: {
-        status,
-        completedAt: new Date(),
-        durationMs: Date.now() - (await this.getExecutionStartTime(executionId)),
-        error,
-      },
+      data: updateData,
     });
   }
 
@@ -461,23 +548,29 @@ export class WorkflowEngine {
       where: { id: executionId },
       select: { startedAt: true },
     });
-    return execution?.startedAt.getTime() ?? Date.now();
+    return execution?.startedAt?.getTime() ?? Date.now();
   }
 
-  async getExecution(executionId: string): Promise<WorkflowExecution | null> {
-    return this.prisma.workflowExecution.findUnique({
+  async getExecution(executionId: string): Promise<(WorkflowExecution & { steps: WorkflowStepExecution[] }) | null> {
+    const execution = await this.prisma.workflowExecution.findUnique({
       where: { id: executionId },
       include: { steps: { orderBy: { startedAt: 'asc' } } },
-    }) as Promise<WorkflowExecution | null>;
+    });
+
+    if (!execution) return null;
+
+    return {
+      ...this.mapExecution(execution),
+      steps: execution.steps.map(s => this.mapStepExecution(s)),
+    };
   }
 
   async getExecutions(options: WorkflowExecutionQueryOptions = {}): Promise<PaginatedResult<WorkflowExecution>> {
     const { workflowId, status, createdBy, startDate, endDate, page = 1, limit = 20, sortBy = 'startedAt', sortOrder = 'desc' } = options;
 
-    const where: any = {};
+    const where: Prisma.WorkflowExecutionWhereInput = {};
     if (workflowId) where.workflowId = workflowId;
     if (status) where.status = status;
-    if (createdBy) where.createdBy = createdBy;
     if (startDate || endDate) {
       where.startedAt = {};
       if (startDate) where.startedAt.gte = startDate;
@@ -490,12 +583,21 @@ export class WorkflowEngine {
         orderBy: { [sortBy]: sortOrder },
         skip: (page - 1) * limit,
         take: limit,
-        include: { steps: { orderBy: { startedAt: 'asc' } } },
       }),
       this.prisma.workflowExecution.count({ where }),
     ]);
 
-    return { data: executions as WorkflowExecution[], total, page, limit, totalPages: Math.ceil(total / limit) };
+    return {
+      data: executions.map(ex => this.mapExecution(ex)),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+    };
   }
 
   async cancelExecution(executionId: string): Promise<void> {
@@ -531,8 +633,8 @@ export class WorkflowEngine {
     if (!workflow) throw new Error('Workflow not found');
 
     const abortController = new AbortController();
-    this.runningExecutions.set(executionId, { abortController, startTime: Date.now() });
-    this.executeWorkflowAsync(executionId, workflow, abortController.signal);
+    this.runningExecutions.set(execution.id, { abortController, startTime: Date.now() });
+    this.executeWorkflowAsync(execution.id, workflow, abortController.signal);
   }
 
   async getWorkflowStats(workflowId: string): Promise<{
@@ -563,12 +665,4 @@ export class WorkflowEngine {
 
 export function createWorkflowEngine(prisma: PrismaClient): WorkflowEngine {
   return new WorkflowEngine(prisma);
-}
-
-export interface PaginatedResult<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
 }

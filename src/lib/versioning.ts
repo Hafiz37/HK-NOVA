@@ -3,6 +3,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 export interface VersionedEntity {
   id: string;
   entityType: string;
+  entityId: string;
   version: number;
   data: Record<string, any>;
   changedBy: string;
@@ -145,7 +146,7 @@ export class VersioningService {
         entityType,
         entityId,
         version: currentVersion + 1,
-        data: targetVersion.data,
+        data: targetVersion.data as Prisma.InputJsonValue,
         changedBy: restoredBy,
         changeType: 'RESTORE',
       },

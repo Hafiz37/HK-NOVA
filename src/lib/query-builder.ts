@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { PaginatedResult } from './common-types';
 
 export const advancedFilterSchema = z.object({
   filters: z.record(z.string(), z.unknown()).optional(),
@@ -21,19 +22,6 @@ export interface QueryOptions {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   useCursor?: boolean;
-}
-
-export interface PaginatedResult<T> {
-  data: T[];
-  pagination: {
-    page?: number;
-    limit: number;
-    total?: number;
-    totalPages?: number;
-    hasNext: boolean;
-    hasPrev?: boolean;
-    cursor?: string;
-  };
 }
 
 function parseFilterValue(value: unknown): unknown {

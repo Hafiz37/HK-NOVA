@@ -1,4 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
+import { PaginatedResult } from './common-types';
 
 export type NotificationChannel = 'WEBHOOK' | 'EMAIL' | 'SSE' | 'WEBSOCKET' | 'LOG';
 export type NotificationEvent = 
@@ -20,8 +21,8 @@ export interface NotificationSubscription {
   name: string;
   description?: string;
   events: NotificationEvent[];
-  entityTypes?: string[];
-  entityIds?: string[];
+  entityTypes: string[];
+  entityIds: string[];
   channel: NotificationChannel;
   config: Record<string, any>;
   filter?: string; // JSON path filter expression
@@ -99,43 +100,97 @@ export interface NotificationQueryOptions {
   limit?: number;
 }
 
-export interface PaginatedResult<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
+export type JsonValue = Prisma.JsonValue;
 
 export class NotificationService {
   private prisma: PrismaClient;
-  private webhookQueue: Array<{ subscriptionId: string; payload: NotificationPayload }> = [];
-  private isProcessing = false;
 
   constructor(prisma: PrismaClient) {
     this.prisma = prisma;
   }
 
+  private mapSubscription(sub: any): NotificationSubscription {
+    return {
+      id: sub.id,
+      name: sub.name,
+      description: sub.description ?? undefined,
+      events: (sub.events as unknown as NotificationEvent[]) || [],
+      entityTypes: (sub.entityTypes as unknown as string[]) || [],
+      entityIds: (sub.entityIds as unknown as string[]) || [],
+      channel: sub.channel as NotificationChannel,
+      config: (sub.config as unknown as Record<string, any>) || {},
+      filter: sub.filter ?? undefined,
+      isActive: sub.isActive,
+      createdBy: sub.createdBy,
+      createdAt: sub.createdAt,
+      updatedAt: sub.updatedAt,
+      lastTriggeredAt: sub.lastTriggeredAt ?? undefined,
+      triggerCount: sub.triggerCount,
+    };
+  }
+
+  private mapLog(log: any): NotificationLog {
+    return {
+      id: log.id,
+      subscriptionId: log.subscriptionId,
+      event: log.event as NotificationEvent,
+      entityType: log.entityType,
+      entityId: log.entityId,
+      status: log.status as NotificationLog['status'],
+      payload: (log.payload as unknown as Record<string, any>) || {},
+      response: log.response ? (log.response as unknown as Record<string, any>) : undefined,
+      error: log.error ?? undefined,
+      attempts: log.attempts,
+      createdAt: log.createdAt,
+      sentAt: log.sentAt ?? undefined,
+      nextRetryAt: log.nextRetryAt ?? undefined,
+    };
+  }
+
   async createSubscription(input: Omit<NotificationSubscription, 'id' | 'createdAt' | 'updatedAt' | 'triggerCount' | 'lastTriggeredAt'>): Promise<NotificationSubscription> {
     const subscription = await this.prisma.notificationSubscription.create({
       data: {
-        ...input,
+        name: input.name,
+        description: input.description ?? null,
+        events: input.events as unknown as Prisma.InputJsonValue,
+        entityTypes: (input.entityTypes || []) as unknown as Prisma.InputJsonValue,
+        entityIds: (input.entityIds || []) as unknown as Prisma.InputJsonValue,
+        channel: input.channel,
+        config: input.config as unknown as Prisma.InputJsonValue,
+        filter: input.filter ?? null,
+        isActive: input.isActive ?? true,
+        createdBy: input.createdBy,
         triggerCount: 0,
       },
     });
-    return subscription as NotificationSubscription;
+    return this.mapSubscription(subscription);
   }
 
   async updateSubscription(id: string, updates: Partial<NotificationSubscription>): Promise<NotificationSubscription> {
+    const data: Prisma.NotificationSubscriptionUpdateInput = {};
+    if (updates.name !== undefined) data.name = updates.name;
+    if (updates.description !== undefined) data.description = updates.description;
+    if (updates.events !== undefined) data.events = updates.events as unknown as Prisma.InputJsonValue;
+    if (updates.entityTypes !== undefined) data.entityTypes = updates.entityTypes as unknown as Prisma.InputJsonValue;
+    if (updates.entityIds !== undefined) data.entityIds = updates.entityIds as unknown as Prisma.InputJsonValue;
+    if (updates.channel !== undefined) data.channel = updates.channel;
+    if (updates.config !== undefined) data.config = updates.config as unknown as Prisma.InputJsonValue;
+    if (updates.filter !== undefined) data.filter = updates.filter;
+    if (updates.isActive !== undefined) data.isActive = updates.isActive;
+    if (updates.lastTriggeredAt !== undefined) data.lastTriggeredAt = updates.lastTriggeredAt;
+    if (updates.triggerCount !== undefined) data.triggerCount = updates.triggerCount;
+    data.updatedAt = new Date();
+
     const subscription = await this.prisma.notificationSubscription.update({
       where: { id },
-      data: { ...updates, updatedAt: new Date() },
+      data,
     });
-    return subscription as NotificationSubscription;
+    return this.mapSubscription(subscription);
   }
 
   async getSubscription(id: string): Promise<NotificationSubscription | null> {
-    return this.prisma.notificationSubscription.findUnique({ where: { id } }) as Promise<NotificationSubscription | null>;
+    const subscription = await this.prisma.notificationSubscription.findUnique({ where: { id } });
+    return subscription ? this.mapSubscription(subscription) : null;
   }
 
   async getSubscriptions(
@@ -145,9 +200,8 @@ export class NotificationService {
     page = 1,
     limit = 20
   ): Promise<PaginatedResult<NotificationSubscription>> {
-    const where: any = {};
+    const where: Prisma.NotificationSubscriptionWhereInput = {};
     if (isActive !== undefined) where.isActive = isActive;
-    if (event) where.events = { has: event };
     if (channel) where.channel = channel;
 
     const [subscriptions, total] = await Promise.all([
@@ -160,7 +214,22 @@ export class NotificationService {
       this.prisma.notificationSubscription.count({ where }),
     ]);
 
-    return { data: subscriptions as NotificationSubscription[], total, page, limit, totalPages: Math.ceil(total / limit) };
+    let mapped = subscriptions.map(sub => this.mapSubscription(sub));
+    if (event) {
+      mapped = mapped.filter(sub => sub.events.includes(event as NotificationEvent));
+    }
+
+    return {
+      data: mapped,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+    };
   }
 
   async deleteSubscription(id: string): Promise<void> {
@@ -204,24 +273,25 @@ export class NotificationService {
     entityType: string,
     entityId: string
   ): Promise<NotificationSubscription[]> {
-    return this.prisma.notificationSubscription.findMany({
+    const subscriptions = await this.prisma.notificationSubscription.findMany({
       where: {
         isActive: true,
-        events: { has: event },
-        OR: [
-          { entityTypes: { has: entityType } },
-          { entityTypes: { equals: [] } },
-        ],
-        AND: [
-          {
-            OR: [
-              { entityIds: { has: entityId } },
-              { entityIds: { equals: [] } },
-            ],
-          },
-        ],
       },
-    }) as Promise<NotificationSubscription[]>;
+    });
+
+    return subscriptions
+      .map(sub => this.mapSubscription(sub))
+      .filter(sub => {
+        const eventsList = sub.events || [];
+        const eventMatch = eventsList.length === 0 || eventsList.includes(event);
+        const entityTypes = sub.entityTypes || [];
+        const entityIds = sub.entityIds || [];
+        
+        const typeMatch = entityTypes.length === 0 || entityTypes.includes(entityType);
+        const idMatch = entityIds.length === 0 || entityIds.includes(entityId);
+        
+        return eventMatch && typeMatch && idMatch;
+      });
   }
 
   private async queueNotification(subscription: NotificationSubscription, payload: NotificationPayload): Promise<void> {
@@ -232,7 +302,7 @@ export class NotificationService {
         entityType: payload.entityType,
         entityId: payload.entityId,
         status: 'PENDING',
-        payload: payload as any,
+        payload: payload as unknown as Prisma.InputJsonValue,
         attempts: 0,
       },
     });
@@ -263,7 +333,6 @@ export class NotificationService {
     const config = subscription.config as WebhookConfig;
     const maxRetries = config.retryPolicy?.maxRetries ?? 3;
     const baseDelay = config.retryPolicy?.delayMs ?? 1000;
-    const backoffMultiplier = config.retryPolicy?.backoffMultiplier ?? 2;
 
     let attempt = 0;
     let lastError: string | undefined;
@@ -315,7 +384,6 @@ export class NotificationService {
     payload: NotificationPayload,
     logId: string
   ): Promise<void> {
-    // Email implementation would integrate with nodemailer or similar
     await this.updateLogStatus(logId, 'SENT', { message: 'Email queued for delivery' });
     await this.prisma.notificationSubscription.update({
       where: { id: subscription.id },
@@ -328,7 +396,6 @@ export class NotificationService {
     payload: NotificationPayload,
     logId: string
   ): Promise<void> {
-    // SSE implementation would push to connected clients
     await this.updateLogStatus(logId, 'SENT', { message: 'SSE event broadcasted' });
     await this.prisma.notificationSubscription.update({
       where: { id: subscription.id },
@@ -362,18 +429,18 @@ export class NotificationService {
       where: { id: logId },
       data: {
         status,
-        response: data.response as any,
-        error: data.error,
+        response: data.response ? (data.response as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+        error: data.error ?? null,
         attempts: { increment: 1 },
         sentAt: status === 'SENT' ? new Date() : undefined,
       },
     });
   }
 
-  async getLogs(options: NotificationQueryOptions = {}): Promise<PaginatedResult<any>> {
+  async getLogs(options: NotificationQueryOptions = {}): Promise<PaginatedResult<NotificationLog>> {
     const { status, event, entityType, entityId, subscriptionId, startDate, endDate, page = 1, limit = 50 } = options;
 
-    const where: any = {};
+    const where: Prisma.NotificationLogWhereInput = {};
     if (status) where.status = status;
     if (event) where.event = event;
     if (entityType) where.entityType = entityType;
@@ -395,7 +462,17 @@ export class NotificationService {
       this.prisma.notificationLog.count({ where }),
     ]);
 
-    return { data: logs, total, page, limit, totalPages: Math.ceil(total / limit) };
+    return {
+      data: logs.map(log => this.mapLog(log)),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+    };
   }
 
   async retryFailedLog(logId: string): Promise<void> {
@@ -408,7 +485,7 @@ export class NotificationService {
     if (!subscription) throw new Error('Subscription not found');
 
     await this.updateLogStatus(log.id, 'RETRYING');
-    this.queueNotification(subscription, log.payload as NotificationPayload);
+    this.queueNotification(this.mapSubscription(subscription), (log.payload as unknown) as NotificationPayload);
   }
 
   async getSubscriptionStats(subscriptionId: string): Promise<{
@@ -447,12 +524,4 @@ export class NotificationService {
 
 export function createNotificationService(prisma: PrismaClient) {
   return new NotificationService(prisma);
-}
-
-export interface PaginatedResult<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
 }

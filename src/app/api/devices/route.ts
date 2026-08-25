@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { DeviceType, DeviceStatus, UserRole, Prisma } from '@prisma/client';
+import { UserRole, Prisma } from '@prisma/client';
 import { encrypt } from '@/lib/encryption';
 import { requireSession, requireRole } from '@/lib/auth';
 import { logAudit, getClientIp } from '@/lib/audit';

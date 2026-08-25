@@ -7,7 +7,7 @@ import {
   CacheTags, 
   createCacheKey 
 } from '@/lib/cache';
-import { PaginatedResult } from '@/lib/query-builder';
+import { PaginatedResult } from '@/lib/common-types';
 
 export { CacheTags, cacheGetOrSet, cacheGet, cacheSet, cacheInvalidateByTag, createCacheKey } from '@/lib/cache';
 

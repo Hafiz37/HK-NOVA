@@ -35,6 +35,18 @@ export function useAnomalyStream(options: UseAnomalyStreamOptions = {}) {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
 
+  const disconnect = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    setConnected(false);
+  }, []);
+
   const connect = useCallback(() => {
     if (!enabled || eventSourceRef.current) return;
 
@@ -82,19 +94,7 @@ export function useAnomalyStream(options: UseAnomalyStreamOptions = {}) {
     } catch (err) {
       console.error("[useAnomalyStream] Failed to create EventSource:", err);
     }
-  }, [enabled, filterSeverity, onNewAnomalies, onError]);
-
-  const disconnect = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-    setConnected(false);
-  }, []);
+  }, [enabled, filterSeverity, onNewAnomalies, onError, disconnect]);
 
   useEffect(() => {
     if (enabled) {
