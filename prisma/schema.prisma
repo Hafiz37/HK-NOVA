@@ -145,6 +145,10 @@ enum UserRole {
   ADMIN
   OPERATOR
   VIEWER
+  NETWORK_ADMIN
+  SECURITY_ADMIN
+  HELPDESK
+  AUDITOR
 }
 
 enum MetricSource {
@@ -901,21 +905,27 @@ model User {
   lockedUntil  DateTime?
 
   // Phase 2 relations
-  assignedAlerts      Alert[]               @relation("AlertAssignee")
-  backupRestores      BackupRestore[]
-  anomalyFeedbacks    AnomalyFeedback[]
-  refreshTokens       RefreshToken[]
-  userSessions        UserSession[]
-  mfaDevices          MfaDevice[]
-  accountLockouts     AccountLockout[]
-  passwordHistories   PasswordHistory[]
-  securityEvents      SecurityEvent[]
-  loginHistories      LoginHistory[]
-  securityTimelines   SecurityTimeline[]
-  resourcePermissions ResourcePermission[]
-  permissionGroups    UserPermissionGroup[]
-  apiKeys             ApiKey[]
-  ipAccessControls    IpAccessControl[]
+  assignedAlerts          Alert[]               @relation("AlertAssignee")
+  backupRestores          BackupRestore[]
+  anomalyFeedbacks        AnomalyFeedback[]
+  refreshTokens           RefreshToken[]
+  userSessions            UserSession[]
+  mfaDevices              MfaDevice[]
+  accountLockouts         AccountLockout[]
+  passwordHistories       PasswordHistory[]
+  securityEvents          SecurityEvent[]
+  loginHistories          LoginHistory[]
+  securityTimelines       SecurityTimeline[]
+  resourcePermissions     ResourcePermission[]
+  permissionGroups        UserPermissionGroup[]
+  apiKeys                 ApiKey[]
+  ipAccessControls        IpAccessControl[]
+
+  // Phase 4 relations
+  ssoConnections          SSOConnection[]
+  approvalRequests        ApprovalRequest[]   @relation("ApprovalRequester")
+  approvalResponses       ApprovalResponse[]  @relation("Approver")
+  teamMemberships         TeamMember[]
 }
 
 // ─── Phase 1 Security & Authentication Models ─────────────────────────────────
@@ -1536,4 +1546,263 @@ model NotificationLog {
   @@index([status])
   @@index([createdAt])
   @@index([subscriptionId, status])
+}
+
+// ─── Phase 4: SSO Integration (SAML, OAuth/OIDC, LDAP) ──────────────────────────
+
+enum SSOProviderType {
+  SAML
+  OAUTH2
+  OIDC
+  LDAP
+}
+
+model SSOProvider {
+  id              String       @id @default(cuid())
+  type            SSOProviderType
+  name            String       @unique
+  enabled         Boolean      @default(true)
+
+  // SAML configuration
+  samlEntryPoint      String?  @db.Text
+  samlIssuer          String?
+  samlCert            String?  @db.Text
+  samlSignatureAlgorithm String?
+
+  // OAuth2/OIDC configuration
+  oauthClientId       String?  @db.Text
+  oauthClientSecret   String?  @db.Text // Encrypted
+  oauthAuthUrl        String?  @db.Text
+  oauthTokenUrl       String?  @db.Text
+  oauthUserInfoUrl    String?  @db.Text
+  oauthScopes         Json?    // ["openid", "profile", "email"]
+  oauthPkceEnabled    Boolean  @default(true)
+
+  // LDAP configuration
+  ldapUrl             String?  @db.Text
+  ldapBindDn          String?  @db.Text
+  ldapBindPassword    String?  @db.Text // Encrypted
+  ldapSearchBase      String?  @db.Text
+  ldapSearchFilter    String?  @db.Text
+  ldapUserAttributes  Json?    // Mapping LDAP attrs to User model
+  ldapGroupAttribute  String?  @default("memberOf")
+  ldapGroupFilter     String?
+
+  // User provisioning
+  autoProvision       Boolean     @default(true)
+  defaultRole         UserRole    @default(VIEWER)
+  roleMapping         Json?       // Map SSO groups to roles
+  attributeMapping    Json?       // Map SSO attributes to user fields
+
+  // Metadata
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  connections SSOConnection[]
+}
+
+model SSOConnection {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerId   String
+  provider     SSOProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  externalId   String       // User ID in SSO provider
+  email        String?
+  username     String?
+  fullName     String?
+
+  metadata     Json?        // Additional user info from SSO
+  groups       Json?        // Groups from SSO provider
+
+  lastLogin    DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([providerId, externalId])
+  @@index([userId])
+  @@index([email])
+}
+
+// ─── Phase 4: Role Hierarchy & Teams ────────────────────────────────────────────
+
+model Role {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  displayName     String
+  description     String?
+
+  // Hierarchy
+  parentId        String?
+  parent          Role?    @relation("RoleHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children        Role[]   @relation("RoleHierarchy")
+  level           Int      @default(0) // 0 = root, 1 = child, etc
+
+  // Permissions
+  permissions     Json     // Array of permission IDs
+  inheritsParent  Boolean  @default(true)
+
+  isSystem        Boolean  @default(false) // Prevent deletion
+  isActive        Boolean  @default(true)
+
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([isActive])
+}
+
+model Team {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String?
+
+  // Hierarchy
+  parentId        String?
+  parent          Team?    @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  subTeams        Team[]   @relation("TeamHierarchy")
+
+  // Default permissions for team members
+  defaultRole     String?
+  permissions     Json?    // Array of permission IDs
+
+  isActive        Boolean  @default(true)
+
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  members         TeamMember[]
+  resourcePermissions TeamResourcePermission[]
+
+  @@index([parentId])
+  @@index([isActive])
+}
+
+model TeamMember {
+  id           String   @id @default(cuid())
+  teamId       String
+  team         Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  roleInTeam   String?  // "member", "lead", "admin"
+
+  joinedAt     DateTime @default(now())
+  addedBy      String?
+
+  @@unique([teamId, userId])
+  @@index([userId])
+}
+
+model TeamResourcePermission {
+  id            String   @id @default(cuid())
+  teamId        String
+  team          Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  resourceType  String
+  resourceId    String
+
+  permissions   Json     // Array of permission strings
+
+  grantedBy     String?
+  grantedAt     DateTime @default(now())
+  expiresAt     DateTime?
+
+  @@unique([teamId, resourceType, resourceId])
+  @@index([teamId])
+  @@index([resourceType, resourceId])
+  @@index([expiresAt])
+}
+
+// ─── Phase 4: Approval Workflows ────────────────────────────────────────────────
+
+model ApprovalWorkflow {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+
+  // Trigger conditions
+  triggerType     String   // "user_create", "device_delete", "backup_restore", "password_reset", "role_change", "custom"
+  conditions      Json?    // Additional conditions for trigger
+
+  // Approval requirements
+  requireApprovals Int     @default(1) // How many approvals needed
+  approverRoles    Json    // Roles that can approve
+  approverUsers    Json?   // Specific users that can approve
+  approverTeams    Json?   // Teams that can approve
+
+  // Time limits
+  timeoutMinutes   Int?    // Auto-reject after timeout (null = no timeout)
+
+  enabled          Boolean  @default(true)
+  priority         Int      @default(0)
+
+  createdBy        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  requests         ApprovalRequest[]
+
+  @@index([enabled, triggerType])
+  @@index([priority])
+}
+
+model ApprovalRequest {
+  id              String             @id @default(cuid())
+  workflowId      String
+  workflow        ApprovalWorkflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  // Request details
+  requestType     String
+  requestData     Json
+  reason          String?            @db.Text
+
+  // Requester
+  requestedBy     String
+  requester       User               @relation("ApprovalRequester", fields: [requestedBy], references: [id])
+  requestedAt     DateTime           @default(now())
+
+  // Status
+  status          String             @default("pending") // "pending", "approved", "rejected", "expired", "cancelled"
+
+  // Approvals
+  requiredApprovals Int
+  receivedApprovals Int              @default(0)
+
+  // Resolution
+  resolvedAt      DateTime?
+  expiresAt       DateTime?
+
+  // Execution
+  executed        Boolean            @default(false)
+  executedAt      DateTime?
+  executionResult Json?
+
+  approvals       ApprovalResponse[]
+
+  @@index([status, requestedAt])
+  @@index([requestedBy])
+  @@index([workflowId, status])
+  @@index([expiresAt])
+}
+
+model ApprovalResponse {
+  id            String           @id @default(cuid())
+  requestId     String
+  request       ApprovalRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  approvedBy    String
+  approver      User             @relation("Approver", fields: [approvedBy], references: [id])
+
+  decision      String           // "approved", "rejected"
+  comment       String?          @db.Text
+
+  respondedAt   DateTime         @default(now())
+
+  @@index([requestId])
+  @@index([approvedBy])
 }
