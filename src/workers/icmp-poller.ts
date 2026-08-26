@@ -760,6 +760,7 @@ void startPollScheduler({
   runCycle: runPollCycle,
   log,
   isShuttingDown: () => isShuttingDown,
+  lockResource: 'worker:icmp:cycle',
 });
 
 log('INFO', 'ICMP Poller worker is running. Press Ctrl+C to stop.');

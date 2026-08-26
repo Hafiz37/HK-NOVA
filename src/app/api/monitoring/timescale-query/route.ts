@@ -34,8 +34,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 });
     }
 
-    // Use optimized query with appropriate continuous aggregate
-    const view = CONTINUOUS_AGGREGATE_QUERIES.getAggregateView(hours);
+    // Ensure view identifier is safely strictly whitelisted to prevent SQL injection
+    const allowedViews = ['"Metric_1m"', '"Metric_5m"', '"Metric_1h"', '"Metric_1d"'];
+    const rawView = CONTINUOUS_AGGREGATE_QUERIES.getAggregateView(hours);
+    const view = allowedViews.includes(rawView) ? rawView : '"Metric_5m"';
 
     const query = `
       SELECT bucket as timestamp,

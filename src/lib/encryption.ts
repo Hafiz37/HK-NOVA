@@ -7,10 +7,10 @@ function resolveKey(): Buffer {
   const raw = process.env.ENCRYPTION_KEY || '';
   if (!raw || raw.length !== 64 || !/^[0-9a-fA-F]+$/.test(raw)) {
     if (process.env.NODE_ENV === 'production') {
-      throw new Error('ENCRYPTION_KEY must be a 64-char hex string in production');
+      throw new Error('ENCRYPTION_KEY must be set as a valid 64-character hex string in production');
     }
     console.warn(
-      'ENCRYPTION_KEY is not set or invalid. Using insecure development fallback.'
+      '[SECURITY WARNING] ENCRYPTION_KEY is not set or invalid. Using development fallback key. DO NOT USE IN PRODUCTION!'
     );
     return Buffer.from(DEV_FALLBACK_KEY, 'hex');
   }

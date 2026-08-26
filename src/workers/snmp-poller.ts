@@ -1030,6 +1030,7 @@ void startPollScheduler({
   runCycle: runPollCycle,
   log,
   isShuttingDown: () => isShuttingDown,
+  lockResource: 'worker:snmp:cycle',
 });
 
 log('INFO', 'SNMP Poller worker is running. Press Ctrl+C to stop.');

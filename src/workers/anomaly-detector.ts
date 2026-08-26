@@ -8,6 +8,7 @@
 import cron from 'node-cron';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { ANOMALY_POLL_INTERVAL, ANOMALY_ALERT_COOLDOWN_MS } from '../lib/constants';
+import { withDistributedLock } from '../lib/distributed-lock';
 import {
   getOrTrainModel,
   extractLatestFeatures,
@@ -209,12 +210,16 @@ process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 log('INFO', `Anomaly Detector starting with schedule: "${ANOMALY_POLL_INTERVAL}"`);
 log('INFO', 'Model persistence and re-training enabled (24h window)');
 
+const runCycleWithLock = async () => {
+  await withDistributedLock('worker:anomaly:cycle', pollCycle, 60000);
+};
+
 // Run immediately on startup
-void pollCycle();
+void runCycleWithLock();
 
 cron.schedule(ANOMALY_POLL_INTERVAL, () => {
   if (!isShuttingDown) {
-    void pollCycle();
+    void runCycleWithLock();
   }
 });
 

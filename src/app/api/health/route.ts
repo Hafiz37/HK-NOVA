@@ -1,84 +1,65 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { requireSession } from '@/lib/auth';
+import { getQueueStatus } from '@/lib/redis-queue';
+import { getCacheStatus } from '@/lib/redis-cache';
+import { logger } from '@/lib/logger';
 
-const SETTING_KEY = 'demo:generator:enabled';
+export const dynamic = 'force-dynamic';
 
-export async function GET(): Promise<NextResponse> {
-  const auth = await requireSession();
-  if (!auth.ok) return auth.response;
+export async function GET() {
+  const startTime = Date.now();
+  const checks: Record<string, { status: 'healthy' | 'unhealthy'; latencyMs?: number; error?: string }> = {};
 
+  // Check Database
   try {
-    // DB connectivity check
-    await prisma.$queryRaw`SELECT 1 as ok`;
-
-    const [
-      demoGeneratorSetting,
-      deviceCounts,
-      recentMetrics,
-      activeAlerts,
-    ] = await Promise.all([
-      // Demo generator setting
-      prisma.setting.findUnique({ where: { key: SETTING_KEY } }),
-      // Device counts by type/status
-      prisma.device.groupBy({
-        by: ['isDemo', 'status'],
-        where: { deletedAt: null },
-        _count: { id: true },
-      }),
-      // Recent metric count (last 5 min)
-      prisma.metric.count({
-        where: {
-          timestamp: { gte: new Date(Date.now() - 5 * 60 * 1000) },
-        },
-      }),
-      // Active alerts
-      prisma.alert.count({ where: { status: 'ACTIVE' } }),
-    ]);
-
-    const demoGeneratorEnabled =
-      (demoGeneratorSetting?.value as { enabled?: boolean } | null)?.enabled ?? true;
-
-    // Aggregate device counts
-    const deviceSummary = {
-      total: 0,
-      real: { up: 0, down: 0, unknown: 0, maintenance: 0 },
-      demo: { up: 0, down: 0, unknown: 0, maintenance: 0 },
+    const dbStart = Date.now();
+    await prisma.$queryRaw`SELECT 1`;
+    checks.database = { status: 'healthy', latencyMs: Date.now() - dbStart };
+  } catch (err) {
+    checks.database = {
+      status: 'unhealthy',
+      error: err instanceof Error ? err.message : 'Database query failed',
     };
-
-    for (const d of deviceCounts) {
-      const count = d._count.id;
-      deviceSummary.total += count;
-      if (d.isDemo) {
-        deviceSummary.demo[d.status.toLowerCase() as keyof typeof deviceSummary.demo] += count;
-      } else {
-        deviceSummary.real[d.status.toLowerCase() as keyof typeof deviceSummary.real] += count;
-      }
-    }
-
-    return NextResponse.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      checks: {
-        database: 'ok',
-        demoGenerator: demoGeneratorEnabled ? 'enabled' : 'disabled',
-      },
-      metrics: {
-        recent5min: recentMetrics,
-        activeAlerts,
-      },
-      devices: deviceSummary,
-      workers: {
-        icmpPoller: 'check logs (pm2/logs)',
-        demoGenerator: demoGeneratorEnabled ? 'should be running' : 'disabled',
-        snmpPoller: 'check logs (pm2/logs)',
-      },
-    });
-  } catch (error) {
-    console.error('[API /api/health] Error:', error);
-    return NextResponse.json(
-      { status: 'unhealthy', error: 'Health check failed' },
-      { status: 503 }
-    );
+    logger.error('Database health check failed', { module: 'health-check' }, err);
   }
+
+  // Check Redis Queue & Cache Status
+  try {
+    const icmpQueue = await getQueueStatus('icmp');
+    const snmpQueue = await getQueueStatus('snmp');
+    const cacheStatus = getCacheStatus();
+
+    checks.redisQueueICMP = {
+      status: icmpQueue.connected || icmpQueue.backend === 'memory' ? 'healthy' : 'unhealthy',
+    };
+    checks.redisQueueSNMP = {
+      status: snmpQueue.connected || snmpQueue.backend === 'memory' ? 'healthy' : 'unhealthy',
+    };
+    checks.redisCache = {
+      status: cacheStatus.connected || cacheStatus.backend === 'memory' ? 'healthy' : 'unhealthy',
+    };
+  } catch (err) {
+    checks.redis = {
+      status: 'unhealthy',
+      error: err instanceof Error ? err.message : 'Redis check failed',
+    };
+  }
+
+  const isHealthy = Object.values(checks).every((c) => c.status === 'healthy');
+  const responseTime = Date.now() - startTime;
+
+  return NextResponse.json(
+    {
+      status: isHealthy ? 'healthy' : 'degraded',
+      timestamp: new Date().toISOString(),
+      responseTimeMs: responseTime,
+      checks,
+      system: {
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage(),
+        nodeVersion: process.version,
+      },
+    },
+    { status: isHealthy ? 200 : 503 }
+  );
 }

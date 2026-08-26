@@ -118,8 +118,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           where.status = basicQuery.status;
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const dynamicWhere = where as any;
+        const dynamicWhere = where as Prisma.DeviceWhereInput & Record<string, unknown>;
         if (advancedFilters.filters) {
           for (const [key, value] of Object.entries(advancedFilters.filters)) {
             if (typeof value === 'object' && value !== null) {
@@ -146,9 +145,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
         if (advancedFilters.dateFrom || advancedFilters.dateTo) {
           const dateField = advancedFilters.dateField || 'createdAt';
-          dynamicWhere[dateField] = {};
-          if (advancedFilters.dateFrom) dynamicWhere[dateField].gte = advancedFilters.dateFrom;
-          if (advancedFilters.dateTo) dynamicWhere[dateField].lte = advancedFilters.dateTo;
+          const dateFilter: Record<string, unknown> = {};
+          if (advancedFilters.dateFrom) dateFilter.gte = advancedFilters.dateFrom;
+          if (advancedFilters.dateTo) dateFilter.lte = advancedFilters.dateTo;
+          dynamicWhere[dateField] = dateFilter;
         }
 
         const baseQuery = buildPrismaQuery(

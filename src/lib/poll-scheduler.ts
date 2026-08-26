@@ -1,27 +1,18 @@
 import type { PrismaClient } from '@prisma/client';
 import { getPollingIntervalMs, intervalToLabel, DEFAULT_POLL_INTERVAL_MS } from './polling-config';
+import { withDistributedLock } from './distributed-lock';
+import { logger } from './logger';
 
-/**
- * Self-rescheduling poll scheduler.
- *
- * - Membaca interval dari DB (setting) setelah tiap siklus, sehingga perubahan
- *   interval diterapkan pada siklus berikutnya.
- * - Watcher ringan cek DB tiap 5 detik; jika interval berubah, timer yang
- *   tertunda di-re-arm segera (tanpa restart worker).
- * - Serial execution: runCycle tidak pernah dijalankan bersamaan. Siklus lambat
- *   hanya menunda run berikutnya (seperti perilaku node-cron lama).
- * - Gangguan DB sesaat TIDAK mengubah interval: interval saat ini dipertahankan
- *   sampai pembacaan berikutnya berhasil.
- */
 export interface PollSchedulerOptions {
   prisma: PrismaClient;
   runCycle: () => Promise<void>;
   log: (level: 'INFO' | 'WARN' | 'ERROR', message: string, meta?: unknown) => void;
   isShuttingDown?: () => boolean;
+  lockResource?: string;
 }
 
 export function startPollScheduler(
-  { prisma, runCycle, log, isShuttingDown }: PollSchedulerOptions
+  { prisma, runCycle, log, isShuttingDown, lockResource }: PollSchedulerOptions
 ): () => void {
   let currentIntervalMs: number | null = null;
   let timer: NodeJS.Timeout | null = null;
@@ -50,9 +41,15 @@ export function startPollScheduler(
     if (closed() || inFlight) return;
     inFlight = true;
     try {
-      await runCycle();
+      if (lockResource) {
+        const ttlMs = (currentIntervalMs ?? DEFAULT_POLL_INTERVAL_MS) * 2;
+        await withDistributedLock(lockResource, runCycle, ttlMs);
+      } else {
+        await runCycle();
+      }
     } catch (err) {
       log('ERROR', 'Scheduled poll cycle threw an unexpected error', err instanceof Error ? err.message : err);
+      logger.error('Scheduled poll cycle error', { module: 'poll-scheduler', lockResource }, err);
     } finally {
       inFlight = false;
     }

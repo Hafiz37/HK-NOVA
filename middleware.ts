@@ -3,18 +3,18 @@ import { NextRequest, NextResponse } from 'next/server';
 const COOKIE_NAME = 'hk_nova_session';
 
 async function getSecretKey(): Promise<CryptoKey> {
-  if (
-    process.env.NODE_ENV === 'production' &&
-    !process.env.JWT_SECRET &&
-    !process.env.ENCRYPTION_KEY
-  ) {
-    throw new Error('JWT_SECRET must be set in production');
+  const secret = process.env.JWT_SECRET || process.env.ENCRYPTION_KEY;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET or ENCRYPTION_KEY must be configured in production environment');
+    }
+    console.warn('[SECURITY WARNING] Missing JWT_SECRET/ENCRYPTION_KEY. Using development fallback secret.');
   }
-  const secret = process.env.JWT_SECRET || process.env.ENCRYPTION_KEY || 'dev-insecure-secret';
+  const effectiveSecret = secret || 'dev-insecure-secret';
   const enc = new TextEncoder();
   return crypto.subtle.importKey(
     'raw',
-    enc.encode(secret),
+    enc.encode(effectiveSecret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign', 'verify']

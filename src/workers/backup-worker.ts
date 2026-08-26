@@ -9,6 +9,7 @@ import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import { performBackup } from '../lib/backup';
 import { resolveSshCredentials } from '../lib/device-console';
+import { withDistributedLock } from '../lib/distributed-lock';
 
 // ─── Prisma singleton for worker process ────────────────────────────────────
 const prisma = new PrismaClient();
@@ -171,14 +172,16 @@ async function safeRunCycle(): Promise<void> {
     log('INFO', 'Backup cycle masih berjalan — skip jadwal ini');
     return;
   }
-  cycleInProgress = true;
-  try {
-    await runBackupCycle();
-  } catch (err) {
-    log('ERROR', 'Backup cycle gagal', err instanceof Error ? err.message : err);
-  } finally {
-    cycleInProgress = false;
-  }
+  await withDistributedLock('worker:backup:cycle', async () => {
+    cycleInProgress = true;
+    try {
+      await runBackupCycle();
+    } catch (err) {
+      log('ERROR', 'Backup cycle gagal', err instanceof Error ? err.message : err);
+    } finally {
+      cycleInProgress = false;
+    }
+  }, 120000);
 }
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
