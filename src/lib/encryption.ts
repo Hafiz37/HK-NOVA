@@ -1,23 +1,9 @@
 import crypto from 'crypto';
+import { env } from '@/config/env';
 
 const ALGORITHM = 'aes-256-cbc';
-const DEV_FALLBACK_KEY = '0'.repeat(64);
 
-function resolveKey(): Buffer {
-  const raw = process.env.ENCRYPTION_KEY || '';
-  if (!raw || raw.length !== 64 || !/^[0-9a-fA-F]+$/.test(raw)) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('ENCRYPTION_KEY must be set as a valid 64-character hex string in production');
-    }
-    console.warn(
-      '[SECURITY WARNING] ENCRYPTION_KEY is not set or invalid. Using development fallback key. DO NOT USE IN PRODUCTION!'
-    );
-    return Buffer.from(DEV_FALLBACK_KEY, 'hex');
-  }
-  return Buffer.from(raw, 'hex');
-}
-
-const key = resolveKey();
+const key = Buffer.from(env.ENCRYPTION_KEY, 'hex');
 
 export function encrypt(text: string): string {
   const iv = crypto.randomBytes(16);

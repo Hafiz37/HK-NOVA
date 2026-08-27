@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import '@/lib/init';
 
 const COOKIE_NAME = 'hk_nova_session';
 

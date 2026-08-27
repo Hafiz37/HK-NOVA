@@ -1,19 +1,10 @@
 import { createHmac, createHash } from 'crypto';
 import prisma from '@/lib/prisma';
+import { env } from '@/config/env';
 
-function getAuditHmacKey(): string {
-  const key = process.env.AUDIT_HMAC_KEY;
-  if (!key) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('AUDIT_HMAC_KEY environment variable is required in production for audit log integrity');
-    }
-    console.warn('[SECURITY WARNING] AUDIT_HMAC_KEY is missing. Using development fallback HMAC key.');
-    return 'hk-nova-dev-audit-hmac-key-change-in-production';
-  }
-  return key;
-}
-
-const AUDIT_HMAC_KEY = getAuditHmacKey();
+const AUDIT_HMAC_KEY = env.AUDIT_HMAC_KEY ?? (process.env.NODE_ENV === 'production'
+  ? (() => { throw new Error('AUDIT_HMAC_KEY is required in production'); })()
+  : 'hk-nova-dev-audit-hmac-key-change-in-production');
 
 export interface AuditLogEntry {
   id: string;

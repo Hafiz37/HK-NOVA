@@ -3,19 +3,14 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { UserRole } from '@prisma/client';
+import '@/lib/init';
+import { env } from '@/config/env';
 
 const COOKIE_NAME = 'hk_nova_session';
 const MAX_AGE_SEC = 60 * 60 * 12; // 12 hours
 
 function getSecret(): string {
-  if (
-    process.env.NODE_ENV === 'production' &&
-    !process.env.JWT_SECRET &&
-    !process.env.ENCRYPTION_KEY
-  ) {
-    throw new Error('JWT_SECRET must be set in production');
-  }
-  return process.env.JWT_SECRET || process.env.ENCRYPTION_KEY || 'dev-insecure-secret';
+  return env.JWT_SECRET || env.ENCRYPTION_KEY;
 }
 
 export interface AuthUser {
