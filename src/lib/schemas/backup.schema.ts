@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod-extended';
 
 export const createBackupSchema = z.object({
   deviceId: z.string().min(1, 'Device ID is required'),

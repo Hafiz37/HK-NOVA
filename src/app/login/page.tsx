@@ -93,6 +93,11 @@ export default function LoginPage() {
             ← Kembali ke beranda
           </Link>
         </p>
+        <p className="text-center mt-4 text-sm text-slate-500">
+          <Link href="/docs/api" className="text-slate-400 hover:text-white transition-colors">
+            Dokumentasi API
+          </Link>
+        </p>
       </div>
     </div>
   );

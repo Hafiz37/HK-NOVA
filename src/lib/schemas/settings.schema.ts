@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod-extended';
 
 export const querySettingsSchema = z.object({
   category: z.string().optional(),

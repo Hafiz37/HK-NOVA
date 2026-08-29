@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod-extended';
 
 const credentialsSchema = z.object({
   snmpVersion: z.enum(['v1', 'v2c', 'v3']).default('v2c').optional(),

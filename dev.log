@@ -1,0 +1,68 @@
+
+> hk-nova@0.1.0 dev /home/gopal-ichiro/Documents/magang/hk-nova
+> next dev
+
+▲ Next.js 16.3.0 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.7:3000
+- Environments: .env
+✓ Ready in 781ms
+✓ Running next.config.ts took 62ms
+
+ GET /api-docs 200 in 732ms (next.js: 419ms, application-code: 313ms)
+ GET / 200 in 765ms (next.js: 289ms, application-code: 477ms)
+[browser] A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+https://react.dev/link/hydration-mismatch
+
+  ...
+    <HotReload globalError={[...]} webSocket={WebSocket} staticIndicatorState={{pathname:null, ...}}>
+      <AppDevOverlayErrorBoundary globalError={[...]}>
+        <ReplaySsrOnlyErrors>
+        <DevRootHTTPAccessFallbackBoundary>
+          <HTTPAccessFallbackBoundary notFound={<NotAllowedRootHTTPFallbackError>}>
+            <HTTPAccessFallbackErrorBoundary pathname="/" notFound={<NotAllowedRootHTTPFallbackError>} ...>
+              <RedirectBoundary>
+                <RedirectErrorBoundary router={{...}}>
+                  <Head headCacheNode={{rsc:{...}, ...}}>
+                    <__next_viewport_boundary__>
+                    <MetadataWrapper>
+                      <div
+                        hidden={true}
+-                       bis_skin_checked="1"
+                      >
+                    ...
+                  <__next_root_layout_boundary__>
+                    <SegmentViewNode type="layout" pagePath="layout.tsx">
+                      <SegmentTrieNode>
+                      <link>
+                      <script>
+                      <RootLayout>
+                        <html lang="id" className="dark" suppressHydrationWarning={true}>
+                          <body className="inter_5972..." suppressHydrationWarning={true}>
+                            <ClientOnly>
+                              <div
+                                className="min-h-screen flex items-center justify-center bg-slate-950"
+-                               bis_skin_checked="1"
+                              >
+                                <div
+                                  className="text-center space-y-4"
+-                                 bis_skin_checked="1"
+                                >
+                                  <div
+                                    className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full an..."
+-                                   bis_skin_checked="1"
+                                  >
+                                  ...
+                  ...
+ 
+ ELIFECYCLE  Command failed.
+[?25h

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod-extended';
 
 const provisioningActionEnum = z.enum(['CREATE', 'SUSPEND', 'REACTIVATE', 'TERMINATE', 'STATUS_CHECK']);
 const recordUnknown = z.record(z.string(), z.unknown());

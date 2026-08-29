@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod-extended';
 
 const recordUnknown = z.record(z.string(), z.unknown());
 

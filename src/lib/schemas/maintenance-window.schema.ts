@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod-extended';
 
 export const createMaintenanceWindowSchema = z.object({
   name: z.string().min(1).max(100),
