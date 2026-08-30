@@ -1,0 +1,107 @@
+
+> hk-nova@0.1.0 test:coverage /home/gopal-ichiro/Documents/magang/hk-nova
+> vitest run --coverage
+
+
+ RUN  v4.1.10 /home/gopal-ichiro/Documents/magang/hk-nova
+      Coverage enabled with v8
+
+ ❯ tests/alert-engine.test.ts (11 tests | 8 failed) 4057ms
+     × HIGH_UTILIZATION saat perangkat DOWN → tidak buat baru, eskalasi DEVICE_DOWN 73ms
+     × resolve DEVICE_DOWN ikut meresolve child alert 21ms
+     × resolveUtilizationAlert (hysteresis) menutup alert aktif 27ms
+     × createAlertIfNotDuplicate mengisi firstTriggeredAt + valueSnapshot + aktivitas CREATED 31ms
+     × processCustomOidAlert membuat alert HIGH untuk ambang atas + resolve saat normal 41ms
+     × dedup key custom OID unik per oid 46ms
+     × streak: tidak mengangkat alert sebelum N sampel berturut-turut 34ms
+     × GET /api/alerts mengembalikan childAlerts ter-nest 38ms
+ ❯ tests/polling-config.test.ts (13 tests) 6198ms
+2026-08-30 12:29:19.467268: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+ ❯ tests/unit/algorithms.test.ts (17 tests | 6 failed) 358ms
+     × should detect outliers as anomalous 47ms
+     × should return LOF score around 1 for normal points 7ms
+     × should train all sub-algorithms 19ms
+     × should predict with weighted voting 9ms
+     × should provide feature contribution explanations 10ms
+     × should compute confidence based on agreement 5ms
+stdout | tests/integration/anomaly-detection.test.ts
+✅ Environment validation passed
+
+ ❯ tests/integration/anomaly-detection.test.ts (0 test)
+ ❯ tests/devices.test.ts (31 tests | 31 failed) 3348ms
+       × should return list of devices for authenticated user 34ms
+       × should filter by search query 30ms
+       × should filter by type 21ms
+       × should filter by status 20ms
+       × should hide demo devices when showDemo=false 24ms
+       × should include demo devices when showDemo=true 22ms
+       × should return 401 without authentication 30ms
+       × should create a new device with valid data 17ms
+       × should create device with credentials 23ms
+       × should fail with missing name 31ms
+       × should fail with missing IP 29ms
+       × should fail with invalid IP format 30ms
+       × should fail with invalid type 20ms
+       × should fail with duplicate IP 22ms
+       × should fail without authentication 18ms
+       × should allow OPERATOR to create device 26ms
+       × should return device details 19ms
+       × should mask sensitive credential fields 33ms
+       × should return 404 for non-existent device 14ms
+       × should update device name and location 23ms
+       × should update device status 29ms
+       × should update credentials 26ms
+       × should fail with duplicate IP on update 48ms
+       × should return 404 for non-existent device 39ms
+       × should soft delete device (ADMIN only) 92ms
+       × should fail for OPERATOR (403 Forbidden) 57ms
+       × should return 404 for non-existent device 27ms
+       × should test ICMP connectivity 22ms
+       × should test SNMP connectivity (may fail if no agent) 23ms
+       × should test SSH connectivity (may fail if no server) 32ms
+       × should fail with invalid test type 18ms
+ ❯ tests/auth.test.ts (10 tests) 15518ms
+ ❯ tests/alerts.test.ts (16 tests | 16 failed) 3181ms
+       × should return list of alerts 82ms
+       × should filter by status 25ms
+       × should filter by severity 25ms
+       × should support pagination 42ms
+       × should include device info in alerts 38ms
+       × should acknowledge an active alert 24ms
+       × should fail to acknowledge already acknowledged alert 30ms
+       × should return 404 for non-existent alert 120ms
+       × should resolve an active alert 25ms
+       × should resolve an acknowledged alert 33ms
+       × should fail to resolve already resolved alert 25ms
+       × should return 404 for non-existent alert 33ms
+       × should transition through full lifecycle 28ms
+       × should allow OPERATOR to acknowledge alerts 31ms
+       × should allow OPERATOR to resolve alerts 26ms
+       × should deny access without authentication 29ms
+stdout | tests/baseline.test.ts
+✅ Environment validation passed
+
+ ❯ tests/baseline.test.ts (15 tests | 6 skipped) 60053ms
+ ❯ tests/maintenance.test.ts (12 tests | 12 skipped) 60036ms
+ ❯ tests/top-widgets.test.ts (5 tests | 5 failed) 1720ms
+     × topLatency diurutkan descending & mematuhi limit n 71ms
+     × topCpu & topMem menggunakan metric SNMP terbaru 33ms
+     × topAlerts mengurutkan perangkat dengan alert aktif terbanyak 32ms
+     × device tanpa metric tidak muncul di daftar nilai 43ms
+     × return 401 tanpa autentikasi 30ms
+stderr | tests/thresholds.test.ts
+
+❌ Environment validation failed:
+================================
+  DATABASE_URL: Invalid input: expected string, received undefined
+  ENCRYPTION_KEY: Invalid input: expected string, received undefined
+  JWT_SECRET: Invalid input: expected string, received undefined
+  OPERATOR_USERNAME: Invalid input: expected string, received undefined
+  OPERATOR_PASSWORD: Invalid input: expected string, received undefined
+================================
+
+
+ ❯ tests/thresholds.test.ts (0 test)
+Aborted (core dumped)
+ ELIFECYCLE  Command failed with exit code 134.

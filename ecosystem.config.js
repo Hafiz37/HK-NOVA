@@ -23,7 +23,7 @@ function app(name, script, args, opts = {}) {
 
 module.exports = {
   apps: [
-    app('hk-nova-web', 'pnpm', 'start', {
+    app('hk-nova-web', 'node', 'server.js', {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
@@ -33,7 +33,6 @@ module.exports = {
     app('hk-nova-icmp-worker', 'tsx', 'src/workers/icmp-poller.ts', {
       env: {
         NODE_ENV: 'production',
-        REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
         ICMP_BATCH_SIZE: process.env.ICMP_BATCH_SIZE ?? '20',
         ICMP_CONCURRENCY_LIMIT: process.env.ICMP_CONCURRENCY_LIMIT ?? '10',
       },
@@ -41,7 +40,6 @@ module.exports = {
     app('hk-nova-snmp-worker', 'tsx', 'src/workers/snmp-poller.ts', {
       env: {
         NODE_ENV: 'production',
-        REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
         SNMP_BATCH_SIZE: process.env.SNMP_BATCH_SIZE ?? '20',
         SNMP_CONCURRENCY_LIMIT: process.env.SNMP_CONCURRENCY_LIMIT ?? '10',
       },

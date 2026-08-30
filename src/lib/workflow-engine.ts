@@ -1,5 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { PaginatedResult } from './common-types';
+import { SafeExpressionEvaluator } from './safe-evaluator';
+import { recordConditionEvaluation, recordWorkflowExecution } from './metrics';
 
 export type WorkflowStatus = 'ACTIVE' | 'INACTIVE' | 'DRAFT' | 'ARCHIVED';
 export type TriggerType = 'EVENT' | 'SCHEDULE' | 'WEBHOOK' | 'MANUAL' | 'CONDITION';
@@ -105,9 +107,56 @@ export interface WorkflowExecutionQueryOptions {
 export class WorkflowEngine {
   private prisma: PrismaClient;
   private runningExecutions: Map<string, { abortController: AbortController; startTime: number }> = new Map();
+  private evaluator: SafeExpressionEvaluator;
+  private executionRateLimiter: Map<string, { count: number; resetAt: number }> = new Map();
 
   constructor(prisma: PrismaClient) {
     this.prisma = prisma;
+    this.evaluator = new SafeExpressionEvaluator({
+      maxLength: 1000,
+      maxNestingDepth: 10,
+      timeout: 5000,
+    });
+  }
+
+  private checkRateLimit(userId: string): void {
+    const now = Date.now();
+    const limit = this.executionRateLimiter.get(userId);
+    
+    if (!limit || limit.resetAt < now) {
+      this.executionRateLimiter.set(userId, {
+        count: 1,
+        resetAt: now + 60000, // 1 minute window
+      });
+      return;
+    }
+    
+    if (limit.count >= 10) {
+      throw new Error('Rate limit exceeded: max 10 workflow executions per minute');
+    }
+    
+    limit.count++;
+  }
+
+  private async auditConditionEvaluation(condition: string, variables: any, result: boolean): Promise<void> {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'WORKFLOW_CONDITION_EVAL',
+          entity: 'WorkflowCondition',
+          entityId: null,
+          userId: null,
+          details: {
+            condition,
+            variableKeys: Object.keys(variables),
+            result,
+            timestamp: new Date().toISOString(),
+          },
+        },
+      });
+    } catch (error) {
+      console.error('Failed to audit condition evaluation:', error);
+    }
   }
 
   private mapWorkflow(wf: any): WorkflowDefinition {
@@ -260,6 +309,9 @@ export class WorkflowEngine {
     variables: Record<string, any> = {},
     executedBy: string = 'system'
   ): Promise<WorkflowExecution> {
+    // Rate limiting check
+    this.checkRateLimit(executedBy);
+    
     const workflow = await this.getWorkflow(workflowId);
     if (!workflow) throw new Error('Workflow not found');
     if (workflow.status !== 'ACTIVE') throw new Error('Workflow is not active');
@@ -292,6 +344,9 @@ export class WorkflowEngine {
     workflow: WorkflowDefinition,
     signal: AbortSignal
   ): Promise<void> {
+    const startTime = Date.now();
+    let finalStatus: 'COMPLETED' | 'FAILED' = 'COMPLETED';
+    
     try {
       const entryNodes = this.findEntryNodes(workflow);
       
@@ -304,11 +359,14 @@ export class WorkflowEngine {
         await this.completeExecution(executionId, 'COMPLETED');
       }
     } catch (error) {
+      finalStatus = 'FAILED';
       if (!signal.aborted) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         await this.completeExecution(executionId, 'FAILED', errorMessage);
       }
     } finally {
+      const duration = (Date.now() - startTime) / 1000;
+      recordWorkflowExecution(workflow.id, finalStatus, duration);
       this.runningExecutions.delete(executionId);
     }
   }
@@ -470,12 +528,24 @@ export class WorkflowEngine {
   }
 
   private evaluateCondition(condition: string, variables: any): boolean {
+    const startTime = Date.now();
+    let hasError = false;
+    let result = false;
+    
     try {
-      const func = new Function('vars', `with (vars) { return ${condition}; }`);
-      return Boolean(func(variables));
-    } catch {
-      return false;
+      result = this.evaluator.evaluateCondition(condition, variables);
+    } catch (error) {
+      hasError = true;
+      throw error;
+    } finally {
+      const duration = (Date.now() - startTime) / 1000;
+      recordConditionEvaluation(result, hasError, duration);
+      
+      // Audit in background (don't block execution)
+      this.auditConditionEvaluation(condition, variables, result).catch(console.error);
     }
+    
+    return result;
   }
 
   private resolveVariables(obj: any, variables: any): any {

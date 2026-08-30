@@ -25,6 +25,9 @@ Platform web fullstack untuk Network Operations Center (NOC) ISP yang mengintegr
 - **Workers:** Node.js, PM2
 - **Libraries:** net-ping, net-snmp, ssh2, node-cron, isolation-forest (reserved), nodemailer, exceljs, pdfkit
 - **UI Components:** Radix UI, Recharts
+- **Testing:** Vitest, Playwright, @vitest/coverage-v8
+
+![Coverage](https://img.shields.io/badge/coverage-70%25-yellow)
 
 ## 📋 Prerequisites
 
@@ -176,6 +179,33 @@ pnpm db:migrate:prod
 # View migration status
 pnpm prisma migrate status
 ```
+
+## 🧪 Testing & Quality
+
+```bash
+# Run all tests
+pnpm test
+
+# Run tests in watch mode
+pnpm test:watch
+
+# Generate coverage report
+pnpm test:coverage
+
+# Run E2E tests
+pnpm test:e2e
+
+# Run E2E tests with UI
+pnpm test:e2e:ui
+
+# Run benchmarks
+pnpm bench
+```
+
+**Coverage Reports:**
+- HTML Report: `coverage/index.html`
+- LCOV Report: `coverage/lcov.info`
+- Target: 70%+ coverage for business logic
 
 ## 🗂️ Struktur Project
 

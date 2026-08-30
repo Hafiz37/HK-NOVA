@@ -9,8 +9,6 @@ datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
   relationMode = "prisma"
-  poolTimeout = 20
-  connectionLimit = 10
 }
 
 enum DeviceType {
@@ -234,7 +232,7 @@ model ScheduledProvisioning {
   status       ScheduledProvisioningStatus @default(PENDING)
   executedAt   DateTime?
   logId        String?                     @unique
-  log          ProvisioningLog?            @relation(fields: [logId], references: [id], onDelete: SetNull)
+  log          ProvisioningLog?            @relation(fields: [logId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   createdBy    String
   createdAt    DateTime                    @default(now())
   updatedAt    DateTime                    @updatedAt
@@ -273,7 +271,7 @@ model ProvisioningRequest {
   reviewedAt      DateTime?
   rejectionReason String?            @db.Text
   logId           String?            @unique
-  log             ProvisioningLog?   @relation(fields: [logId], references: [id], onDelete: SetNull)
+  log             ProvisioningLog?   @relation(fields: [logId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   metadata        Json?
 
   @@index([status, requestedAt])
@@ -510,7 +508,7 @@ model ProvisioningLog {
   // Sprint 2: Rollback support
   isRollback    Boolean                @default(false)
   rollbackLogId String?
-  rollbackOf    ProvisioningLog?       @relation("RollbackRelation", fields: [rollbackLogId], references: [id], onDelete: SetNull)
+  rollbackOf    ProvisioningLog?       @relation("RollbackRelation", fields: [rollbackLogId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   rollbackBy    ProvisioningLog[]      @relation("RollbackRelation")
   scheduledBy   ScheduledProvisioning?
   requestBy     ProvisioningRequest?
@@ -684,7 +682,7 @@ model Alert {
   dedupKey       String? // fingerprint: icmp:down:{deviceId}, snmp:cpu:{deviceId}, snmp:mem:{deviceId}
   correlationKey String? // grup korelasi: device:{deviceId}
   parentId       String?
-  parentAlert    Alert?  @relation("AlertHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  parentAlert    Alert?  @relation("AlertHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   childAlerts    Alert[] @relation("AlertHierarchy")
 
   createdAt      DateTime  @default(now())
@@ -750,7 +748,7 @@ model AlertDelivery {
 model AlertEscalation {
   id          String   @id @default(cuid())
   alertId     String
-  alert       Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+alert    Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
   level       Int // tangga eskalasi (1,2,3…)
   triggeredAt DateTime @default(now())
   details     Json?
@@ -1640,7 +1638,7 @@ model Role {
 
   // Hierarchy
   parentId        String?
-  parent          Role?    @relation("RoleHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  parent          Role?    @relation("RoleHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   children        Role[]   @relation("RoleHierarchy")
   level           Int      @default(0) // 0 = root, 1 = child, etc
 
@@ -1666,7 +1664,7 @@ model Team {
 
   // Hierarchy
   parentId        String?
-  parent          Team?    @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  parent          Team?    @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   subTeams        Team[]   @relation("TeamHierarchy")
 
   // Default permissions for team members
@@ -1689,7 +1687,7 @@ model Team {
 model TeamMember {
   id           String   @id @default(cuid())
   teamId       String
-  team         Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team         Team     @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   userId       String
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1705,7 +1703,7 @@ model TeamMember {
 model TeamResourcePermission {
   id            String   @id @default(cuid())
   teamId        String
-  team          Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team          Team     @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   resourceType  String
   resourceId    String

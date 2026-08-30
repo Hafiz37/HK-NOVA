@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { recordRateLimitCheck } from './metrics';
 
 interface RateLimitStore {
   tokens: number;
@@ -173,6 +174,9 @@ export function rateLimitResponse(
     limit: effectiveLimit,
     windowMs: config.windowMs,
   });
+
+  // Record metrics
+  recordRateLimitCheck(prefix, result.allowed, result.allowed ? undefined : ip);
 
   if (!result.allowed) {
     const retryAfterSec = Math.ceil(result.resetMs / 1000);

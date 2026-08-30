@@ -31,6 +31,20 @@ pnpm pm2:status        # Check status
 pnpm pm2:stop          # Stop all
 ```
 
+### Testing & Quality Commands (Phase 4)
+```bash
+pnpm test:coverage     # Generate code coverage report
+pnpm bench             # Run quick performance benchmarks
+pnpm bench:all         # Run all benchmark suites
+pnpm generate:postman  # Generate OpenAPI spec + Postman collection
+```
+
+### Production Deployment (Phase 5)
+```bash
+./scripts/deploy-production.sh   # Run production deployment
+./scripts/smoke-test.sh          # Run post-deploy smoke tests
+```
+
 ---
 
 ## Architecture: Dual-Mode Monitoring
@@ -188,6 +202,40 @@ Alert {
 - [ ] Telegram alerts configured (optional)
 - [ ] Backup schedule verified
 - [ ] Log rotation configured (PM2 handles)
+- [ ] Prometheus metrics verified (`/api/metrics`)
+- [ ] Platform monitoring dashboard accessible (`/dashboard/platform-monitoring`)
+
+---
+
+## Monitoring & Observability (Phase 4)
+
+### Monitoring Endpoints
+- **Prometheus Metrics:** `GET /api/metrics`
+- **Platform Health:** `GET /api/platform/health`
+- **Platform Monitoring Data:** `GET /api/monitoring/platform`
+- **Suspicious Patterns:** `GET /api/audit-logs/monitoring/patterns`
+- **Worker Status:** `GET /api/workers/status`
+
+### Dashboards
+- **Platform Monitoring:** `/dashboard/platform-monitoring`
+- **Network Monitoring:** `/dashboard/monitoring`
+- **Alerts Management:** `/dashboard/alerts`
+- **Audit Logs:** `/dashboard/audit-logs`
+
+### Troubleshooting & Metrics
+```bash
+# Check active alerts
+curl http://localhost:3000/api/metrics | grep alerts_active
+
+# Check worker health
+curl http://localhost:3000/api/metrics | grep worker_last_run_timestamp
+
+# Check rate limit violations
+curl http://localhost:3000/api/metrics | grep rate_limit_violations_total
+
+# View platform monitoring data
+curl http://localhost:3000/api/monitoring/platform | jq
+```
 
 ---
 
