@@ -16,7 +16,11 @@ export async function GET(request: NextRequest) {
     const dateTo = searchParams.get('dateTo');
 
     const offset = (page - 1) * limit;
-    const filters: any = {};
+    const filters: {
+      success?: boolean;
+      dateFrom?: Date;
+      dateTo?: Date;
+    } = {};
     if (success !== null) filters.success = success === 'true';
     if (dateFrom) filters.dateFrom = new Date(dateFrom);
     if (dateTo) filters.dateTo = new Date(dateTo);

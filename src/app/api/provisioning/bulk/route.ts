@@ -49,7 +49,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             deviceId: item.deviceId,
             action: toActionKey(item.action),
             template: item.templateName as TemplateName | undefined,
-            fields: item.parameters as any,
+            fields: item.parameters as Record<string, unknown>,
             executedBy: auth.user.id,
             dryRun,
             clientIp,
@@ -61,7 +61,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length;
       const errors = results
         .filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok))
-        .map(r => (r as any).value?.error ?? (r as PromiseRejectedResult).reason?.message ?? 'Unknown error');
+        .map(r => {
+          if (r.status === 'rejected') {
+            return (r as PromiseRejectedResult).reason?.message ?? 'Unknown error';
+          }
+          return (r as PromiseFulfilledResult<{ok: boolean; error?: string}>).value?.error ?? 'Unknown error';
+        });
 
       await logAudit({
         action: 'EXECUTE',
@@ -97,7 +102,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             deviceId: item.deviceId,
             action: toActionKey(item.action),
             template: item.templateName as TemplateName | undefined,
-            fields: item.parameters as any,
+            fields: item.parameters as Record<string, unknown>,
             scheduledAt: item.scheduledAt,
             createdBy: auth.user.id,
           });
@@ -191,13 +196,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             throw new Error(`Provisioning log ${logId} not found`);
           }
           // Build fields from individual columns
-          const fields: Record<string, any> = {};
+          const fields: Record<string, string | number | boolean> = {};
           if (log.ontSerial) fields.ontSerial = log.ontSerial;
           if (log.ponPort) fields.ponPort = log.ponPort;
           if (log.vlan !== null && log.vlan !== undefined) fields.vlan = log.vlan;
           if (log.serviceProfile) fields.serviceProfile = log.serviceProfile;
           if (log.metadata) {
-            Object.assign(fields, log.metadata as Record<string, any>);
+            Object.assign(fields, log.metadata as Record<string, unknown>);
           }
           return executeProvisioning(prisma, {
             deviceId: log.deviceId,

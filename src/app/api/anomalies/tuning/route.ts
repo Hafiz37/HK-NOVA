@@ -9,7 +9,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const deviceId = searchParams.get('deviceId');
     const action = searchParams.get('action') || 'status';
 
     if (action === 'status') {
@@ -64,7 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await prisma.anomalyModel.updateMany({
         where: { deviceId, isActive: true },
         data: {
-          hyperParams: result.bestParams as any,
+          hyperParams: result.bestParams as Record<string, unknown>,
         },
       });
 
@@ -89,7 +88,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       for (const [devId, result] of results) {
         await prisma.anomalyModel.updateMany({
           where: { deviceId: devId, isActive: true },
-          data: { hyperParams: result.bestParams as any },
+          data: { hyperParams: result.bestParams as Record<string, unknown> },
         });
       }
 

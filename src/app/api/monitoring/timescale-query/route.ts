@@ -39,7 +39,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const rawView = CONTINUOUS_AGGREGATE_QUERIES.getAggregateView(hours);
     const view = allowedViews.includes(rawView) ? rawView : '"Metric_5m"';
 
-    const query = `
+    // Use Prisma.$queryRaw with template literals for safe parameterization
+    // The interval string is constructed safely using validated numeric hours (1-720)
+    const intervalString = `${hours} hours`;
+    
+    const results = await prisma.$queryRaw<Array<{
+      timestamp: Date;
+      latency: number | null;
+      max_latency: number | null;
+      min_latency: number | null;
+      packetLoss: number | null;
+      max_packet_loss: number | null;
+      cpuUtil: number | null;
+      max_cpu: number | null;
+      memUtil: number | null;
+      max_mem: number | null;
+      sample_count: number;
+    }>>`
       SELECT bucket as timestamp,
              avg_latency as latency,
              max_latency,
@@ -52,25 +68,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
              max_mem,
              sample_count
       FROM ${view}
-      WHERE "deviceId" = $1
-        AND "metricType" = $2
-        AND bucket >= NOW() - INTERVAL '${hours} hours'
+      WHERE "deviceId" = ${deviceId}
+        AND "metricType" = ${metricType}
+        AND bucket >= NOW() - INTERVAL ${intervalString}
       ORDER BY bucket ASC
     `;
-
-    const results = await prisma.$queryRawUnsafe<Array<{
-      timestamp: Date;
-      latency: number | null;
-      max_latency: number | null;
-      min_latency: number | null;
-      packetLoss: number | null;
-      max_packet_loss: number | null;
-      cpuUtil: number | null;
-      max_cpu: number | null;
-      memUtil: number | null;
-      max_mem: number | null;
-      sample_count: number;
-    }>>(query, deviceId, metricType);
 
     return NextResponse.json({
       device,

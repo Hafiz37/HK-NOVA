@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { requireSession, requireRole } from '@/lib/auth';
+import { requireSession } from '@/lib/auth';
 import { RealtimeEmitter } from '@/lib/realtime';
 import type { AnomalyEventData } from '@/lib/realtime';
 

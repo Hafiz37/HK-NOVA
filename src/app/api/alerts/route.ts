@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { AlertStatus, AlertSeverity, AlertType } from '@prisma/client';
 import { requireSession } from '@/lib/auth';
 import { queryAlertSchema } from '@/lib/schemas';
-import { success, paginated, ApiError, InternalServerError } from '@/lib/api-response';
+import { paginated, ApiError, InternalServerError } from '@/lib/api-response';
 import { cacheGetOrSet, CacheTags, parseAdvancedFilters } from '@/lib/query';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {

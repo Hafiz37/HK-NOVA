@@ -6,7 +6,6 @@ import {
   addComment,
   getComments,
   type Annotation,
-  type Comment,
 } from '@/lib/annotations';
 import { parsePositiveIntParam, parsePositiveNumberParam } from '@/lib/utils';
 

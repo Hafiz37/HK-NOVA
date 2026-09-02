@@ -269,7 +269,7 @@ export async function detectAnomalousAccess(userId: string, timeRangeDays = 30):
 
 export async function getTopUsers(metric: 'total' | 'creates' | 'updates' | 'deletes' | 'exports' | 'logins', limit = 10, timeRangeDays = 30): Promise<Array<{ userId: string; username: string; fullName: string | null; count: number }>> {
   const startDate = new Date(Date.now() - timeRangeDays * 24 * 60 * 60 * 1000);
-  let where: any = { createdAt: { gte: startDate } };
+  const where: any = { createdAt: { gte: startDate } };
 
   switch (metric) {
     case 'creates': where.action = 'CREATE'; break;

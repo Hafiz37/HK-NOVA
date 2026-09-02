@@ -45,8 +45,21 @@ export async function GET(request: NextRequest) {
       new Date()
     );
 
-    const patterns = (auditAnalytics as any).suspiciousPatterns || [];
-    const suspiciousPatterns = patterns.map((pattern: any) => ({
+    interface Pattern {
+      type: string;
+      severity: string;
+      count: number;
+      lastSeen: string | Date;
+      [key: string]: unknown;
+    }
+
+    interface AuditAnalyticsResult {
+      suspiciousPatterns?: Pattern[];
+      [key: string]: unknown;
+    }
+
+    const patterns = (auditAnalytics as AuditAnalyticsResult).suspiciousPatterns || [];
+    const suspiciousPatterns = patterns.map((pattern: Pattern) => ({
       type: pattern.type,
       severity: pattern.severity,
       count: pattern.count,

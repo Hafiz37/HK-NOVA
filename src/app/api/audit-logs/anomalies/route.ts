@@ -13,7 +13,14 @@ export async function GET(request: NextRequest) {
     const timeRangeDays = parseInt(searchParams.get('timeRangeDays') || '30');
     const allUsers = searchParams.get('allUsers') === 'true';
 
-    let anomalies: any[] = [];
+    let anomalies: Array<{
+      type: string;
+      severity: string;
+      timestamp: string;
+      details: Record<string, unknown>;
+      username?: string;
+      fullName?: string;
+    }> = [];
 
     if (allUsers) {
       const users = await prisma.user.findMany({ select: { id: true } });

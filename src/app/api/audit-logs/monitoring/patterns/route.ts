@@ -12,20 +12,32 @@ export async function GET(request: NextRequest) {
 
     const analytics = await getAuditAnalytics(startDate, endDate);
 
+    interface Pattern {
+      type: string;
+      severity: 'high' | 'medium' | 'low';
+      [key: string]: unknown;
+    }
+
+    interface AnalyticsResult {
+      suspiciousPatterns?: Pattern[];
+      anomalies?: unknown[];
+      [key: string]: unknown;
+    }
+
     // Record metrics for suspicious patterns (if they exist)
-    const patterns = (analytics as any).suspiciousPatterns || [];
-    patterns.forEach((pattern: any) => {
+    const patterns = (analytics as AnalyticsResult).suspiciousPatterns || [];
+    patterns.forEach((pattern: Pattern) => {
       recordSuspiciousPattern(pattern.type, pattern.severity);
     });
 
     return NextResponse.json({
       patterns: patterns,
-      anomalies: (analytics as any).anomalies || [],
+      anomalies: (analytics as AnalyticsResult).anomalies || [],
       summary: {
         totalPatterns: patterns.length,
-        highSeverity: patterns.filter((p: any) => p.severity === 'high').length,
-        mediumSeverity: patterns.filter((p: any) => p.severity === 'medium').length,
-        lowSeverity: patterns.filter((p: any) => p.severity === 'low').length,
+        highSeverity: patterns.filter((p: Pattern) => p.severity === 'high').length,
+        mediumSeverity: patterns.filter((p: Pattern) => p.severity === 'medium').length,
+        lowSeverity: patterns.filter((p: Pattern) => p.severity === 'low').length,
       },
     });
   } catch (error) {

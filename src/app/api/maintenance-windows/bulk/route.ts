@@ -35,7 +35,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         targetDevices = deviceIds;
       } else if (deviceTypes && deviceTypes.length > 0) {
         const devices = await prisma.device.findMany({
-          where: { type: { in: deviceTypes as any }, deletedAt: null },
+          where: { type: { in: deviceTypes }, deletedAt: null },
           select: { id: true },
         });
         targetDevices = devices.map(d => d.id);

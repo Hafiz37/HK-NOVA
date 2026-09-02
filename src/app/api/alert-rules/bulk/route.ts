@@ -117,7 +117,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await logAudit({
         action: 'BULK_CREATE',
         entity: 'AlertRule',
-        entityId: `bulk:${rules.map(r => (r as any).name).join(',')}`,
+        entityId: `bulk:${rules.map(r => r.name).join(',')}`,
         userId: auth.user.id,
         details: {
           action: 'create',

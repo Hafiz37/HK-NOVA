@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectionManager } from '@/lib/realtime/connection-manager';
 import { UserRole } from '@prisma/client';
 import { requireRole } from '@/lib/auth';
-import { success, ApiError, InternalServerError } from '@/lib/api-response';
+import { success, InternalServerError } from '@/lib/api-response';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole([UserRole.ADMIN]);

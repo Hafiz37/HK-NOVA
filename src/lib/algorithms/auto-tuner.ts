@@ -229,8 +229,8 @@ export class AutoTuner {
       const trialStart = Date.now();
 
       // Cross-validation
-      let cvScores: number[] = [];
-      let cvMetrics = { precision: 0, recall: 0, f1: 0, accuracy: 0 };
+      const cvScores: number[] = [];
+      const cvMetrics = { precision: 0, recall: 0, f1: 0, accuracy: 0 };
 
       for (const fold of folds) {
         const metrics = evaluateParams(params, fold.train, fold.test, fold.testLabels, featureNames);
