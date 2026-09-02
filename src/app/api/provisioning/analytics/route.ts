@@ -14,7 +14,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const days = parseInt(searchParams.get('days') ?? '30');
+    const days = parseInt(searchParams.get('days') ?? '30', 10);
 
     const stats = await getProvisioningAnalytics(prisma, days);
 

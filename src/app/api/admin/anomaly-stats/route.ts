@@ -8,7 +8,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const sinceHours = parseInt(searchParams.get('sinceHours') || '24');
+    const sinceHours = parseInt(searchParams.get('sinceHours') || '24', 10);
     const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
 
     // Parallel queries for performance

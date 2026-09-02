@@ -253,7 +253,9 @@ export async function subscribeToChannel(
       client.on('message', handler);
       return () => {
         client.off('message', handler);
-        client.unsubscribe(fullChannel).catch(() => {});
+        client.unsubscribe(fullChannel).catch((err) => {
+          console.warn('[REDIS-CACHE] Failed to unsubscribe on cleanup:', err instanceof Error ? err.message : String(err));
+        });
       };
     } catch (err) {
       console.warn('[REDIS-CACHE] Subscribe failed, falling back to memory:', err instanceof Error ? err.message : err);

@@ -17,10 +17,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const searchParams = request.nextUrl.searchParams;
-    const deviceId = searchParams.get('deviceId');
     const status = searchParams.get('status');
-    const page = parseInt(searchParams.get('page') ?? '1');
-    const limit = parseInt(searchParams.get('limit') ?? '20');
+    const deviceId = searchParams.get('deviceId');
+    const page = parseInt(searchParams.get('page') ?? '1', 10);
+    const limit = parseInt(searchParams.get('limit') ?? '20', 10);
 
     const where: Record<string, unknown> = {};
     if (deviceId) where.deviceId = deviceId;

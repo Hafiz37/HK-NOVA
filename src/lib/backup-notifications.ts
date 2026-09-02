@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { calculateBackupHealth } from './backup-health';
+import nodemailer from 'nodemailer';
 
 interface BackupWithChangesSummary {
   id: string;
@@ -280,11 +281,48 @@ async function sendTelegram(subject: string, message: string): Promise<void> {
   }
 }
 
-async function sendEmail(recipients: string[], subject: string, _message: string): Promise<void> {
-  // This would integrate with your email service (nodemailer, etc.)
-  // For now, just log
-  console.log(`[NOTIFICATION] Email to ${recipients.join(', ')}: ${subject}`);
-  // TODO: Implement actual email sending
+async function sendEmail(recipients: string[], subject: string, message: string): Promise<void> {
+  if (!recipients || recipients.length === 0) {
+    console.warn('[NOTIFICATION] No email recipients configured');
+    return;
+  }
+
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+  const smtpSecure = process.env.SMTP_SECURE === 'true';
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const smtpFrom = process.env.SMTP_FROM || 'noc@hk-nova.local';
+
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    console.warn('[NOTIFICATION] SMTP not configured, skipping email');
+    return;
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    });
+
+    await transporter.sendMail({
+      from: smtpFrom,
+      to: recipients.join(', '),
+      subject: subject,
+      text: message,
+      html: message.replace(/\n/g, '<br>'),
+    });
+
+    console.log(`[NOTIFICATION] Email sent to ${recipients.join(', ')}: ${subject}`);
+  } catch (error) {
+    console.error('[NOTIFICATION] Failed to send email:', error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
 async function sendWebhook(webhookUrl: string, subject: string, message: string): Promise<void> {

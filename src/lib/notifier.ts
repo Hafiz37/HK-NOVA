@@ -362,7 +362,9 @@ export async function resendDelivery(
           error: err instanceof Error ? err.message : String(err),
         },
       })
-      .catch(() => {});
+      .catch((retryErr) => {
+        console.error('[Notifier] Failed to create retry record:', retryErr instanceof Error ? retryErr.message : String(retryErr));
+      });
     return {
       ok: false,
       channel,

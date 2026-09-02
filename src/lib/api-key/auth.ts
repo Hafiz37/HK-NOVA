@@ -56,7 +56,9 @@ export async function apiKeyAuth(request: NextRequest): Promise<ApiKeyAuthResult
     undefined,
     ipAddress,
     request.headers.get('user-agent') || undefined
-  ).catch(() => {});
+  ).catch((err) => {
+    console.error('[API Key Auth] Failed to update lastUsedAt:', err instanceof Error ? err.message : String(err));
+  });
 
   return {
     ok: true,

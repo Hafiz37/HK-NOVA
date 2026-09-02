@@ -5,7 +5,7 @@ import { recordSuspiciousPattern } from '@/lib/metrics';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const hours = parseInt(searchParams.get('hours') || '24');
+    const hours = parseInt(searchParams.get('hours') || '24', 10);
 
     const startDate = new Date(Date.now() - hours * 60 * 60 * 1000);
     const endDate = new Date();

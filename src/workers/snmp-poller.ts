@@ -777,7 +777,9 @@ async function persistResults(
             })) ?? [],
           customOids: result.customOidData ?? {},
         },
-      }).catch(() => {});
+      }).catch((err) => {
+        log('error', 'Failed to record SNMP activity', { deviceId: device.id, error: err instanceof Error ? err.message : String(err) });
+      });
 
       // Handle utilization alerts
       await handleUtilizationAlerts(device, result.cpuUtil, result.memUtil);

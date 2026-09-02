@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createApprovalRequest, notifyApprovers } from '@/lib/approval/workflow';
 import { prisma } from '@/lib/prisma';
+import { requireSession } from '@/lib/auth';
 
 export async function GET(req: Request) {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const url = new URL(req.url);
     const status = url.searchParams.get('status');
@@ -13,10 +17,14 @@ export async function GET(req: Request) {
     if (status) where.status = status;
 
     if (filter === 'my-requests') {
-      // TODO: get from auth context
-      // where.requestedBy = currentUserId;
+      where.requestedBy = auth.user.id;
     } else if (filter === 'my-approvals') {
-      // TODO: join with ApprovalResponse
+      // Filter for approvals where user is an approver
+      where.approvals = {
+        some: {
+          approverId: auth.user.id,
+        },
+      };
     }
 
     const requests = await prisma.approvalRequest.findMany({
@@ -39,15 +47,24 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await req.json();
-    const { workflowId, requestType, requestData, reason, requestedBy } = body;
+    const { workflowId, requestType, requestData, reason } = body;
 
-    if (!workflowId || !requestType || !requestData || !requestedBy) {
+    if (!workflowId || !requestType || !requestData) {
       return NextResponse.json({ ok: false, error: 'Missing required fields' }, { status: 400 });
     }
 
-    const request = await createApprovalRequest({ workflowId, requestType, requestData, reason, requestedBy });
+    const request = await createApprovalRequest({ 
+      workflowId, 
+      requestType, 
+      requestData, 
+      reason, 
+      requestedBy: auth.user.id 
+    });
     await notifyApprovers(request.id);
 
     return NextResponse.json({ ok: true, request }, { status: 201 });

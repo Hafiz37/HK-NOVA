@@ -163,7 +163,7 @@ export function parseNaturalLanguage(query: string): ParsedQuery {
     if (match) {
       let hours = 24;
       if (match[2]) {
-        const value = parseInt(match[2]);
+        const value = parseInt(match[2], 10);
         const unit = match[3]?.toLowerCase();
         if (unit?.startsWith('h')) hours = value;
         else if (unit?.startsWith('d')) hours = value * 24;
@@ -171,7 +171,7 @@ export function parseNaturalLanguage(query: string): ParsedQuery {
         else if (unit?.startsWith('min')) hours = value / 60;
       } else if (match[1]?.match(/^\d+[hd]$/i)) {
         const val = match[1];
-        hours = parseInt(val) * (val.endsWith('d') ? 24 : 1);
+        hours = parseInt(val, 10) * (val.endsWith('d') ? 24 : 1);
       }
       entities.timeRange = { hours };
       break;
@@ -200,7 +200,7 @@ export function parseNaturalLanguage(query: string): ParsedQuery {
   for (const pattern of ENTITY_PATTERNS.limit) {
     const match = query.match(pattern);
     if (match) {
-      entities.limit = parseInt(match[2]);
+      entities.limit = parseInt(match[2], 10);
       break;
     }
   }

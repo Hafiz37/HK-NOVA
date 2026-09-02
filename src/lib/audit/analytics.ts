@@ -106,7 +106,7 @@ export async function getAuditAnalytics(
     .slice(0, 20);
 
   const byHour = Object.entries(hourCounts)
-    .map(([hour, count]) => ({ hour: parseInt(hour), count }))
+    .map(([hour, count]) => ({ hour: parseInt(hour, 10), count }))
     .sort((a, b) => a.hour - b.hour);
 
   const topIPs = Object.entries(ipCounts)
@@ -214,7 +214,7 @@ export async function detectAnomalousAccess(userId: string, timeRangeDays = 30):
       fullName: null,
       anomalyType: 'unusual_hour',
       severity: 'medium',
-      details: { hours: unusualHours.map(([h]) => parseInt(h)) },
+      details: { hours: unusualHours.map(([h]) => parseInt(h, 10)) },
       score: 60,
       timestamp: new Date(),
     });

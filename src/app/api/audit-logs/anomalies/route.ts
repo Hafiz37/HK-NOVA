@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
-    const timeRangeDays = parseInt(searchParams.get('timeRangeDays') || '30');
+    const timeRangeDays = parseInt(searchParams.get('timeRangeDays') || '30', 10);
     const allUsers = searchParams.get('allUsers') === 'true';
 
     let anomalies: Array<{
