@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
       [key: string]: unknown;
     }
 
-    const patterns = (auditAnalytics as AuditAnalyticsResult).suspiciousPatterns || [];
+    const patterns = (auditAnalytics as unknown as AuditAnalyticsResult).suspiciousPatterns || [];
     const suspiciousPatterns = patterns.map((pattern: Pattern) => ({
       type: pattern.type,
       severity: pattern.severity,

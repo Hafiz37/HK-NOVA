@@ -34,8 +34,20 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files - NEVER COMMIT PRODUCTION SECRETS!
+.env
+.env.local
+.env.production
+.env.production.local
+.env.production.backup*
+.env.production.OLD_INSECURE
+.env.*.local
+production-secrets*.txt
+production-secrets*.gpg
+*.key
+*.p12
+*.pfx
+PRODUCTION_CREDENTIALS.md
 
 # vercel
 .vercel
@@ -44,3 +56,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 cookies*.txt
+PRODUCTION_KEYS.md
+.env.production

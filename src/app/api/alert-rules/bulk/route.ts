@@ -112,12 +112,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const failed = results.filter(r => r.status === 'rejected').length;
       const errs = results
         .filter(r => r.status === 'rejected')
-        .map(r => (r as PromiseRejectedResult).reason?.message ?? 'Unknown error');
+        .map(r => {
+          const rejected = r as PromiseRejectedResult;
+          return rejected.reason?.message ?? 'Unknown error';
+        });
 
       await logAudit({
         action: 'BULK_CREATE',
         entity: 'AlertRule',
-        entityId: `bulk:${rules.map(r => r.name).join(',')}`,
+        entityId: `bulk:${(rules as any[]).map(r => r.name).join(',')}`,
         userId: auth.user.id,
         details: {
           action: 'create',

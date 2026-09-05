@@ -31,25 +31,33 @@ export async function GET(request: NextRequest) {
             where: { id: user.id },
             select: { username: true, fullName: true },
           });
-          anomalies.push(
-            ...userAnomalies.map((a) => ({
-              ...a,
-              username: userDetails?.username || '',
-              fullName: userDetails?.fullName || null,
-            }))
-          );
+      anomalies.push(
+        ...userAnomalies.map((a) => ({
+          type: a.anomalyType,
+          severity: a.severity,
+          timestamp: a.timestamp.toISOString(),
+          details: a.details as Record<string, unknown>,
+          username: userDetails?.username || '',
+          fullName: userDetails?.fullName || undefined,
+          score: a.score,
+        }))
+      );
         }
       }
     } else if (userId) {
-      anomalies = await detectAnomalousAccess(userId, timeRangeDays);
+      const rawAnomalies = await detectAnomalousAccess(userId, timeRangeDays);
       const userDetails = await prisma.user.findUnique({
         where: { id: userId },
         select: { username: true, fullName: true },
       });
-      anomalies = anomalies.map((a) => ({
-        ...a,
+      anomalies = rawAnomalies.map((a) => ({
+        type: a.anomalyType,
+        severity: a.severity,
+        timestamp: a.timestamp.toISOString(),
+        details: a.details as Record<string, unknown>,
         username: userDetails?.username || '',
-        fullName: userDetails?.fullName || null,
+        fullName: userDetails?.fullName || undefined,
+        score: a.score,
       }));
     } else {
       const analytics = await getAuditAnalytics(
@@ -57,17 +65,22 @@ export async function GET(request: NextRequest) {
         new Date()
       );
       anomalies = analytics.suspiciousActivities.map((a) => ({
-        anomalyType: a.type,
+        type: a.type,
         severity: a.severity,
-        details: { count: a.count },
-        score: a.severity === 'critical' ? 90 : a.severity === 'high' ? 75 : a.severity === 'medium' ? 50 : 25,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
+        details: { count: a.count } as Record<string, unknown>,
+        score: a.count / 100,
       }));
     }
 
-    anomalies.sort((a, b) => b.score - a.score);
+    // Sort by score
+    const sortedAnomalies = anomalies.map(a => ({
+      ...a,
+      score: ('score' in a ? a.score : 0) as number
+    }));
+    sortedAnomalies.sort((a, b) => (b.score as number) - (a.score as number));
 
-    return NextResponse.json({ anomalies: anomalies.slice(0, 100) });
+    return NextResponse.json({ anomalies: sortedAnomalies.slice(0, 100) });
   } catch (error) {
     console.error('Audit anomalies error:', error);
     return NextResponse.json({ error: 'Failed to fetch anomalies' }, { status: 500 });

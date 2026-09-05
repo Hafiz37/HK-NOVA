@@ -778,7 +778,7 @@ async function persistResults(
           customOids: result.customOidData ?? {},
         },
       }).catch((err) => {
-        log('error', 'Failed to record SNMP activity', { deviceId: device.id, error: err instanceof Error ? err.message : String(err) });
+        log('ERROR', 'Failed to record SNMP activity', { deviceId: device.id, error: err instanceof Error ? err.message : String(err) });
       });
 
       // Handle utilization alerts

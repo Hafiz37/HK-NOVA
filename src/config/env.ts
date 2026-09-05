@@ -7,13 +7,53 @@ const envSchema = z.object({
   // Security (CRITICAL - no fallbacks allowed)
   ENCRYPTION_KEY: z.string()
     .length(64, { message: 'ENCRYPTION_KEY must be 64 hex characters (32 bytes)' })
-    .regex(/^[0-9a-fA-F]+$/, { message: 'ENCRYPTION_KEY must be hex characters only' }),
-  JWT_SECRET: z.string().min(32, { message: 'JWT_SECRET must be at least 32 characters' }),
-  OPERATOR_USERNAME: z.string().min(1, { message: 'OPERATOR_USERNAME is required' }),
-  OPERATOR_PASSWORD: z.string().min(8, { message: 'OPERATOR_PASSWORD must be at least 8 characters' }),
+    .regex(/^[0-9a-fA-F]+$/, { message: 'ENCRYPTION_KEY must be hex characters only' })
+    .refine(
+      (val) => val !== 'CHANGE_ME_GENERATE_WITH_OPENSSL' && 
+               val !== '0'.repeat(64) && 
+               val !== '1'.repeat(64),
+      { message: 'ENCRYPTION_KEY must be changed from template/placeholder value' }
+    ),
+  
+  JWT_SECRET: z.string()
+    .min(64, { message: 'JWT_SECRET must be at least 64 characters for production' })
+    .regex(/^[0-9a-fA-F]+$/, { message: 'JWT_SECRET must be hex string' })
+    .refine(
+      (val) => val !== 'CHANGE_ME_GENERATE_WITH_OPENSSL_64_BYTES',
+      { message: 'JWT_SECRET must be changed from template value' }
+    ),
+  
+  OPERATOR_USERNAME: z.string()
+    .min(4, { message: 'OPERATOR_USERNAME must be at least 4 characters' })
+    .regex(/^[a-zA-Z0-9_-]+$/, { message: 'OPERATOR_USERNAME can only contain letters, numbers, underscore and dash' })
+    .refine(
+      (val) => val !== 'admin' && val !== 'operator' && val !== 'CHANGE_ME',
+      { message: 'OPERATOR_USERNAME cannot be default values (admin, operator)' }
+    ),
+  
+  OPERATOR_PASSWORD: z.string()
+    .min(16, { message: 'OPERATOR_PASSWORD must be at least 16 characters for production' })
+    .regex(/[A-Z]/, { message: 'OPERATOR_PASSWORD must contain uppercase letters' })
+    .regex(/[a-z]/, { message: 'OPERATOR_PASSWORD must contain lowercase letters' })
+    .regex(/[0-9]/, { message: 'OPERATOR_PASSWORD must contain numbers' })
+    .regex(/[^A-Za-z0-9]/, { message: 'OPERATOR_PASSWORD must contain special characters' })
+    .refine(
+      (val) => {
+        const weak = ['password', 'admin', '123456', 'changeme', 'CHANGE_ME'];
+        return !weak.some(w => val.toLowerCase().includes(w));
+      },
+      { message: 'OPERATOR_PASSWORD contains weak/common patterns' }
+    ),
 
   // Audit HMAC Key
-  AUDIT_HMAC_KEY: z.string().min(32, { message: 'AUDIT_HMAC_KEY must be at least 32 characters' }).optional(),
+  AUDIT_HMAC_KEY: z.string()
+    .length(64, { message: 'AUDIT_HMAC_KEY must be 64 hex characters (32 bytes)' })
+    .regex(/^[0-9a-fA-F]+$/, { message: 'AUDIT_HMAC_KEY must be hex characters only' })
+    .refine(
+      (val) => val !== 'CHANGE_ME_GENERATE_WITH_OPENSSL',
+      { message: 'AUDIT_HMAC_KEY must be changed from template value' }
+    )
+    .optional(),
 
   // Telegram
   TELEGRAM_BOT_TOKEN: z.string().optional(),
@@ -78,7 +118,14 @@ const envSchema = z.object({
   BACKUP_CRON_SCHEDULE: z.string().optional().default('0 2 * * *'),
   BACKUP_RUN_ON_STARTUP: z.coerce.boolean().optional().default(true),
   BACKUP_CONCURRENCY: z.coerce.number().int().positive().optional().default(4),
-  BACKUP_ENCRYPTION_KEY: z.string().length(64).regex(/^[0-9a-fA-F]+$/).optional(),
+  BACKUP_ENCRYPTION_KEY: z.string()
+    .length(64)
+    .regex(/^[0-9a-fA-F]+$/, { message: 'BACKUP_ENCRYPTION_KEY must be 64 hex characters' })
+    .refine(
+      (val) => val !== 'CHANGE_ME_GENERATE_WITH_OPENSSL',
+      { message: 'BACKUP_ENCRYPTION_KEY must be changed from template value' }
+    )
+    .optional(),
   BACKUP_RETENTION_DAYS: z.coerce.number().int().positive().optional().default(365),
   BACKUP_SOFT_DELETE_GRACE_DAYS: z.coerce.number().int().positive().optional().default(30),
   BACKUP_CLEANUP_SCHEDULE: z.string().optional().default('0 4 * * *'),

@@ -25,14 +25,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Record metrics for suspicious patterns (if they exist)
-    const patterns = (analytics as AnalyticsResult).suspiciousPatterns || [];
+    const patterns = (analytics as unknown as AnalyticsResult).suspiciousPatterns || [];
     patterns.forEach((pattern: Pattern) => {
       recordSuspiciousPattern(pattern.type, pattern.severity);
     });
 
     return NextResponse.json({
       patterns: patterns,
-      anomalies: (analytics as AnalyticsResult).anomalies || [],
+      anomalies: (analytics as unknown as AnalyticsResult).anomalies || [],
       summary: {
         totalPatterns: patterns.length,
         highSeverity: patterns.filter((p: Pattern) => p.severity === 'high').length,

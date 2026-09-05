@@ -556,16 +556,16 @@ async function persistResults(
           success: result.success,
         },
       }).catch((err) => {
-        log('error', 'Failed to record activity', { deviceId: result.deviceId, error: err instanceof Error ? err.message : String(err) });
+        log('ERROR', 'Failed to record activity', { deviceId: result.deviceId, error: err instanceof Error ? err.message : String(err) });
       });
 
       // Recompute dynamic threshold (async, tidak block alert logic)
       void computeAndSaveDynamicThreshold(prisma, result.deviceId, 'latency').catch((err) => {
-        log('error', 'Failed to compute latency threshold', { deviceId: result.deviceId, error: err instanceof Error ? err.message : String(err) });
+        log('ERROR', 'Failed to compute latency threshold', { deviceId: result.deviceId, error: err instanceof Error ? err.message : String(err) });
       });
       if (result.jitter !== null) {
         void computeAndSaveDynamicThreshold(prisma, result.deviceId, 'jitter').catch((err) => {
-          log('error', 'Failed to compute jitter threshold', { deviceId: result.deviceId, error: err instanceof Error ? err.message : String(err) });
+          log('ERROR', 'Failed to compute jitter threshold', { deviceId: result.deviceId, error: err instanceof Error ? err.message : String(err) });
         });
       }
 

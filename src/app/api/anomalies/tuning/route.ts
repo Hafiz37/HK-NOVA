@@ -63,7 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await prisma.anomalyModel.updateMany({
         where: { deviceId, isActive: true },
         data: {
-          hyperParams: result.bestParams as Record<string, unknown>,
+          hyperParams: result.bestParams as any,
         },
       });
 
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       for (const [devId, result] of results) {
         await prisma.anomalyModel.updateMany({
           where: { deviceId: devId, isActive: true },
-          data: { hyperParams: result.bestParams as Record<string, unknown> },
+          data: { hyperParams: result.bestParams as any },
         });
       }
 
