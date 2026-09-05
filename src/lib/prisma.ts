@@ -1,18 +1,108 @@
 import { PrismaClient } from '@prisma/client';
+import { databaseConnectionsActive, databaseQueryDuration } from './metrics';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+function createPrismaClient(): PrismaClient {
+  const client = new PrismaClient({
     log:
       process.env.NODE_ENV === 'development'
         ? ['query', 'error', 'warn']
         : ['error'],
   });
 
+  client.$use(async (params, next) => {
+    const start = Date.now();
+    const result = await next(params);
+    const duration = (Date.now() - start) / 1000;
+    
+    databaseQueryDuration.observe(
+      {
+        operation: params.action,
+        table: params.model || 'unknown',
+      },
+      duration
+    );
+    
+    return result;
+  });
+
+  return client;
+}
+
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
+let isShuttingDown = false;
+
+export async function disconnectPrisma() {
+  if (!isShuttingDown) {
+    isShuttingDown = true;
+    await prisma.$disconnect();
+  }
+}
+
+process.on('beforeExit', async () => {
+  await disconnectPrisma();
+});
+
+process.on('SIGINT', async () => {
+  await disconnectPrisma();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  await disconnectPrisma();
+  process.exit(0);
+});
+
+export async function getDatabasePoolMetrics() {
+  try {
+    const result = await prisma.$queryRaw<Array<{
+      Variable_name: string;
+      Value: string;
+    }>>`SHOW STATUS LIKE 'Threads_%'`;
+    
+    const metrics: Record<string, number> = {};
+    result.forEach(row => {
+      metrics[row.Variable_name] = parseInt(row.Value, 10);
+    });
+    
+    const connected = metrics['Threads_connected'] || 0;
+    databaseConnectionsActive.set(connected);
+    
+    return {
+      threadsConnected: connected,
+      threadsRunning: metrics['Threads_running'] || 0,
+      threadsCached: metrics['Threads_cached'] || 0,
+      threadsCreated: metrics['Threads_created'] || 0,
+    };
+  } catch (err) {
+    console.error('[Prisma] Failed to get pool metrics:', err);
+    return {
+      threadsConnected: 0,
+      threadsRunning: 0,
+      threadsCached: 0,
+      threadsCreated: 0,
+    };
+  }
+}
+
+export async function checkDatabaseHealth(): Promise<boolean> {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return true;
+  } catch (err) {
+    console.error('[Prisma] Health check failed:', err);
+    return false;
+  }
+}
+
+setInterval(async () => {
+  await getDatabasePoolMetrics();
+}, 10_000);
 
 export default prisma;

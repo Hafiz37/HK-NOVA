@@ -1,0 +1,44 @@
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:performance": "node tests/load/benchmark.js compare spike",
+    "load:baseline": "node tests/load/benchmark.js baseline spike",
+    "load:spike": "node tests/load/load-runner.js spike",
+    "load:soak": "node tests/load/load-runner.js soak",
+    "load:capacity": "node tests/load/load-runner.js capacity",
+    "load:full": "bash tests/load/run-tests.sh full",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@prisma/client": "^5.0.0",
+    "ssh2": "^1.15.0",
+    "zod": "^3.22.0",
+    "p-limit": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/ssh2": "^1.15.0",
+    "typescript": "^5.0.0",
+    "prisma": "^5.0.0",
+    "artillery": "^2.0.0",
+    "k6": "^0.0.0",
+    "autocannon": "^7.12.0",
+    "eslint": "^8.0.0",
+    "eslint-config-next": "^14.0.0",
+    "eslint-plugin-security": "^1.7.1",
+    "snyk": "^1.1200.0"
+  }
+}

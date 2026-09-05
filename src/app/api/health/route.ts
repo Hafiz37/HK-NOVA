@@ -1,65 +1,45 @@
-import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { getQueueStatus } from '@/lib/redis-queue';
-import { getCacheStatus } from '@/lib/redis-cache';
-import { logger } from '@/lib/logger';
+import { NextRequest, NextResponse } from 'next/server';
+import { healthCheckRegistry } from '@/lib/health-check';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const startTime = Date.now();
-  const checks: Record<string, { status: 'healthy' | 'unhealthy'; latencyMs?: number; error?: string }> = {};
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const component = searchParams.get('component');
 
-  // Check Database
   try {
-    const dbStart = Date.now();
-    await prisma.$queryRaw`SELECT 1`;
-    checks.database = { status: 'healthy', latencyMs: Date.now() - dbStart };
-  } catch (err) {
-    checks.database = {
-      status: 'unhealthy',
-      error: err instanceof Error ? err.message : 'Database query failed',
-    };
-    logger.error('Database health check failed', { module: 'health-check' }, err);
-  }
+    if (component) {
+      const result = await healthCheckRegistry.runCheck(component);
+      
+      if (!result) {
+        return NextResponse.json(
+          { error: 'Component not found' },
+          { status: 404 }
+        );
+      }
 
-  // Check Redis Queue & Cache Status
-  try {
-    const icmpQueue = await getQueueStatus('icmp');
-    const snmpQueue = await getQueueStatus('snmp');
-    const cacheStatus = getCacheStatus();
+      const statusCode = result.status === 'HEALTHY' ? 200 : 
+                        result.status === 'DEGRADED' ? 200 : 503;
 
-    checks.redisQueueICMP = {
-      status: icmpQueue.connected || icmpQueue.backend === 'memory' ? 'healthy' : 'unhealthy',
-    };
-    checks.redisQueueSNMP = {
-      status: snmpQueue.connected || snmpQueue.backend === 'memory' ? 'healthy' : 'unhealthy',
-    };
-    checks.redisCache = {
-      status: cacheStatus.connected || cacheStatus.backend === 'memory' ? 'healthy' : 'unhealthy',
-    };
-  } catch (err) {
-    checks.redis = {
-      status: 'unhealthy',
-      error: err instanceof Error ? err.message : 'Redis check failed',
-    };
-  }
+      return NextResponse.json(result, { status: statusCode });
+    }
 
-  const isHealthy = Object.values(checks).every((c) => c.status === 'healthy');
-  const responseTime = Date.now() - startTime;
+    const health = await healthCheckRegistry.runAll();
 
-  return NextResponse.json(
-    {
-      status: isHealthy ? 'healthy' : 'degraded',
-      timestamp: new Date().toISOString(),
-      responseTimeMs: responseTime,
-      checks,
-      system: {
-        uptime: process.uptime(),
-        memoryUsage: process.memoryUsage(),
-        nodeVersion: process.version,
+    const statusCode = health.status === 'HEALTHY' ? 200 :
+                      health.status === 'DEGRADED' ? 200 : 503;
+
+    return NextResponse.json(health, { status: statusCode });
+  } catch (error) {
+    console.error('[Health Check] Error:', error);
+    
+    return NextResponse.json(
+      {
+        status: 'UNHEALTHY',
+        error: error instanceof Error ? error.message : 'Health check failed',
+        timestamp: Date.now(),
       },
-    },
-    { status: isHealthy ? 200 : 503 }
-  );
+      { status: 503 }
+    );
+  }
 }

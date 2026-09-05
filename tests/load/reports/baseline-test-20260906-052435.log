@@ -1,0 +1,30 @@
+
+📊 SIMPLE LOAD TEST
+
+Target: http://localhost:3000
+Testing without authentication to get baseline metrics
+
+Test 1: Health Check Endpoint
+
+📈 Health Check Results:
+═══════════════════════════════════════
+Total Requests:  0
+Requests/sec:    0.00
+Throughput:      0.00 MB/s
+
+Latency:
+  Avg:           0.00ms
+  P50:           0.00ms
+/home/gopal-ichiro/Documents/magang/hk-nova/tests/load/simple-load-test.js:89
+  console.log(`  P95:           ${result.latency.p95.toFixed(2)}ms`);
+                                                     ^
+
+TypeError: Cannot read properties of undefined (reading 'toFixed')
+    at printResults (/home/gopal-ichiro/Documents/magang/hk-nova/tests/load/simple-load-test.js:89:54)
+    at /home/gopal-ichiro/Documents/magang/hk-nova/tests/load/simple-load-test.js:27:7
+    at _cb (/home/gopal-ichiro/Documents/magang/hk-nova/node_modules/.pnpm/autocannon@8.0.0/node_modules/autocannon/lib/init.js:77:5)
+    at Timeout.tickInterval (/home/gopal-ichiro/Documents/magang/hk-nova/node_modules/.pnpm/autocannon@8.0.0/node_modules/autocannon/lib/run.js:150:9)
+    at listOnTimeout (node:internal/timers:583:11)
+    at process.processTimers (node:internal/timers:519:7)
+
+Node.js v20.20.2

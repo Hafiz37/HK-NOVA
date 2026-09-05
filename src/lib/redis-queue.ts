@@ -55,6 +55,11 @@ function getRedisClient(): Redis | null {
       },
       enableOfflineQueue: false,
       lazyConnect: true,
+      // Connection pool settings
+      enableReadyCheck: true,
+      autoResubscribe: false,
+      autoResendUnfulfilledCommands: true,
+      connectionName: 'hk-nova-queue',
     });
 
     client.on('connect', () => {

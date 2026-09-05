@@ -41,7 +41,6 @@ export function getRedisClient(): Redis | null {
 
   try {
     const client = new Redis(redisUrl, {
-      maxRetriesPerRequest: 3,
       retryStrategy: (times: number) => {
         if (times > 5) {
           console.warn('[REDIS-CACHE] Redis connection failed after retries — falling back to in-memory');
@@ -50,8 +49,13 @@ export function getRedisClient(): Redis | null {
         }
         return Math.min(times * 500, 3000);
       },
+      maxRetriesPerRequest: 3,
       enableOfflineQueue: false,
       lazyConnect: true,
+      enableReadyCheck: true,
+      autoResubscribe: true,
+      autoResendUnfulfilledCommands: true,
+      connectionName: 'hk-nova-cache',
     });
 
     client.on('connect', () => {

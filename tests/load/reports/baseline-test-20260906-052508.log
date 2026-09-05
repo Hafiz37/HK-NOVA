@@ -1,0 +1,110 @@
+
+📊 SIMPLE LOAD TEST
+
+Target: http://localhost:3000
+Testing without authentication to get baseline metrics
+
+Test 1: Health Check Endpoint
+
+📈 Health Check Results:
+═══════════════════════════════════════
+Total Requests:  0
+Requests/sec:    0.00
+Throughput:      0.00 MB/s
+
+Latency:
+  Avg:           0.00ms
+  P50:           0.00ms
+  P95:           0.00ms
+  P99:           0.00ms
+
+Errors:
+  Errors:        35407
+  Timeouts:      0
+  Non-2xx:       0
+
+---
+
+Test 2: Baseline Load Test (50 connections, 30s)
+Running 30s test @ http://localhost:3000
+50 connections
+
+
+┌─────────┬──────┬──────┬───────┬──────┬──────┬───────┬──────┐
+│ Stat    │ 2.5% │ 50%  │ 97.5% │ 99%  │ Avg  │ Stdev │ Max  │
+├─────────┼──────┼──────┼───────┼──────┼──────┼───────┼──────┤
+│ Latency │ 0 ms │ 0 ms │ 0 ms  │ 0 ms │ 0 ms │ 0 ms  │ 0 ms │
+└─────────┴──────┴──────┴───────┴──────┴──────┴───────┴──────┘
+┌───────────┬─────┬──────┬─────┬───────┬─────┬───────┬─────┐
+│ Stat      │ 1%  │ 2.5% │ 50% │ 97.5% │ Avg │ Stdev │ Min │
+├───────────┼─────┼──────┼─────┼───────┼─────┼───────┼─────┤
+│ Req/Sec   │ 0   │ 0    │ 0   │ 0     │ 0   │ 0     │ 0   │
+├───────────┼─────┼──────┼─────┼───────┼─────┼───────┼─────┤
+│ Bytes/Sec │ 0 B │ 0 B  │ 0 B │ 0 B   │ 0 B │ 0 B   │ 0 B │
+└───────────┴─────┴──────┴─────┴───────┴─────┴───────┴─────┘
+
+Req/Bytes counts sampled once per second.
+# of samples: 30
+
+131k requests in 30.13s, 0 B read
+131k errors (0 timeouts)
+
+📈 Baseline Results:
+═══════════════════════════════════════
+Total Requests:  0
+Requests/sec:    0.00
+Throughput:      0.00 MB/s
+
+Latency:
+  Avg:           0.00ms
+  P50:           0.00ms
+  P95:           0.00ms
+  P99:           0.00ms
+
+Errors:
+  Errors:        131402
+  Timeouts:      0
+  Non-2xx:       0
+
+---
+
+Test 3: Stress Test (200 connections, 30s)
+Running 30s test @ http://localhost:3000
+200 connections
+
+
+┌─────────┬──────┬──────┬───────┬──────┬──────┬───────┬──────┐
+│ Stat    │ 2.5% │ 50%  │ 97.5% │ 99%  │ Avg  │ Stdev │ Max  │
+├─────────┼──────┼──────┼───────┼──────┼──────┼───────┼──────┤
+│ Latency │ 0 ms │ 0 ms │ 0 ms  │ 0 ms │ 0 ms │ 0 ms  │ 0 ms │
+└─────────┴──────┴──────┴───────┴──────┴──────┴───────┴──────┘
+┌───────────┬─────┬──────┬─────┬───────┬─────┬───────┬─────┐
+│ Stat      │ 1%  │ 2.5% │ 50% │ 97.5% │ Avg │ Stdev │ Min │
+├───────────┼─────┼──────┼─────┼───────┼─────┼───────┼─────┤
+│ Req/Sec   │ 0   │ 0    │ 0   │ 0     │ 0   │ 0     │ 0   │
+├───────────┼─────┼──────┼─────┼───────┼─────┼───────┼─────┤
+│ Bytes/Sec │ 0 B │ 0 B  │ 0 B │ 0 B   │ 0 B │ 0 B   │ 0 B │
+└───────────┴─────┴──────┴─────┴───────┴─────┴───────┴─────┘
+
+Req/Bytes counts sampled once per second.
+# of samples: 30
+
+135k requests in 30.47s, 0 B read
+134k errors (0 timeouts)
+
+📈 Stress Test Results:
+═══════════════════════════════════════
+Total Requests:  0
+Requests/sec:    0.00
+Throughput:      0.00 MB/s
+
+Latency:
+  Avg:           0.00ms
+  P50:           0.00ms
+  P95:           0.00ms
+  P99:           0.00ms
+
+Errors:
+  Errors:        134472
+  Timeouts:      0
+  Non-2xx:       0

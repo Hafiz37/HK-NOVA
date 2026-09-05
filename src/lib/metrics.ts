@@ -176,6 +176,64 @@ export const anomalyScoreGauge = new Gauge({
   labelNames: ['device_id', 'metric_type'],
 });
 
+// Business Metrics - SSH Connection Pool
+export const sshPoolConnectionsActive = new Gauge({
+  name: 'ssh_pool_connections_active',
+  help: 'Number of active SSH connections in pool',
+});
+
+export const sshPoolConnectionsCreated = new Counter({
+  name: 'ssh_pool_connections_created_total',
+  help: 'Total SSH connections created',
+});
+
+export const sshPoolConnectionsReused = new Counter({
+  name: 'ssh_pool_connections_reused_total',
+  help: 'Total SSH connection reuses',
+});
+
+export const sshPoolConnectionsDestroyed = new Counter({
+  name: 'ssh_pool_connections_destroyed_total',
+  help: 'Total SSH connections destroyed',
+});
+
+export const sshPoolDevices = new Gauge({
+  name: 'ssh_pool_devices_total',
+  help: 'Number of devices with pooled connections',
+});
+
+export const sshPoolConnectionsPerDevice = new Gauge({
+  name: 'ssh_pool_connections_per_device',
+  help: 'Number of connections per device',
+  labelNames: ['device_id', 'state'],
+});
+
+// Business Metrics - Redis Connection Pool
+export const redisConnectionsActive = new Gauge({
+  name: 'redis_connections_active',
+  help: 'Number of active Redis connections',
+  labelNames: ['client_type'],
+});
+
+export const redisCommandDuration = new Histogram({
+  name: 'redis_command_duration_seconds',
+  help: 'Duration of Redis commands',
+  labelNames: ['command'],
+  buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
+});
+
+export const redisCommandsTotal = new Counter({
+  name: 'redis_commands_total',
+  help: 'Total number of Redis commands',
+  labelNames: ['command', 'status'],
+});
+
+export const redisErrorsTotal = new Counter({
+  name: 'redis_errors_total',
+  help: 'Total number of Redis errors',
+  labelNames: ['error_type'],
+});
+
 // System Metrics
 export const databaseQueryDuration = new Histogram({
   name: 'database_query_duration_seconds',
@@ -259,6 +317,25 @@ export function recordWorkerExecution(workerName: string, status: string, durati
 
 export function recordSuspiciousPattern(patternType: string, severity: string) {
   suspiciousPatternsDetected.inc({ pattern_type: patternType, severity });
+}
+
+export function updateSSHPoolMetrics(metrics: {
+  activeConnections: number;
+  poolsCount: number;
+  connectionsPerDevice: Array<{
+    deviceId: string;
+    total: number;
+    inUse: number;
+    idle: number;
+  }>;
+}) {
+  sshPoolConnectionsActive.set(metrics.activeConnections);
+  sshPoolDevices.set(metrics.poolsCount);
+  
+  metrics.connectionsPerDevice.forEach(({ deviceId, inUse, idle }) => {
+    sshPoolConnectionsPerDevice.set({ device_id: deviceId, state: 'in_use' }, inUse);
+    sshPoolConnectionsPerDevice.set({ device_id: deviceId, state: 'idle' }, idle);
+  });
 }
 
 // Export register for metrics endpoint

@@ -1,6 +1,9 @@
 import { Client } from 'ssh2';
 import { DEFAULT_SSH_TIMEOUT } from './constants';
 import { safeDecrypt } from './encryption';
+import { sshPool } from './ssh-pool';
+import { sshRetry } from './retry';
+import { sshCircuitBreaker } from './circuit-breaker';
 
 export interface ConsoleCredentials {
   sshUsername: string | null;
@@ -15,6 +18,7 @@ export interface ExecConsoleOptions {
   port?: number;
   timeoutMs?: number;
   command: string;
+  deviceId?: string;
 }
 
 export interface InteractiveConsoleOptions {
@@ -24,6 +28,7 @@ export interface InteractiveConsoleOptions {
   port?: number;
   timeoutMs?: number;
   commands: string[];
+  deviceId?: string;
   /** Delay between commands (ms). */
   lineDelayMs?: number;
   /** Quiet period (no output) before the session is considered done. */
@@ -89,44 +94,86 @@ function connectOnce(opts: Pick<ExecConsoleOptions, 'host' | 'username' | 'passw
  * Execute a single CLI command over SSH and return its stdout.
  */
 export async function execSshCommand(opts: ExecConsoleOptions): Promise<ConsoleResult> {
-  let conn: Client | null = null;
+  const deviceId = opts.deviceId || `${opts.host}:${opts.port || 22}`;
+  const breaker = sshCircuitBreaker(deviceId);
+  
   try {
-    conn = await connectOnce(opts);
+    const result = await breaker.execute(async () => {
+      return await sshRetry.execute(async () => {
+        let client: Client | null = null;
+        
+        try {
+          client = await sshPool.acquire(deviceId, {
+            host: opts.host,
+            port: opts.port ?? 22,
+            username: opts.username,
+            password: opts.password,
+            readyTimeout: opts.timeoutMs ?? DEFAULT_SSH_TIMEOUT,
+            keepaliveInterval: 10_000,
+            keepaliveCountMax: 3,
+          });
+          
+          const commandResult = await executeCommandOnClient(client, opts.command, opts.timeoutMs);
+          
+          sshPool.release(deviceId, client);
+          
+          return commandResult;
+          
+        } catch (err) {
+          if (client) {
+            await sshPool.destroy(deviceId, client);
+          }
+          throw err;
+        }
+      });
+    });
+    
+    return result;
   } catch (err) {
-    return { ok: false, stdout: '', error: err instanceof Error ? err.message : 'SSH connection failed' };
-  }
-
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_SSH_TIMEOUT;
-
-  return new Promise<ConsoleResult>((resolve) => {
-    let settled = false;
-    const finish = (result: ConsoleResult) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try { conn?.end(); } catch { /* ignore */ }
-      resolve(result);
+    return {
+      ok: false,
+      stdout: '',
+      error: err instanceof Error ? err.message : 'SSH operation failed',
     };
+  }
+}
 
+async function executeCommandOnClient(
+  client: Client,
+  command: string,
+  timeoutMs?: number
+): Promise<ConsoleResult> {
+  return new Promise((resolve) => {
     const timer = setTimeout(() => {
-      finish({ ok: false, stdout: '', error: 'SSH command timeout' });
-    }, timeoutMs + 8000);
-
-    conn!.exec(opts.command, (err, stream) => {
+      resolve({ ok: false, stdout: '', error: 'SSH command timeout' });
+    }, timeoutMs ?? DEFAULT_SSH_TIMEOUT);
+    
+    client.exec(command, (err, stream) => {
       if (err) {
-        finish({ ok: false, stdout: '', error: err.message });
+        clearTimeout(timer);
+        resolve({ ok: false, stdout: '', error: err.message });
         return;
       }
-
+      
       let stdout = '';
       let stderr = '';
-      stream.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-      stream.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-      stream.on('close', () => {
-        finish({ ok: true, stdout, stderr });
+      
+      stream.on('data', (data: Buffer) => {
+        stdout += data.toString();
       });
-      stream.on('error', (streamErr: Error) => {
-        finish({ ok: false, stdout, stderr, error: streamErr.message });
+      
+      stream.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+      
+      stream.on('close', (code: number) => {
+        clearTimeout(timer);
+        resolve({
+          ok: code === 0,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          error: code !== 0 ? `Command exited with code ${code}` : undefined,
+        });
       });
     });
   });
@@ -137,13 +184,54 @@ export async function execSshCommand(opts: ExecConsoleOptions): Promise<ConsoleR
  * workflows where command context matters: interface mode, etc.).
  */
 export async function runSshCommands(opts: InteractiveConsoleOptions): Promise<ConsoleResult> {
-  let conn: Client | null = null;
+  const deviceId = opts.deviceId || `${opts.host}:${opts.port || 22}`;
+  const breaker = sshCircuitBreaker(deviceId);
+  
   try {
-    conn = await connectOnce(opts);
+    const result = await breaker.execute(async () => {
+      return await sshRetry.execute(async () => {
+        let client: Client | null = null;
+        
+        try {
+          client = await sshPool.acquire(deviceId, {
+            host: opts.host,
+            port: opts.port ?? 22,
+            username: opts.username,
+            password: opts.password,
+            readyTimeout: opts.timeoutMs ?? DEFAULT_SSH_TIMEOUT,
+            keepaliveInterval: 10_000,
+            keepaliveCountMax: 3,
+          });
+          
+          const sessionResult = await runInteractiveSession(client, opts);
+          
+          sshPool.release(deviceId, client);
+          
+          return sessionResult;
+          
+        } catch (err) {
+          if (client) {
+            await sshPool.destroy(deviceId, client);
+          }
+          throw err;
+        }
+      });
+    });
+    
+    return result;
   } catch (err) {
-    return { ok: false, stdout: '', error: err instanceof Error ? err.message : 'SSH connection failed' };
+    return {
+      ok: false,
+      stdout: '',
+      error: err instanceof Error ? err.message : 'SSH operation failed',
+    };
   }
+}
 
+async function runInteractiveSession(
+  client: Client,
+  opts: InteractiveConsoleOptions
+): Promise<ConsoleResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_SSH_TIMEOUT;
   const lineDelayMs = opts.lineDelayMs ?? 150;
   const quietMs = opts.quietMs ?? 600;
@@ -156,7 +244,6 @@ export async function runSshCommands(opts: InteractiveConsoleOptions): Promise<C
       clearTimeout(hardTimer);
       if (poller !== null) clearInterval(poller);
       poller = null;
-      try { conn?.end(); } catch { /* ignore */ }
       resolve(result);
     };
 
@@ -169,7 +256,7 @@ export async function runSshCommands(opts: InteractiveConsoleOptions): Promise<C
     let lastDataAt = Date.now();
     let poller: ReturnType<typeof setInterval> | null = null;
 
-    conn!.shell((shellErr, stream) => {
+    client.shell((shellErr, stream) => {
       if (shellErr) {
         finish({ ok: false, stdout: buffer, error: shellErr.message });
         return;
@@ -195,12 +282,10 @@ export async function runSshCommands(opts: InteractiveConsoleOptions): Promise<C
         }
       };
 
-      // Give the shell a moment to show its prompt before typing.
       setTimeout(sendNext, 300);
 
       poller = setInterval(() => {
         if (settled) return;
-        // All commands sent + quiet period observed → session done.
         if (commandIndex >= opts.commands.length && Date.now() - lastDataAt > quietMs) {
           finish({ ok: true, stdout: buffer });
         }

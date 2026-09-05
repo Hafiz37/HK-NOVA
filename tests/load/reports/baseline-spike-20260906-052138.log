@@ -1,0 +1,20 @@
+
+🔥 SPIKE TEST: Sudden traffic surge
+
+Simulating: Black Friday / System restart / Viral event
+
+Test error: TypeError: fetch failed
+    at node:internal/deps/undici/undici:14976:13
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async authenticate (/home/gopal-ichiro/Documents/magang/hk-nova/tests/load/load-runner.js:12:20)
+    at async runSpikeTest (/home/gopal-ichiro/Documents/magang/hk-nova/tests/load/load-runner.js:27:3)
+    at async /home/gopal-ichiro/Documents/magang/hk-nova/tests/load/load-runner.js:207:9 {
+  [cause]: Error: connect ECONNREFUSED 127.0.0.1:3001
+      at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) {
+    errno: -111,
+    code: 'ECONNREFUSED',
+    syscall: 'connect',
+    address: '127.0.0.1',
+    port: 3001
+  }
+}
