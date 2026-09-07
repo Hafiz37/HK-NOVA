@@ -1,10 +1,11 @@
 import { z } from './zod-extended';
 import { UserRole } from '@prisma/client';
+import { strongPasswordSchema } from '@/lib/security/password-policy';
 
 export const createUserSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(50).regex(/^[a-zA-Z0-9_-]+$/, 'Username can only contain letters, numbers, underscore, and hyphen'),
   email: z.string().email('Invalid email address').max(255),
-  password: z.string().min(8, 'Password must be at least 8 characters').max(128).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Password must contain uppercase, lowercase, and number'),
+  password: strongPasswordSchema,
   fullName: z.string().min(1, 'Full name is required').max(100),
   role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']),
 });
@@ -13,7 +14,7 @@ export const updateUserSchema = z.object({
   email: z.string().email().max(255).optional(),
   fullName: z.string().min(1).max(100).optional(),
   role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']).optional(),
-  password: z.string().min(8).max(128).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).optional(),
+  password: strongPasswordSchema.optional(),
 }).refine((data) => Object.keys(data).length > 0, {
   message: 'At least one field must be provided for update',
 });
@@ -29,7 +30,7 @@ export const queryUserSchema = z.object({
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
-  newPassword: z.string().min(8, 'Password must be at least 8 characters').max(128).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Password must contain uppercase, lowercase, and number'),
+  newPassword: strongPasswordSchema,
   confirmPassword: z.string(),
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: 'Passwords do not match',
@@ -38,7 +39,7 @@ export const changePasswordSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   userId: z.string().min(1, 'User ID is required'),
-  newPassword: z.string().min(8).max(128).regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/),
+  newPassword: strongPasswordSchema,
 });
 
 export const bulkCreateUserSchema = z.object({

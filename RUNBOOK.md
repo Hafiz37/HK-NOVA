@@ -47,6 +47,18 @@ pnpm generate:postman  # Generate OpenAPI spec + Postman collection
 
 ---
 
+## Customer Management Operations
+
+### Operational Procedures
+1. **Daily Tasks:**
+   - Review `/dashboard/customers` for new pending provisioning.
+   - Monitor rate limiter & circuit breaker status via `/api/customers/operations-monitor`.
+2. **Incident Response:**
+   - **MikroTik Timeout / Offline:** Periksa konektivitas jaringan dan port API `8728`. Jika Circuit Breaker berstatus `OPEN`, tunggu 60 detik untuk pemulihan otomatis.
+   - **Provisioning Failure:** Periksa `CustomerProvisioningLog` di detail customer untuk melihat pesan error spesifik dari RouterOS.
+
+---
+
 ## Architecture: Dual-Mode Monitoring
 
 | Mode | Worker | Target Devices | Metric Source | Use Case |

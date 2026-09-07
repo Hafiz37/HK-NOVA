@@ -98,6 +98,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.10.1",
+    "routeros-client": "^1.1.2",
     "speakeasy": "^2.0.0",
     "ssh2": "^1.17.0",
     "swagger-ui-react": "^4.19.1",

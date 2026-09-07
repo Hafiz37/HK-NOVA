@@ -99,6 +99,7 @@ enum ProvisioningAction {
   REACTIVATE
   TERMINATE
   STATUS_CHECK
+  UPDATE
 }
 
 enum ProvisioningStatus {
@@ -334,6 +335,7 @@ model Device {
   customOids             CustomOid[]
   thresholds             DeviceThreshold[]
   anomalyRiskPredictions AnomalyRiskPrediction[]
+  customers              Customer[]
 
   @@index([status])
   @@index([type])
@@ -1811,4 +1813,121 @@ model ApprovalResponse {
 
   @@index([requestId])
   @@index([approvedBy])
+}
+
+// ============================================================================
+// CUSTOMER MANAGEMENT MODELS
+// ============================================================================
+
+enum ServiceType {
+  PPPOE
+  DHCP
+  STATIC
+  HOTSPOT
+}
+
+enum CustomerStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+  PENDING
+}
+
+model Customer {
+  id       String @id @default(cuid())
+  username String @unique
+
+  // Basic Information
+  fullName    String
+  phoneNumber String?
+  email       String?
+  address     String? @db.Text
+
+  // Service Configuration
+  serviceType   ServiceType
+  ipAddress     String?
+  macAddress    String?
+  uploadSpeed   Int // kbps
+  downloadSpeed Int // kbps
+  packageName   String
+
+  // PPPoE Specific (for serviceType = PPPOE)
+  pppoePassword String?
+  pppoeProfile  String?
+
+  // DHCP/Static Specific
+  dhcpServer String?
+
+  // Status & Monitoring
+  status   CustomerStatus @default(PENDING)
+  isOnline Boolean        @default(false)
+  lastSeen DateTime?
+
+  // Billing Information (Basic)
+  activationDate DateTime
+  expiryDate     DateTime?
+  billingCycle   String? // MONTHLY, QUARTERLY, YEARLY
+  monthlyFee     Decimal?  @db.Decimal(10, 2)
+
+  // Device Relation
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  // Audit Trail
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  notes     String?  @db.Text
+
+  // Relations
+  provisioningLogs CustomerProvisioningLog[]
+  statusHistory    CustomerStatusHistory[]
+
+  @@index([deviceId])
+  @@index([status])
+  @@index([username])
+  @@index([serviceType])
+  @@index([status, isOnline])
+  @@index([deviceId, status])
+}
+
+model CustomerProvisioningLog {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  // Action performed
+  action ProvisioningAction // CREATE, SUSPEND, REACTIVATE, TERMINATE, UPDATE
+
+  // Result
+  success      Boolean
+  errorMessage String? @db.Text
+
+  // MikroTik Command Details
+  commandSent String? @db.Text
+  response    String? @db.Text
+
+  // Execution Details
+  executedBy String?
+  executedAt DateTime @default(now())
+
+  @@index([customerId])
+  @@index([executedAt])
+  @@index([action])
+  @@index([success])
+}
+
+model CustomerStatusHistory {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  fromStatus CustomerStatus
+  toStatus   CustomerStatus
+  reason     String?
+  changedBy  String?
+  changedAt  DateTime       @default(now())
+
+  @@index([customerId])
+  @@index([changedAt])
 }

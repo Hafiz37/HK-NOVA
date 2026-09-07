@@ -8,3 +8,4 @@ export * from './anomaly.schema';
 export * from './settings.schema';
 export * from './feature-flag.schema';
 export * from './maintenance-window.schema';
+export * from './customer.schema';

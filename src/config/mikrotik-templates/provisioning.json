@@ -1,0 +1,207 @@
+{
+  "pppoe": {
+    "create": {
+      "command": "/ppp/secret/add",
+      "description": "Membuat PPPoE secret untuk customer",
+      "parameters": {
+        "name": "Username PPPoE",
+        "password": "Password PPPoE",
+        "service": "pppoe",
+        "profile": "Nama profile (misal: default, 10Mbps, 20Mbps)",
+        "comment": "Komentar (nama customer, nomor HP, dll)",
+        "local-address": "IP address lokal (opsional)",
+        "remote-address": "IP address remote untuk customer (opsional)"
+      },
+      "example": {
+        "name": "customer001",
+        "password": "SecurePass123",
+        "service": "pppoe",
+        "profile": "10Mbps",
+        "comment": "John Doe - 08123456789"
+      }
+    },
+    "suspend": {
+      "command": "/ppp/secret/disable",
+      "description": "Menonaktifkan (suspend) PPPoE secret",
+      "parameters": {
+        ".id": "ID secret atau filter berdasarkan name"
+      }
+    },
+    "reactivate": {
+      "command": "/ppp/secret/enable",
+      "description": "Mengaktifkan kembali PPPoE secret",
+      "parameters": {
+        ".id": "ID secret atau filter berdasarkan name"
+      }
+    },
+    "terminate": {
+      "command": "/ppp/secret/remove",
+      "description": "Menghapus PPPoE secret secara permanen",
+      "parameters": {
+        ".id": "ID secret atau filter berdasarkan name"
+      }
+    },
+    "status": {
+      "command": "/ppp/active/print",
+      "description": "Melihat status koneksi PPPoE aktif",
+      "parameters": {
+        "?name": "Filter berdasarkan username"
+      }
+    },
+    "list": {
+      "command": "/ppp/secret/print",
+      "description": "Menampilkan semua PPPoE secret"
+    }
+  },
+  "queue": {
+    "create": {
+      "command": "/queue/simple/add",
+      "description": "Membuat bandwidth queue untuk customer",
+      "parameters": {
+        "name": "Nama queue (biasanya sama dengan username)",
+        "target": "Target IP address atau interface",
+        "max-limit": "Batas maksimal upload/download (format: upload/download dalam bps)",
+        "burst-limit": "Burst limit (opsional)",
+        "burst-threshold": "Burst threshold (opsional)",
+        "burst-time": "Burst time (opsional)",
+        "priority": "Priority 1-8 (opsional, default: 8)",
+        "comment": "Komentar"
+      },
+      "example": {
+        "name": "customer001",
+        "target": "10.10.10.100/32",
+        "max-limit": "10M/10M",
+        "burst-limit": "12M/12M",
+        "burst-threshold": "8M/8M",
+        "burst-time": "30s/30s",
+        "priority": "8",
+        "comment": "10Mbps Package"
+      },
+      "notes": [
+        "Format max-limit: {upload}/{download}",
+        "Satuan: k (kilobits), M (megabits), G (gigabits)",
+        "Contoh: 10M/10M = 10 Mbps upload/download"
+      ]
+    },
+    "update": {
+      "command": "/queue/simple/set",
+      "description": "Update bandwidth queue",
+      "parameters": {
+        ".id": "ID queue atau filter berdasarkan name",
+        "max-limit": "Batas baru"
+      },
+      "example": {
+        "name": "customer001",
+        "max-limit": "20M/20M"
+      }
+    },
+    "remove": {
+      "command": "/queue/simple/remove",
+      "description": "Menghapus bandwidth queue",
+      "parameters": {
+        ".id": "ID queue atau filter berdasarkan name"
+      }
+    },
+    "list": {
+      "command": "/queue/simple/print",
+      "description": "Menampilkan semua bandwidth queue"
+    }
+  },
+  "dhcp": {
+    "create": {
+      "command": "/ip/dhcp-server/lease/add",
+      "description": "Membuat DHCP lease untuk customer",
+      "parameters": {
+        "address": "IP address yang akan di-assign",
+        "mac-address": "MAC address device customer",
+        "server": "Nama DHCP server (misal: dhcp1)",
+        "comment": "Komentar (nama customer, nomor HP, dll)",
+        "client-id": "Client ID (opsional)"
+      },
+      "example": {
+        "address": "192.168.1.100",
+        "mac-address": "AA:BB:CC:DD:EE:FF",
+        "server": "dhcp1",
+        "comment": "John Doe - 08123456789"
+      }
+    },
+    "remove": {
+      "command": "/ip/dhcp-server/lease/remove",
+      "description": "Menghapus DHCP lease",
+      "parameters": {
+        ".id": "ID lease atau filter berdasarkan address"
+      }
+    },
+    "list": {
+      "command": "/ip/dhcp-server/lease/print",
+      "description": "Menampilkan semua DHCP lease"
+    }
+  },
+  "system": {
+    "identity": {
+      "command": "/system/identity/print",
+      "description": "Melihat identity/nama MikroTik router"
+    },
+    "resource": {
+      "command": "/system/resource/print",
+      "description": "Melihat resource usage (CPU, memory, uptime)"
+    }
+  },
+  "interface": {
+    "list": {
+      "command": "/interface/print",
+      "description": "Menampilkan semua interface"
+    }
+  },
+  "profiles": {
+    "description": "PPPoE profiles mendefinisikan setting default untuk customer",
+    "recommendations": [
+      {
+        "name": "default",
+        "local-address": "10.10.10.1",
+        "remote-address": "10.10.10.2-10.10.10.254",
+        "rate-limit": "Sesuai paket yang dipilih"
+      },
+      {
+        "name": "10Mbps",
+        "rate-limit": "10M/10M"
+      },
+      {
+        "name": "20Mbps",
+        "rate-limit": "20M/20M"
+      },
+      {
+        "name": "50Mbps",
+        "rate-limit": "50M/50M"
+      },
+      {
+        "name": "100Mbps",
+        "rate-limit": "100M/100M"
+      }
+    ],
+    "note": "Profile harus dibuat manual di MikroTik sebelum digunakan"
+  },
+  "workflow": {
+    "pppoe_customer": [
+      "1. Buat PPPoE secret dengan /ppp/secret/add",
+      "2. (Opsional) Buat bandwidth queue dengan /queue/simple/add jika rate-limit tidak di profile",
+      "3. Customer connect dengan username/password",
+      "4. Cek status dengan /ppp/active/print"
+    ],
+    "dhcp_customer": [
+      "1. Buat DHCP lease dengan /ip/dhcp-server/lease/add",
+      "2. Buat bandwidth queue dengan /queue/simple/add menggunakan IP address sebagai target",
+      "3. Customer connect dan dapat IP dari DHCP",
+      "4. Cek lease dengan /ip/dhcp-server/lease/print"
+    ],
+    "suspend_customer": [
+      "PPPoE: Gunakan /ppp/secret/disable",
+      "DHCP: Hapus atau disable queue, atau hapus DHCP lease"
+    ],
+    "terminate_customer": [
+      "1. Hapus PPPoE secret atau DHCP lease",
+      "2. Hapus bandwidth queue terkait",
+      "3. (Opsional) Backup konfigurasi sebelum dihapus"
+    ]
+  }
+}

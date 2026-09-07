@@ -8,6 +8,7 @@ import { rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { queryUserSchema, createUserSchema } from '@/lib/schemas';
 import { success, paginated, ApiError, ValidationError, ConflictError, InternalServerError } from '@/lib/api-response';
 import { cacheGetOrSet, CacheTags, invalidateOnMutation } from '@/lib/query';
+import { validatePasswordStrength, recordPasswordHistory } from '@/lib/security/password-policy';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole([UserRole.OPERATOR, UserRole.ADMIN]);
@@ -98,6 +99,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
+    const passwordValidation = validatePasswordStrength(validatedData.password);
+    if (!passwordValidation.valid) {
+      throw new ValidationError(
+        'Password does not meet security requirements',
+        new Error(passwordValidation.feedback.join('; '))
+      );
+    }
+
     const passwordHash = await bcrypt.hash(validatedData.password, 12);
 
     const newUser = await prisma.user.create({
@@ -107,6 +116,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         fullName: validatedData.fullName.trim(),
         email: validatedData.email?.trim() || null,
         role: validatedData.role as UserRole,
+        mustChangePassword: true,
+        passwordChangedAt: new Date(),
       },
       select: {
         id: true,
@@ -117,6 +128,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         createdAt: true,
       },
     });
+
+    await recordPasswordHistory(newUser.id, passwordHash, auth.user.id);
 
     await logAudit({
       action: 'CREATE',
@@ -130,6 +143,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           email: newUser.email,
           role: newUser.role,
         },
+        passwordStrength: passwordValidation.score,
       },
       ipAddress: getClientIp(request),
     });
