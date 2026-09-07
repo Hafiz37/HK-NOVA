@@ -6,8 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
   relationMode = "prisma"
 }
 
@@ -339,6 +339,8 @@ model Device {
   @@index([type])
   @@index([deletedAt])
   @@index([isDemo])
+  @@index([status, isDemo])
+  @@index([type, status])
 }
 
 model Credential {
@@ -423,11 +425,13 @@ model Backup {
   BackupRestore   BackupRestore[]
 
   @@index([deviceId, timestamp])
+  @@index([deviceId, status, timestamp])
   @@index([storageLocation])
   @@index([archivedAt])
   @@index([deletedAt])
   @@index([isProtected])
   @@index([riskScore])
+  @@index([status, timestamp])
 }
 
 model BackupRestore {
@@ -748,7 +752,7 @@ model AlertDelivery {
 model AlertEscalation {
   id          String   @id @default(cuid())
   alertId     String
-alert    Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  alert       Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
   level       Int // tangga eskalasi (1,2,3…)
   triggeredAt DateTime @default(now())
   details     Json?
@@ -907,27 +911,27 @@ model User {
   lockedUntil  DateTime?
 
   // Phase 2 relations
-  assignedAlerts          Alert[]               @relation("AlertAssignee")
-  backupRestores          BackupRestore[]
-  anomalyFeedbacks        AnomalyFeedback[]
-  refreshTokens           RefreshToken[]
-  userSessions            UserSession[]
-  mfaDevices              MfaDevice[]
-  accountLockouts         AccountLockout[]
-  passwordHistories       PasswordHistory[]
-  securityEvents          SecurityEvent[]
-  loginHistories          LoginHistory[]
-  securityTimelines       SecurityTimeline[]
-  resourcePermissions     ResourcePermission[]
-  permissionGroups        UserPermissionGroup[]
-  apiKeys                 ApiKey[]
-  ipAccessControls        IpAccessControl[]
+  assignedAlerts      Alert[]               @relation("AlertAssignee")
+  backupRestores      BackupRestore[]
+  anomalyFeedbacks    AnomalyFeedback[]
+  refreshTokens       RefreshToken[]
+  userSessions        UserSession[]
+  mfaDevices          MfaDevice[]
+  accountLockouts     AccountLockout[]
+  passwordHistories   PasswordHistory[]
+  securityEvents      SecurityEvent[]
+  loginHistories      LoginHistory[]
+  securityTimelines   SecurityTimeline[]
+  resourcePermissions ResourcePermission[]
+  permissionGroups    UserPermissionGroup[]
+  apiKeys             ApiKey[]
+  ipAccessControls    IpAccessControl[]
 
   // Phase 4 relations
-  ssoConnections          SSOConnection[]
-  approvalRequests        ApprovalRequest[]   @relation("ApprovalRequester")
-  approvalResponses       ApprovalResponse[]  @relation("Approver")
-  teamMemberships         TeamMember[]
+  ssoConnections    SSOConnection[]
+  approvalRequests  ApprovalRequest[]  @relation("ApprovalRequester")
+  approvalResponses ApprovalResponse[] @relation("Approver")
+  teamMemberships   TeamMember[]
 }
 
 // ─── Phase 1 Security & Authentication Models ─────────────────────────────────
@@ -1560,68 +1564,68 @@ enum SSOProviderType {
 }
 
 model SSOProvider {
-  id              String       @id @default(cuid())
-  type            SSOProviderType
-  name            String       @unique
-  enabled         Boolean      @default(true)
+  id      String          @id @default(cuid())
+  type    SSOProviderType
+  name    String          @unique
+  enabled Boolean         @default(true)
 
   // SAML configuration
-  samlEntryPoint      String?  @db.Text
-  samlIssuer          String?
-  samlCert            String?  @db.Text
+  samlEntryPoint         String? @db.Text
+  samlIssuer             String?
+  samlCert               String? @db.Text
   samlSignatureAlgorithm String?
 
   // OAuth2/OIDC configuration
-  oauthClientId       String?  @db.Text
-  oauthClientSecret   String?  @db.Text // Encrypted
-  oauthAuthUrl        String?  @db.Text
-  oauthTokenUrl       String?  @db.Text
-  oauthUserInfoUrl    String?  @db.Text
-  oauthScopes         Json?    // ["openid", "profile", "email"]
-  oauthPkceEnabled    Boolean  @default(true)
+  oauthClientId     String? @db.Text
+  oauthClientSecret String? @db.Text // Encrypted
+  oauthAuthUrl      String? @db.Text
+  oauthTokenUrl     String? @db.Text
+  oauthUserInfoUrl  String? @db.Text
+  oauthScopes       Json? // ["openid", "profile", "email"]
+  oauthPkceEnabled  Boolean @default(true)
 
   // LDAP configuration
-  ldapUrl             String?  @db.Text
-  ldapBindDn          String?  @db.Text
-  ldapBindPassword    String?  @db.Text // Encrypted
-  ldapSearchBase      String?  @db.Text
-  ldapSearchFilter    String?  @db.Text
-  ldapUserAttributes  Json?    // Mapping LDAP attrs to User model
-  ldapGroupAttribute  String?  @default("memberOf")
-  ldapGroupFilter     String?
+  ldapUrl            String? @db.Text
+  ldapBindDn         String? @db.Text
+  ldapBindPassword   String? @db.Text // Encrypted
+  ldapSearchBase     String? @db.Text
+  ldapSearchFilter   String? @db.Text
+  ldapUserAttributes Json? // Mapping LDAP attrs to User model
+  ldapGroupAttribute String? @default("memberOf")
+  ldapGroupFilter    String?
 
   // User provisioning
-  autoProvision       Boolean     @default(true)
-  defaultRole         UserRole    @default(VIEWER)
-  roleMapping         Json?       // Map SSO groups to roles
-  attributeMapping    Json?       // Map SSO attributes to user fields
+  autoProvision    Boolean  @default(true)
+  defaultRole      UserRole @default(VIEWER)
+  roleMapping      Json? // Map SSO groups to roles
+  attributeMapping Json? // Map SSO attributes to user fields
 
   // Metadata
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   connections SSOConnection[]
 }
 
 model SSOConnection {
-  id           String       @id @default(cuid())
-  userId       String
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  providerId   String
-  provider     SSOProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   SSOProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
-  externalId   String       // User ID in SSO provider
-  email        String?
-  username     String?
-  fullName     String?
+  externalId String // User ID in SSO provider
+  email      String?
+  username   String?
+  fullName   String?
 
-  metadata     Json?        // Additional user info from SSO
-  groups       Json?        // Groups from SSO provider
+  metadata Json? // Additional user info from SSO
+  groups   Json? // Groups from SSO provider
 
-  lastLogin    DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  lastLogin DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@unique([providerId, externalId])
   @@index([userId])
@@ -1631,53 +1635,53 @@ model SSOConnection {
 // ─── Phase 4: Role Hierarchy & Teams ────────────────────────────────────────────
 
 model Role {
-  id              String   @id @default(cuid())
-  name            String   @unique
-  displayName     String
-  description     String?
+  id          String  @id @default(cuid())
+  name        String  @unique
+  displayName String
+  description String?
 
   // Hierarchy
-  parentId        String?
-  parent          Role?    @relation("RoleHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  children        Role[]   @relation("RoleHierarchy")
-  level           Int      @default(0) // 0 = root, 1 = child, etc
+  parentId String?
+  parent   Role?   @relation("RoleHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children Role[]  @relation("RoleHierarchy")
+  level    Int     @default(0) // 0 = root, 1 = child, etc
 
   // Permissions
-  permissions     Json     // Array of permission IDs
-  inheritsParent  Boolean  @default(true)
+  permissions    Json // Array of permission IDs
+  inheritsParent Boolean @default(true)
 
-  isSystem        Boolean  @default(false) // Prevent deletion
-  isActive        Boolean  @default(true)
+  isSystem Boolean @default(false) // Prevent deletion
+  isActive Boolean @default(true)
 
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([parentId])
   @@index([isActive])
 }
 
 model Team {
-  id              String   @id @default(cuid())
-  name            String   @unique
-  description     String?
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
 
   // Hierarchy
-  parentId        String?
-  parent          Team?    @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  subTeams        Team[]   @relation("TeamHierarchy")
+  parentId String?
+  parent   Team?   @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subTeams Team[]  @relation("TeamHierarchy")
 
   // Default permissions for team members
-  defaultRole     String?
-  permissions     Json?    // Array of permission IDs
+  defaultRole String?
+  permissions Json? // Array of permission IDs
 
-  isActive        Boolean  @default(true)
+  isActive Boolean @default(true)
 
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  members         TeamMember[]
+  members             TeamMember[]
   resourcePermissions TeamResourcePermission[]
 
   @@index([parentId])
@@ -1685,34 +1689,34 @@ model Team {
 }
 
 model TeamMember {
-  id           String   @id @default(cuid())
-  teamId       String
-  team         Team     @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  roleInTeam   String?  // "member", "lead", "admin"
+  roleInTeam String? // "member", "lead", "admin"
 
-  joinedAt     DateTime @default(now())
-  addedBy      String?
+  joinedAt DateTime @default(now())
+  addedBy  String?
 
   @@unique([teamId, userId])
   @@index([userId])
 }
 
 model TeamResourcePermission {
-  id            String   @id @default(cuid())
-  teamId        String
-  team          Team     @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id     String @id @default(cuid())
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  resourceType  String
-  resourceId    String
+  resourceType String
+  resourceId   String
 
-  permissions   Json     // Array of permission strings
+  permissions Json // Array of permission strings
 
-  grantedBy     String?
-  grantedAt     DateTime @default(now())
-  expiresAt     DateTime?
+  grantedBy String?
+  grantedAt DateTime  @default(now())
+  expiresAt DateTime?
 
   @@unique([teamId, resourceType, resourceId])
   @@index([teamId])
@@ -1723,68 +1727,68 @@ model TeamResourcePermission {
 // ─── Phase 4: Approval Workflows ────────────────────────────────────────────────
 
 model ApprovalWorkflow {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
+  id          String  @id @default(cuid())
+  name        String
+  description String?
 
   // Trigger conditions
-  triggerType     String   // "user_create", "device_delete", "backup_restore", "password_reset", "role_change", "custom"
-  conditions      Json?    // Additional conditions for trigger
+  triggerType String // "user_create", "device_delete", "backup_restore", "password_reset", "role_change", "custom"
+  conditions  Json? // Additional conditions for trigger
 
   // Approval requirements
-  requireApprovals Int     @default(1) // How many approvals needed
-  approverRoles    Json    // Roles that can approve
-  approverUsers    Json?   // Specific users that can approve
-  approverTeams    Json?   // Teams that can approve
+  requireApprovals Int   @default(1) // How many approvals needed
+  approverRoles    Json // Roles that can approve
+  approverUsers    Json? // Specific users that can approve
+  approverTeams    Json? // Teams that can approve
 
   // Time limits
-  timeoutMinutes   Int?    // Auto-reject after timeout (null = no timeout)
+  timeoutMinutes Int? // Auto-reject after timeout (null = no timeout)
 
-  enabled          Boolean  @default(true)
-  priority         Int      @default(0)
+  enabled  Boolean @default(true)
+  priority Int     @default(0)
 
-  createdBy        String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  requests         ApprovalRequest[]
+  requests ApprovalRequest[]
 
   @@index([enabled, triggerType])
   @@index([priority])
 }
 
 model ApprovalRequest {
-  id              String             @id @default(cuid())
-  workflowId      String
-  workflow        ApprovalWorkflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  id         String           @id @default(cuid())
+  workflowId String
+  workflow   ApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 
   // Request details
-  requestType     String
-  requestData     Json
-  reason          String?            @db.Text
+  requestType String
+  requestData Json
+  reason      String? @db.Text
 
   // Requester
-  requestedBy     String
-  requester       User               @relation("ApprovalRequester", fields: [requestedBy], references: [id])
-  requestedAt     DateTime           @default(now())
+  requestedBy String
+  requester   User     @relation("ApprovalRequester", fields: [requestedBy], references: [id])
+  requestedAt DateTime @default(now())
 
   // Status
-  status          String             @default("pending") // "pending", "approved", "rejected", "expired", "cancelled"
+  status String @default("pending") // "pending", "approved", "rejected", "expired", "cancelled"
 
   // Approvals
   requiredApprovals Int
-  receivedApprovals Int              @default(0)
+  receivedApprovals Int @default(0)
 
   // Resolution
-  resolvedAt      DateTime?
-  expiresAt       DateTime?
+  resolvedAt DateTime?
+  expiresAt  DateTime?
 
   // Execution
-  executed        Boolean            @default(false)
+  executed        Boolean   @default(false)
   executedAt      DateTime?
   executionResult Json?
 
-  approvals       ApprovalResponse[]
+  approvals ApprovalResponse[]
 
   @@index([status, requestedAt])
   @@index([requestedBy])
@@ -1793,17 +1797,17 @@ model ApprovalRequest {
 }
 
 model ApprovalResponse {
-  id            String           @id @default(cuid())
-  requestId     String
-  request       ApprovalRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id        String          @id @default(cuid())
+  requestId String
+  request   ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  approvedBy    String
-  approver      User             @relation("Approver", fields: [approvedBy], references: [id])
+  approvedBy String
+  approver   User   @relation("Approver", fields: [approvedBy], references: [id])
 
-  decision      String           // "approved", "rejected"
-  comment       String?          @db.Text
+  decision String // "approved", "rejected"
+  comment  String? @db.Text
 
-  respondedAt   DateTime         @default(now())
+  respondedAt DateTime @default(now())
 
   @@index([requestId])
   @@index([approvedBy])

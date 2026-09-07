@@ -10,18 +10,20 @@ import { PrismaClient } from '@prisma/client';
 import { performBackup } from '../lib/backup';
 import { resolveSshCredentials } from '../lib/device-console';
 import { withDistributedLock } from '../lib/distributed-lock';
+import { createHash } from 'crypto';
 
 // ─── Prisma singleton for worker process ────────────────────────────────────
 const prisma = new PrismaClient();
 
 // ─── Configuration ──────────────────────────────────────────────────────────
-const BACKUP_CRON_SCHEDULE = process.env.BACKUP_CRON_SCHEDULE ?? '0 2 * * *'; // daily at 02:00
+const BACKUP_CRON_SCHEDULE = process.env.BACKUP_CRON_SCHEDULE ?? '*/15 * * * *'; // every 15 minutes
 const BACKUP_RUN_ON_STARTUP = process.env.BACKUP_RUN_ON_STARTUP !== 'false';
-const BACKUP_CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.BACKUP_CONCURRENCY ?? '4')));
+const BACKUP_CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.BACKUP_CONCURRENCY ?? '2')));
 const BACKUP_MAX_PER_SUBNET = Number(process.env.BACKUP_MAX_PER_SUBNET ?? '2');
 const BACKUP_SKIP_HIGH_LATENCY = process.env.BACKUP_SKIP_HIGH_LATENCY === 'true';
 const BACKUP_LATENCY_THRESHOLD_MS = Number(process.env.BACKUP_LATENCY_THRESHOLD_MS ?? '500');
-const BACKUP_ALLOWED_HOURS = process.env.BACKUP_ALLOWED_HOURS ?? '02:00-05:00'; // off-peak window
+const BACKUP_ALLOWED_HOURS = process.env.BACKUP_ALLOWED_HOURS ?? '02:00-06:00'; // 4-hour window
+const BACKUP_DISTRIBUTION_ENABLED = process.env.BACKUP_DISTRIBUTION_ENABLED !== 'false';
 
 // ─── Logging helper ──────────────────────────────────────────────────────────
 function log(level: 'INFO' | 'WARN' | 'ERROR', message: string, meta?: unknown): void {
@@ -33,6 +35,32 @@ function log(level: 'INFO' | 'WARN' | 'ERROR', message: string, meta?: unknown):
 function getSubnet(ip: string): string {
   // Simple /24 subnet: 192.168.1.x -> 192.168.1
   return ip.split('.').slice(0, 3).join('.');
+}
+
+function getDeviceBackupSlot(deviceId: string): number {
+  const hash = createHash('md5').update(deviceId).digest('hex');
+  const slot = parseInt(hash.substring(0, 8), 16) % (4 * 60);
+  return slot;
+}
+
+function isDeviceScheduledNow(deviceId: string): boolean {
+  if (!BACKUP_DISTRIBUTION_ENABLED) return true;
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  
+  const [startHour] = BACKUP_ALLOWED_HOURS.split('-').map(h => parseInt(h.split(':')[0], 10));
+  
+  if (currentHour < startHour || currentHour >= startHour + 4) {
+    return false;
+  }
+  
+  const minutesSinceStart = (currentHour - startHour) * 60 + currentMinute;
+  const deviceSlot = getDeviceBackupSlot(deviceId);
+  
+  const slotWindow = 15;
+  return minutesSinceStart >= deviceSlot && minutesSinceStart < deviceSlot + slotWindow;
 }
 
 function isWithinAllowedHours(): boolean {
@@ -71,11 +99,14 @@ async function runBackupCycle(): Promise<void> {
   const candidates = devices
     .filter((d) => resolveSshCredentials(d.credentials) !== null)
     .filter((d) => {
-      if (!d.backupSchedule) return true; // Use global schedule
-      // Simple cron hour check (for full cron parsing, use a library)
-      const scheduleHour = parseInt(d.backupSchedule.split(' ')[1] || '2', 10);
-      if (isNaN(scheduleHour)) return true;
-      return currentHour === scheduleHour;
+      if (!BACKUP_DISTRIBUTION_ENABLED) {
+        if (!d.backupSchedule) return true;
+        const scheduleHour = parseInt(d.backupSchedule.split(' ')[1] || '2', 10);
+        if (isNaN(scheduleHour)) return true;
+        return currentHour === scheduleHour;
+      }
+      
+      return isDeviceScheduledNow(d.id);
     });
 
   log('INFO', `${devices.length} devices total, ${candidates.length} scheduled for this cycle`);

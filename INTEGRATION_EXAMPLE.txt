@@ -1,0 +1,8 @@
+import { recordWorkerHeartbeat } from '../lib/worker-health';
+
+export async function runPollCycle(): Promise<void> {
+  const cycleId = randomUUID().substring(0, 8);
+  recordWorkerHeartbeat('icmp-poller', cycleId);
+  
+  // ... existing poll cycle code ...
+}

@@ -1,0 +1,8 @@
+{
+  "name": "create-test-devices",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "create-test-devices": "./create-test-devices.js"
+  }
+}

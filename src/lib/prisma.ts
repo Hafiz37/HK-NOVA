@@ -15,18 +15,36 @@ function createPrismaClient(): PrismaClient {
 
   client.$use(async (params, next) => {
     const start = Date.now();
-    const result = await next(params);
-    const duration = (Date.now() - start) / 1000;
+    const queryTimeout = 10000;
     
-    databaseQueryDuration.observe(
-      {
-        operation: params.action,
-        table: params.model || 'unknown',
-      },
-      duration
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Query timeout after ${queryTimeout}ms: ${params.model}.${params.action}`)), queryTimeout)
     );
     
-    return result;
+    try {
+      const result = await Promise.race([next(params), timeoutPromise]);
+      const duration = (Date.now() - start) / 1000;
+      
+      databaseQueryDuration.observe(
+        {
+          operation: params.action,
+          table: params.model || 'unknown',
+        },
+        duration
+      );
+      
+      return result;
+    } catch (error) {
+      const duration = (Date.now() - start) / 1000;
+      databaseQueryDuration.observe(
+        {
+          operation: params.action,
+          table: params.model || 'unknown',
+        },
+        duration
+      );
+      throw error;
+    }
   });
 
   return client;

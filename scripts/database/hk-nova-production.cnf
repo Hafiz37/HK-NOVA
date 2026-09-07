@@ -1,0 +1,97 @@
+# HK-NOVA MySQL Production Configuration
+# For 500+ Devices - High Performance Tuning
+# File: /etc/mysql/mysql.conf.d/hk-nova-production.cnf
+
+[mysqld]
+# ============================================================================
+# CONNECTION SETTINGS
+# ============================================================================
+max_connections = 200
+max_connect_errors = 10000
+connect_timeout = 10
+wait_timeout = 600
+interactive_timeout = 600
+
+# ============================================================================
+# INNODB BUFFER POOL
+# ============================================================================
+# IMPORTANT: Adjust based on your available RAM
+# Recommended: 50-70% of available RAM
+# 
+# For 8GB RAM:  innodb_buffer_pool_size = 4G
+# For 16GB RAM: innodb_buffer_pool_size = 8G
+# For 32GB RAM: innodb_buffer_pool_size = 16G
+
+innodb_buffer_pool_size = 4G
+innodb_buffer_pool_instances = 4
+
+# InnoDB performance tuning
+innodb_flush_log_at_trx_commit = 2
+innodb_log_file_size = 512M
+innodb_log_buffer_size = 16M
+innodb_flush_method = O_DIRECT
+
+# ============================================================================
+# QUERY CACHE & TEMPORARY TABLES
+# ============================================================================
+tmp_table_size = 256M
+max_heap_table_size = 256M
+
+# ============================================================================
+# THREAD HANDLING
+# ============================================================================
+thread_cache_size = 100
+thread_stack = 256K
+
+# ============================================================================
+# QUERY OPTIMIZATION
+# ============================================================================
+join_buffer_size = 2M
+sort_buffer_size = 2M
+read_buffer_size = 1M
+read_rnd_buffer_size = 2M
+
+# ============================================================================
+# TABLE CACHE
+# ============================================================================
+table_open_cache = 4096
+table_definition_cache = 2048
+
+# ============================================================================
+# LOGGING (Performance Monitoring)
+# ============================================================================
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow-query.log
+long_query_time = 2
+
+# Log queries that don't use indexes (for optimization)
+log_queries_not_using_indexes = 0
+
+# ============================================================================
+# BINARY LOG (Backup & Replication)
+# ============================================================================
+# Keep binary logs for 7 days
+binlog_expire_logs_seconds = 604800
+
+# Binary log format
+binlog_format = ROW
+
+# ============================================================================
+# CHARACTER SET
+# ============================================================================
+character_set_server = utf8mb4
+collation_server = utf8mb4_unicode_ci
+
+# ============================================================================
+# NETWORK
+# ============================================================================
+max_allowed_packet = 64M
+
+# ============================================================================
+# SECURITY
+# ============================================================================
+# Disable LOCAL INFILE for security
+local_infile = 0
+
+# Require secure transport (optional - uncomment if using SSL)
+# require_secure_transport = ON

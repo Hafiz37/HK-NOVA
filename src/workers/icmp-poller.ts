@@ -42,9 +42,17 @@ import {
 } from '../lib/redis-queue';
 import { computeAndSaveDynamicThreshold } from '../lib/dynamic-threshold';
 import { forwardMetricsToSiem } from '../lib/siem-forward';
+import { getCircuitBreaker, CircuitState } from '../lib/circuit-breaker';
+import { retryWithBackoff } from '../lib/retry-with-backoff';
+import { recordWorkerHeartbeat } from '../lib/worker-health';
+import { initAdaptiveRateLimiter } from '../lib/adaptive-rate-limiter';
+import { deviceQueue } from '../lib/device-operation-queue';
 
 // ─── Prisma singleton ────────────────────────────────────────────────────────
 const prisma = new PrismaClient();
+
+// ─── Initialize adaptive rate limiter ────────────────────────────────────────
+const rateLimiter = initAdaptiveRateLimiter(prisma);
 
 // ─── net-ping (no @types) ────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -282,6 +290,86 @@ async function pingHost(
 
 // ─── Poll a single device (multi-probe, ICMPv6-aware) ───────────────────────
 async function pollDevice(
+  session: NetPingSession | null,
+  device: DeviceRecord
+): Promise<PingResult> {
+  const shouldSkip = rateLimiter.shouldSkipOperation(device.id, 'icmp');
+  if (shouldSkip) {
+    log('WARN', `Skipping ICMP poll for ${device.name} due to high load/errors`);
+    return {
+      deviceId: device.id,
+      ip: device.ip,
+      latency: null,
+      rttMin: null,
+      rttMax: null,
+      jitter: null,
+      packetLoss: 100,
+      isIPv6: isIPv6Address(device.ip),
+      success: false,
+      error: 'Skipped due to adaptive rate limiting',
+    };
+  }
+
+  return deviceQueue.enqueue(device.id, 'icmp', async () => {
+    const circuitBreaker = getCircuitBreaker(`icmp:${device.id}`, {
+      failureThreshold: 5,
+      successThreshold: 2,
+      timeout: DEFAULT_PING_TIMEOUT,
+      resetTimeoutMs: 60000,
+      monitoringWindowMs: 60000,
+    });
+
+    if (circuitBreaker.getState() === CircuitState.OPEN) {
+      log('WARN', `Circuit breaker OPEN for device ${device.name} (${device.ip})`);
+      return {
+        deviceId: device.id,
+        ip: device.ip,
+        latency: null,
+        rttMin: null,
+        rttMax: null,
+        jitter: null,
+        packetLoss: 100,
+        isIPv6: isIPv6Address(device.ip),
+        success: false,
+        error: 'Circuit breaker OPEN',
+      };
+    }
+
+    try {
+      const result = await circuitBreaker.execute(async () => {
+        return await retryWithBackoff(async () => {
+          return await pollDeviceInternal(session, device);
+        }, {
+          maxRetries: 2,
+          initialDelayMs: 500,
+          maxDelayMs: 2000,
+          backoffMultiplier: 2,
+          jitterFactor: 0.2,
+        });
+      });
+
+      await rateLimiter.updateDeviceHealth(device.id);
+      
+      return result;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      return {
+        deviceId: device.id,
+        ip: device.ip,
+        latency: null,
+        rttMin: null,
+        rttMax: null,
+        jitter: null,
+        packetLoss: 100,
+        isIPv6: isIPv6Address(device.ip),
+        success: false,
+        error: err.message,
+      };
+    }
+  });
+}
+
+async function pollDeviceInternal(
   session: NetPingSession | null,
   device: DeviceRecord
 ): Promise<PingResult> {
@@ -658,6 +746,9 @@ async function runPollCycle(): Promise<void> {
   const cycleStart = Date.now();
   const cycleId = randomUUID();
   currentCycleId = cycleId;
+  
+  recordWorkerHeartbeat('icmp-poller', cycleId);
+  
   log('INFO', `Starting ICMP poll cycle [${cycleId}]`);
 
   try {
@@ -737,23 +828,49 @@ async function gracefulShutdown(signal: string): Promise<void> {
   log('INFO', `Received ${signal}, shutting down gracefully...`);
 
   try {
+    log('INFO', 'Waiting for current poll cycle to complete...');
+    if (currentCycleId) {
+      let waitTime = 0;
+      const maxWait = 30000;
+      while (currentCycleId && waitTime < maxWait) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        waitTime += 1000;
+      }
+      if (currentCycleId) {
+        log('WARN', `Force shutdown: Poll cycle ${currentCycleId} still running after ${maxWait}ms`);
+      }
+    }
+
+    log('INFO', 'Closing ping session...');
+
+    log('INFO', 'Closing Redis connection...');
     await closeRedis();
     log('INFO', 'Redis connection closed');
-  } catch (err) {
-    log('ERROR', 'Error closing Redis', err);
-  }
-  try {
+    
+    log('INFO', 'Disconnecting Prisma...');
     await prisma.$disconnect();
     log('INFO', 'Prisma disconnected');
+    
+    log('INFO', 'Graceful shutdown complete');
+    process.exit(0);
   } catch (err) {
     log('ERROR', 'Error during shutdown', err);
+    process.exit(1);
   }
-
-  process.exit(0);
 }
 
 process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
+
+process.on('uncaughtException', (err) => {
+  log('ERROR', 'Uncaught exception, shutting down', err);
+  void gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason) => {
+  log('ERROR', 'Unhandled rejection, shutting down', reason);
+  void gracefulShutdown('unhandledRejection');
+});
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
 log(

@@ -9,11 +9,10 @@ export interface CircuitBreakerOptions {
   successThreshold: number;
   timeout: number;
   resetTimeoutMs: number;
-  monitoringWindowMs: number;
-  onStateChange?: (from: CircuitState, to: CircuitState, error?: Error) => void;
+  monitoringWindowMs?: number;
 }
 
-export interface CircuitBreakerStats {
+export interface CircuitBreakerMetrics {
   state: CircuitState;
   failures: number;
   successes: number;
@@ -21,21 +20,10 @@ export interface CircuitBreakerStats {
   consecutiveSuccesses: number;
   lastFailureTime?: number;
   lastSuccessTime?: number;
-  totalRequests: number;
-  totalFailures: number;
-  totalSuccesses: number;
-  uptime: number;
+  nextAttemptTime?: number;
 }
 
-const DEFAULT_OPTIONS: CircuitBreakerOptions = {
-  failureThreshold: 5,
-  successThreshold: 2,
-  timeout: 30000,
-  resetTimeoutMs: 60000,
-  monitoringWindowMs: 120000,
-};
-
-export class CircuitBreaker {
+class CircuitBreaker {
   private state: CircuitState = CircuitState.CLOSED;
   private failures: number = 0;
   private successes: number = 0;
@@ -43,52 +31,42 @@ export class CircuitBreaker {
   private consecutiveSuccesses: number = 0;
   private lastFailureTime?: number;
   private lastSuccessTime?: number;
-  private nextAttemptTime: number = 0;
-  private totalRequests: number = 0;
-  private totalFailures: number = 0;
-  private totalSuccesses: number = 0;
-  private createdAt: number = Date.now();
-  
+  private nextAttemptTime?: number;
+  private failureTimestamps: number[] = [];
+
   constructor(
-    private name: string,
-    private options: CircuitBreakerOptions
+    private readonly key: string,
+    private readonly options: CircuitBreakerOptions
   ) {}
 
-  async execute<T>(operation: () => Promise<T>): Promise<T> {
-    this.totalRequests++;
-
+  async execute<T>(fn: () => Promise<T>): Promise<T> {
     if (this.state === CircuitState.OPEN) {
-      if (Date.now() < this.nextAttemptTime) {
+      if (Date.now() < (this.nextAttemptTime || 0)) {
         throw new Error(
-          `Circuit breaker [${this.name}] is OPEN. ` +
-          `Retry after ${Math.ceil((this.nextAttemptTime - Date.now()) / 1000)}s`
+          `Circuit breaker is OPEN for ${this.key}. Next attempt at ${new Date(
+            this.nextAttemptTime!
+          ).toISOString()}`
         );
       }
-      
-      this.transitionTo(CircuitState.HALF_OPEN);
+      this.state = CircuitState.HALF_OPEN;
+      this.consecutiveSuccesses = 0;
     }
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Operation timeout after ${this.options.timeout}ms`)),
+        this.options.timeout
+      )
+    );
 
     try {
-      const result = await Promise.race([
-        operation(),
-        this.timeoutPromise(),
-      ]);
-
+      const result = await Promise.race([fn(), timeoutPromise]);
       this.onSuccess();
       return result;
-      
     } catch (error) {
-      this.onFailure(error instanceof Error ? error : new Error(String(error)));
+      this.onFailure();
       throw error;
     }
-  }
-
-  private timeoutPromise(): Promise<never> {
-    return new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Operation timeout after ${this.options.timeout}ms`));
-      }, this.options.timeout);
-    });
   }
 
   private onSuccess(): void {
@@ -96,64 +74,44 @@ export class CircuitBreaker {
     this.consecutiveSuccesses++;
     this.consecutiveFailures = 0;
     this.lastSuccessTime = Date.now();
-    this.totalSuccesses++;
 
     if (this.state === CircuitState.HALF_OPEN) {
       if (this.consecutiveSuccesses >= this.options.successThreshold) {
-        this.transitionTo(CircuitState.CLOSED);
-        this.resetCounters();
+        this.state = CircuitState.CLOSED;
+        this.failures = 0;
+        this.failureTimestamps = [];
       }
     }
   }
 
-  private onFailure(error: Error): void {
+  private onFailure(): void {
     this.failures++;
     this.consecutiveFailures++;
     this.consecutiveSuccesses = 0;
     this.lastFailureTime = Date.now();
-    this.totalFailures++;
+    this.failureTimestamps.push(Date.now());
+
+    const windowMs = this.options.monitoringWindowMs || 60000;
+    this.failureTimestamps = this.failureTimestamps.filter(
+      (ts) => Date.now() - ts < windowMs
+    );
 
     if (this.state === CircuitState.HALF_OPEN) {
-      this.transitionTo(CircuitState.OPEN, error);
-      this.nextAttemptTime = Date.now() + this.options.resetTimeoutMs;
-      return;
-    }
-
-    if (this.state === CircuitState.CLOSED) {
-      if (this.consecutiveFailures >= this.options.failureThreshold) {
-        this.transitionTo(CircuitState.OPEN, error);
-        this.nextAttemptTime = Date.now() + this.options.resetTimeoutMs;
-      }
+      this.tripCircuit();
+    } else if (
+      this.state === CircuitState.CLOSED &&
+      this.failureTimestamps.length >= this.options.failureThreshold
+    ) {
+      this.tripCircuit();
     }
   }
 
-  private transitionTo(newState: CircuitState, error?: Error): void {
-    const oldState = this.state;
-    
-    if (oldState === newState) {
-      return;
-    }
-
-    this.state = newState;
-
-    if (this.options.onStateChange) {
-      this.options.onStateChange(oldState, newState, error);
-    }
-
-    console.log(
-      `[CircuitBreaker:${this.name}] State transition: ${oldState} → ${newState}` +
-      (error ? ` (${error.message})` : '')
-    );
+  private tripCircuit(): void {
+    this.state = CircuitState.OPEN;
+    this.nextAttemptTime = Date.now() + this.options.resetTimeoutMs;
   }
 
-  private resetCounters(): void {
-    this.failures = 0;
-    this.successes = 0;
-    this.consecutiveFailures = 0;
-    this.consecutiveSuccesses = 0;
-  }
-
-  getStats(): CircuitBreakerStats {
+  getMetrics(): CircuitBreakerMetrics {
     return {
       state: this.state,
       failures: this.failures,
@@ -162,10 +120,7 @@ export class CircuitBreaker {
       consecutiveSuccesses: this.consecutiveSuccesses,
       lastFailureTime: this.lastFailureTime,
       lastSuccessTime: this.lastSuccessTime,
-      totalRequests: this.totalRequests,
-      totalFailures: this.totalFailures,
-      totalSuccesses: this.totalSuccesses,
-      uptime: Date.now() - this.createdAt,
+      nextAttemptTime: this.nextAttemptTime,
     };
   }
 
@@ -173,83 +128,55 @@ export class CircuitBreaker {
     return this.state;
   }
 
-  isOpen(): boolean {
-    return this.state === CircuitState.OPEN;
-  }
-
-  isClosed(): boolean {
-    return this.state === CircuitState.CLOSED;
-  }
-
-  isHalfOpen(): boolean {
-    return this.state === CircuitState.HALF_OPEN;
-  }
-
   reset(): void {
     this.state = CircuitState.CLOSED;
-    this.resetCounters();
-    this.nextAttemptTime = 0;
+    this.failures = 0;
+    this.successes = 0;
+    this.consecutiveFailures = 0;
+    this.consecutiveSuccesses = 0;
+    this.failureTimestamps = [];
     this.lastFailureTime = undefined;
     this.lastSuccessTime = undefined;
+    this.nextAttemptTime = undefined;
   }
 }
 
-export class CircuitBreakerRegistry {
-  private breakers = new Map<string, CircuitBreaker>();
+const circuitBreakers = new Map<string, CircuitBreaker>();
 
-  getOrCreate(
-    name: string,
-    options: Partial<CircuitBreakerOptions> = {}
-  ): CircuitBreaker {
-    if (!this.breakers.has(name)) {
-      this.breakers.set(
-        name,
-        new CircuitBreaker(name, { ...DEFAULT_OPTIONS, ...options })
-      );
-    }
-    return this.breakers.get(name)!;
+export function getCircuitBreaker(
+  key: string,
+  options: CircuitBreakerOptions
+): CircuitBreaker {
+  if (!circuitBreakers.has(key)) {
+    circuitBreakers.set(key, new CircuitBreaker(key, options));
   }
-
-  get(name: string): CircuitBreaker | undefined {
-    return this.breakers.get(name);
-  }
-
-  getAllStats(): Record<string, CircuitBreakerStats> {
-    const stats: Record<string, CircuitBreakerStats> = {};
-    for (const [name, breaker] of this.breakers.entries()) {
-      stats[name] = breaker.getStats();
-    }
-    return stats;
-  }
-
-  resetAll(): void {
-    for (const breaker of this.breakers.values()) {
-      breaker.reset();
-    }
-  }
+  return circuitBreakers.get(key)!;
 }
 
-export const circuitBreakerRegistry = new CircuitBreakerRegistry();
+export function getCircuitBreakerMetrics(key: string): CircuitBreakerMetrics | null {
+  const breaker = circuitBreakers.get(key);
+  return breaker ? breaker.getMetrics() : null;
+}
 
-export const sshCircuitBreaker = (deviceId: string) =>
-  circuitBreakerRegistry.getOrCreate(`ssh:${deviceId}`, {
-    failureThreshold: 3,
-    successThreshold: 2,
-    timeout: 15000,
-    resetTimeoutMs: 30000,
+export function getAllCircuitBreakerMetrics(): Record<string, CircuitBreakerMetrics> {
+  const metrics: Record<string, CircuitBreakerMetrics> = {};
+  circuitBreakers.forEach((breaker, key) => {
+    metrics[key] = breaker.getMetrics();
   });
+  return metrics;
+}
 
-export const snmpCircuitBreaker = (deviceId: string) =>
-  circuitBreakerRegistry.getOrCreate(`snmp:${deviceId}`, {
-    failureThreshold: 5,
-    successThreshold: 2,
-    timeout: 10000,
-    resetTimeoutMs: 20000,
-  });
+export function resetCircuitBreaker(key: string): boolean {
+  const breaker = circuitBreakers.get(key);
+  if (breaker) {
+    breaker.reset();
+    return true;
+  }
+  return false;
+}
 
-export const databaseCircuitBreaker = circuitBreakerRegistry.getOrCreate('database', {
-  failureThreshold: 10,
-  successThreshold: 3,
-  timeout: 5000,
-  resetTimeoutMs: 10000,
-});
+export function resetAllCircuitBreakers(): void {
+  circuitBreakers.forEach((breaker) => breaker.reset());
+}
+
+export { CircuitBreaker };

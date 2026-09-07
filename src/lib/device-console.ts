@@ -4,6 +4,7 @@ import { safeDecrypt } from './encryption';
 import { sshPool } from './ssh-pool';
 import { sshRetry } from './retry';
 import { sshCircuitBreaker } from './circuit-breaker';
+import { deviceQueue } from './device-operation-queue';
 
 export interface ConsoleCredentials {
   sshUsername: string | null;
@@ -95,47 +96,50 @@ function connectOnce(opts: Pick<ExecConsoleOptions, 'host' | 'username' | 'passw
  */
 export async function execSshCommand(opts: ExecConsoleOptions): Promise<ConsoleResult> {
   const deviceId = opts.deviceId || `${opts.host}:${opts.port || 22}`;
-  const breaker = sshCircuitBreaker(deviceId);
   
-  try {
-    const result = await breaker.execute(async () => {
-      return await sshRetry.execute(async () => {
-        let client: Client | null = null;
-        
-        try {
-          client = await sshPool.acquire(deviceId, {
-            host: opts.host,
-            port: opts.port ?? 22,
-            username: opts.username,
-            password: opts.password,
-            readyTimeout: opts.timeoutMs ?? DEFAULT_SSH_TIMEOUT,
-            keepaliveInterval: 10_000,
-            keepaliveCountMax: 3,
-          });
-          
-          const commandResult = await executeCommandOnClient(client, opts.command, opts.timeoutMs);
-          
-          sshPool.release(deviceId, client);
-          
-          return commandResult;
-          
-        } catch (err) {
-          if (client) {
-            await sshPool.destroy(deviceId, client);
-          }
-          throw err;
-        }
-      });
-    });
+  return deviceQueue.enqueue(deviceId, 'ssh', async () => {
+    const breaker = sshCircuitBreaker(deviceId);
     
-    return result;
-  } catch (err) {
-    return {
-      ok: false,
-      stdout: '',
-      error: err instanceof Error ? err.message : 'SSH operation failed',
-    };
-  }
+    try {
+      const result = await breaker.execute(async () => {
+        return await sshRetry.execute(async () => {
+          let client: Client | null = null;
+          
+          try {
+            client = await sshPool.acquire(deviceId, {
+              host: opts.host,
+              port: opts.port ?? 22,
+              username: opts.username,
+              password: opts.password,
+              readyTimeout: opts.timeoutMs ?? DEFAULT_SSH_TIMEOUT,
+              keepaliveInterval: 10_000,
+              keepaliveCountMax: 3,
+            });
+            
+            const commandResult = await executeCommandOnClient(client, opts.command, opts.timeoutMs);
+            
+            sshPool.release(deviceId, client);
+            
+            return commandResult;
+            
+          } catch (err) {
+            if (client) {
+              await sshPool.destroy(deviceId, client);
+            }
+            throw err;
+          }
+        });
+      });
+      
+      return result;
+    } catch (err) {
+      return {
+        ok: false,
+        stdout: '',
+        error: err instanceof Error ? err.message : 'SSH operation failed',
+      };
+    }
+  });
 }
 
 async function executeCommandOnClient(
@@ -185,47 +189,50 @@ async function executeCommandOnClient(
  */
 export async function runSshCommands(opts: InteractiveConsoleOptions): Promise<ConsoleResult> {
   const deviceId = opts.deviceId || `${opts.host}:${opts.port || 22}`;
-  const breaker = sshCircuitBreaker(deviceId);
   
-  try {
-    const result = await breaker.execute(async () => {
-      return await sshRetry.execute(async () => {
-        let client: Client | null = null;
-        
-        try {
-          client = await sshPool.acquire(deviceId, {
-            host: opts.host,
-            port: opts.port ?? 22,
-            username: opts.username,
-            password: opts.password,
-            readyTimeout: opts.timeoutMs ?? DEFAULT_SSH_TIMEOUT,
-            keepaliveInterval: 10_000,
-            keepaliveCountMax: 3,
-          });
-          
-          const sessionResult = await runInteractiveSession(client, opts);
-          
-          sshPool.release(deviceId, client);
-          
-          return sessionResult;
-          
-        } catch (err) {
-          if (client) {
-            await sshPool.destroy(deviceId, client);
-          }
-          throw err;
-        }
-      });
-    });
+  return deviceQueue.enqueue(deviceId, 'ssh', async () => {
+    const breaker = sshCircuitBreaker(deviceId);
     
-    return result;
-  } catch (err) {
-    return {
-      ok: false,
-      stdout: '',
-      error: err instanceof Error ? err.message : 'SSH operation failed',
-    };
-  }
+    try {
+      const result = await breaker.execute(async () => {
+        return await sshRetry.execute(async () => {
+          let client: Client | null = null;
+          
+          try {
+            client = await sshPool.acquire(deviceId, {
+              host: opts.host,
+              port: opts.port ?? 22,
+              username: opts.username,
+              password: opts.password,
+              readyTimeout: opts.timeoutMs ?? DEFAULT_SSH_TIMEOUT,
+              keepaliveInterval: 10_000,
+              keepaliveCountMax: 3,
+            });
+            
+            const sessionResult = await runInteractiveSession(client, opts);
+            
+            sshPool.release(deviceId, client);
+            
+            return sessionResult;
+            
+          } catch (err) {
+            if (client) {
+              await sshPool.destroy(deviceId, client);
+            }
+            throw err;
+          }
+        });
+      });
+      
+      return result;
+    } catch (err) {
+      return {
+        ok: false,
+        stdout: '',
+        error: err instanceof Error ? err.message : 'SSH operation failed',
+      };
+    }
+  });
 }
 
 async function runInteractiveSession(

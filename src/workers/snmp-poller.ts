@@ -46,9 +46,14 @@ import {
   type CustomOidResult,
 } from '../lib/custom-oid';
 import { forwardMetricsToSiem } from '../lib/siem-forward';
+import { initAdaptiveRateLimiter } from '../lib/adaptive-rate-limiter';
+import { deviceQueue } from '../lib/device-operation-queue';
 
 // ─── Prisma singleton for worker process ────────────────────────────────────
 const prisma = new PrismaClient();
+
+// ─── Initialize adaptive rate limiter ────────────────────────────────────────
+const rateLimiter = initAdaptiveRateLimiter(prisma);
 
 // ─── net-snmp (no @types package — use require with explicit any) ───────────
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
@@ -361,73 +366,87 @@ async function pollDevice(device: {
   credential: SnmpCredential | null;
   customOids: CustomOidRecord[];
 }): Promise<SnmpResult> {
-  if (!device.credential) {
+  const shouldSkip = rateLimiter.shouldSkipOperation(device.id, 'snmp');
+  if (shouldSkip) {
+    log('WARN', `Skipping SNMP poll for ${device.name} due to high load/errors`);
     return {
       deviceId: device.id,
       ip: device.ip,
       success: false,
-      error: 'No SNMP credential configured',
+      error: 'Skipped due to adaptive rate limiting',
     };
   }
 
-  const session = createSnmpSession(device.ip, device.credential);
-  if (!session) {
-    return {
-      deviceId: device.id,
-      ip: device.ip,
-      success: false,
-      error: 'Failed to create SNMP session',
-    };
-  }
-
-  try {
-    const [cpuUtil, memUtil, interfaces, customOidResults] = await Promise.all([
-      pollCpu(session),
-      pollMemory(session),
-      pollInterfaces(session),
-      pollCustomOids(session, device.customOids),
-    ]);
-
-    session.close();
-
-    // Enrich hasil custom OID dengan ambang threshold utk logika alert.
-    const customOidEnriched: CustomOidPollResult[] = customOidResults
-      .filter((r) => r.value !== null && typeof r.value === 'number')
-      .map((r) => {
-        const oid = device.customOids.find((o) => o.oid === r.oid);
-        return {
-          ...r,
-          value: r.value as number,
-          customOidId: oid?.id ?? '',
-          alertHigh: oid?.alertHigh ?? null,
-          alertLow: oid?.alertLow ?? null,
-        };
-      });
-
-    return {
-      deviceId: device.id,
-      ip: device.ip,
-      success: true,
-      cpuUtil,
-      memUtil,
-      interfaces,
-      customOidResults: customOidEnriched,
-      customOidData: serializeCustomOidResults(customOidResults),
-    };
-  } catch (err) {
-    try {
-      session.close();
-    } catch {
-      /* ignore */
+  return deviceQueue.enqueue(device.id, 'snmp', async () => {
+    if (!device.credential) {
+      return {
+        deviceId: device.id,
+        ip: device.ip,
+        success: false,
+        error: 'No SNMP credential configured',
+      };
     }
-    const errMsg = err instanceof Error ? err.message : String(err);
-    return {
-      deviceId: device.id,
-      ip: device.ip,
-      success: false,
-      error: errMsg,
-    };
-  }
+
+    const session = createSnmpSession(device.ip, device.credential);
+    if (!session) {
+      return {
+        deviceId: device.id,
+        ip: device.ip,
+        success: false,
+        error: 'Failed to create SNMP session',
+      };
+    }
+
+    try {
+      const [cpuUtil, memUtil, interfaces, customOidResults] = await Promise.all([
+        pollCpu(session),
+        pollMemory(session),
+        pollInterfaces(session),
+        pollCustomOids(session, device.customOids),
+      ]);
+
+      session.close();
+
+      await rateLimiter.updateDeviceHealth(device.id);
+
+      const customOidEnriched: CustomOidPollResult[] = customOidResults
+        .filter((r) => r.value !== null && typeof r.value === 'number')
+        .map((r) => {
+          const oid = device.customOids.find((o) => o.oid === r.oid);
+          return {
+            ...r,
+            value: r.value as number,
+            customOidId: oid?.id ?? '',
+            alertHigh: oid?.alertHigh ?? null,
+            alertLow: oid?.alertLow ?? null,
+          };
+        });
+
+      return {
+        deviceId: device.id,
+        ip: device.ip,
+        success: true,
+        cpuUtil,
+        memUtil,
+        interfaces,
+        customOidResults: customOidEnriched,
+        customOidData: serializeCustomOidResults(customOidResults),
+      };
+    } catch (err) {
+      try {
+        session.close();
+      } catch {
+        /* ignore */
+      }
+      const errMsg = err instanceof Error ? err.message : String(err);
+      return {
+        deviceId: device.id,
+        ip: device.ip,
+        success: false,
+        error: errMsg,
+      };
+    }
+  });
 }
 
 // ─── Alert: HIGH_UTILIZATION (dedupe + korelasi + hysteresis auto-resolution) ─
