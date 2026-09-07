@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  mysql:
+    environment:
+      MYSQL_DATABASE: hk_nova_staging
+    volumes:
+      - mysql_staging_data:/var/lib/mysql
+
+  redis:
+    volumes:
+      - redis_staging_data:/data
+
+  app:
+    environment:
+      NODE_ENV: staging
+      DATABASE_URL: mysql://${MYSQL_USER:-hk_nova_user}:${MYSQL_PASSWORD:-hk_nova_pass_change_me}@mysql:3306/hk_nova_staging
+    env_file:
+      - .env.staging
+    volumes:
+      - ./logs/staging:/app/logs
+      - app_staging_uploads:/app/public/uploads
+
+volumes:
+  mysql_staging_data:
+  redis_staging_data:
+  app_staging_uploads:

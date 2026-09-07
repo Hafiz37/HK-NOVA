@@ -1,0 +1,65 @@
+{
+  "name": "hk-nova-dashboards",
+  "dashboards": [
+    {
+      "title": "HK-NOVA Overview",
+      "uid": "hk-nova-overview",
+      "panels": [
+        {
+          "title": "System Health",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "up{job=\"hk-nova-app\"}"
+            }
+          ]
+        },
+        {
+          "title": "HTTP Request Rate",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(http_requests_total[5m])"
+            }
+          ]
+        },
+        {
+          "title": "HTTP Response Time (P95)",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))"
+            }
+          ]
+        },
+        {
+          "title": "Active Alerts",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(alerts_active_count)"
+            }
+          ]
+        },
+        {
+          "title": "Worker Health",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "worker_healthy"
+            }
+          ]
+        },
+        {
+          "title": "Database Connections",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "database_connections_active"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
