@@ -37,6 +37,9 @@ yarn-error.log*
 # env files - NEVER COMMIT PRODUCTION SECRETS!
 .env
 .env.local
+.env.home
+.env.office
+.env.backup*
 .env.production
 .env.production.local
 .env.production.backup*

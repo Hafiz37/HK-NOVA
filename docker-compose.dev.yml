@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # MySQL Database for Development
+  mysql-dev:
+    image: mysql:8.0
+    container_name: hk-nova-mysql-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-dev_root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hk_nova_dev}
+      MYSQL_USER: ${MYSQL_USER:-hk_nova_dev}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-hk_nova_dev_pass}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_dev_data:/var/lib/mysql
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - hk-nova-dev-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-dev_root_password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # Redis Cache for Development
+  redis-dev:
+    image: redis:7-alpine
+    container_name: hk-nova-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - hk-nova-dev-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+
+volumes:
+  mysql_dev_data:
+    name: hk-nova-mysql-dev-data
+  redis_dev_data:
+    name: hk-nova-redis-dev-data
+
+networks:
+  hk-nova-dev-network:
+    name: hk-nova-dev-network
+    driver: bridge
