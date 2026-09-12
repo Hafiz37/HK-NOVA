@@ -5,8 +5,27 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+function getDatabaseUrlWithPoolConfig(): string | undefined {
+  const urlStr = process.env.DATABASE_URL;
+  if (!urlStr) return undefined;
+  try {
+    const url = new URL(urlStr);
+    if (!url.searchParams.has('connection_limit')) {
+      url.searchParams.set('connection_limit', '20');
+    }
+    if (!url.searchParams.has('pool_timeout')) {
+      url.searchParams.set('pool_timeout', '20');
+    }
+    return url.toString();
+  } catch {
+    return urlStr;
+  }
+}
+
 function createPrismaClient(): PrismaClient {
+  const dbUrl = getDatabaseUrlWithPoolConfig();
   const client = new PrismaClient({
+    datasources: dbUrl ? { db: { url: dbUrl } } : undefined,
     log:
       process.env.NODE_ENV === 'development'
         ? ['query', 'error', 'warn']

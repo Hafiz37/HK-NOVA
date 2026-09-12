@@ -1,0 +1,27 @@
+✅ Environment validation passed
+2026-09-13 05:44:57.342117: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+================================================================
+   HK-NOVA PHASE 7: MULTI-DEVICE SCALING & ML ANOMALY VERIFY   
+================================================================
+
+📡 [1] MULTI-DEVICE INVENTORY SCALING & TYPES
+- Total Registered Devices in Infrastructure : 203
+  * ROUTER       : 71 devices
+  * SWITCH       : 66 devices
+  * OLT          : 66 devices
+
+🧠 [2] ISOLATION FOREST & ENSEMBLE ENGINE SCORING TEST
+  - Model Training Status                      : ✅ TRAINED (60 normal samples)
+Phase 7 Verification Failed: TypeError: Cannot read properties of undefined (reading 'toFixed')
+    at verifyPhase7 (/home/gopal-ichiro/Documents/magang/hk-nova/scripts/verify-phase7.ts:52:89)
+/home/gopal-ichiro/Documents/magang/hk-nova/src/lib/algorithms/ensemble-engine.ts:71
+    } else if (trainData.length > 50) {
+                         ^
+
+
+TypeError: Cannot read properties of undefined (reading 'length')
+    at EnsembleEngine.train (/home/gopal-ichiro/Documents/magang/hk-nova/src/lib/algorithms/ensemble-engine.ts:71:26)
+    at verifyPhase7 (/home/gopal-ichiro/Documents/magang/hk-nova/scripts/verify-phase7.ts:44:12)
+
+Node.js v20.20.2

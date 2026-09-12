@@ -38,10 +38,11 @@ module.exports = {
       },
     }),
     app('hk-nova-snmp-worker', 'tsx', 'src/workers/snmp-poller.ts', {
+      max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
-        SNMP_BATCH_SIZE: process.env.SNMP_BATCH_SIZE ?? '20',
-        SNMP_CONCURRENCY_LIMIT: process.env.SNMP_CONCURRENCY_LIMIT ?? '10',
+        SNMP_BATCH_SIZE: process.env.SNMP_BATCH_SIZE ?? '5',
+        SNMP_CONCURRENCY_LIMIT: process.env.SNMP_CONCURRENCY_LIMIT ?? '1',
       },
     }),
     app('hk-nova-demo-generator', 'tsx', 'src/workers/demo-generator.ts', {

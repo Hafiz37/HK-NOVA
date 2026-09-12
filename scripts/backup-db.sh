@@ -22,7 +22,7 @@ ENV_FILE="${PROJECT_ROOT}/.env"
 
 BACKUP_DIR="${BACKUP_DIR:-${PROJECT_ROOT}/backups}"
 RETENTION="${BACKUP_RETENTION:-7}"
-MYSQLDUMP_OPTS="${MYSQLDUMP_OPTS:---single-transaction --routines --triggers --events}"
+MYSQLDUMP_OPTS="${MYSQLDUMP_OPTS:---single-transaction --routines --triggers --events --no-tablespaces}"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "ERROR: "${ENV_FILE}" tidak ditemukan." >&2
@@ -44,7 +44,8 @@ DB_PASS="${CRED#*:}"
 DB_HOST="${HOSTPORT_DB%%:*}"
 HOSTPORT_DB="${HOSTPORT_DB#*:}"       # port/dbname
 DB_PORT="${HOSTPORT_DB%%/*}"
-DB_NAME="${HOSTPORT_DB#*/}"
+RAW_DB="${HOSTPORT_DB#*/}"
+DB_NAME="${RAW_DB%%\?*}"
 
 for VAR in DB_USER DB_PASS DB_HOST DB_PORT DB_NAME; do
   [[ -n "${!VAR}" ]] || { echo "ERROR: ${VAR} kosong (cek DATABASE_URL)." >&2; exit 1; }
