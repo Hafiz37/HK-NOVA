@@ -29,7 +29,7 @@ export const createCustomerSchema = z.object({
   serviceType: z.enum([ServiceType.PPPOE, ServiceType.DHCP, ServiceType.STATIC, ServiceType.HOTSPOT]),
   
   ipAddress: z.string()
-    .ip({ version: 'v4', message: 'Format IP address tidak valid' })
+    .regex(/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/, 'Format IP address tidak valid')
     .optional()
     .nullable(),
   

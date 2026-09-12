@@ -179,4 +179,19 @@ export function resetAllCircuitBreakers(): void {
   circuitBreakers.forEach((breaker) => breaker.reset());
 }
 
+export const circuitBreakerRegistry = {
+  getAllStats: () => getAllCircuitBreakerMetrics(),
+  get: (key: string) => circuitBreakers.get(key),
+  resetAll: () => resetAllCircuitBreakers(),
+};
+
+export function sshCircuitBreaker(deviceId: string): CircuitBreaker {
+  return getCircuitBreaker(`ssh:${deviceId}`, {
+    failureThreshold: 5,
+    successThreshold: 2,
+    timeout: 10000,
+    resetTimeoutMs: 30000,
+  });
+}
+
 export { CircuitBreaker };

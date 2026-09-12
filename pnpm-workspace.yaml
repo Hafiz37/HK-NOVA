@@ -4,3 +4,4 @@ ignoredBuiltDependencies:
 onlyBuiltDependencies:
   - '@tensorflow/tfjs-node'
   - core-js
+  - ssh2

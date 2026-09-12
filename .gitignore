@@ -23,6 +23,9 @@
 # pm2 logs & database backups (hentikan: jangan pernah commit)
 /logs
 /backups
+/pilot-metrics
+*_metrics/
+monitoring_*.log
 
 # misc
 .DS_Store

@@ -1,274 +1,102 @@
-# HK-NOVA Runbook
+# HK-NOVA Operational Runbook 📖
 
-## Quick Start
+Dokumen ini berisi panduan operasional harian, pemeliharaan, serta penanganan insiden untuk sistem **HK-NOVA Network Monitoring & Automation**.
 
-### Development (All Workers + Web)
+---
+
+## 1. Quick Operations Checklist ⏱️
+
+### Prosedur Check Health Harian (08:00 & 16:00 WIB)
 ```bash
-# Terminal 1 - Web server
-pnpm dev
+# 1. Cek status PM2 workers (Harus status 'online')
+pm2 status
 
-# Terminal 2 - Poller inti: ICMP (real) + Demo Generator (sintetis)
-pnpm dev:workers
-# Catatan: SNMP, Backup, dan Retention dijalankan terpisah (lihat di bawah).
-# Anomaly worker belum ada (fitur ML masih Planned).
-```
+# 2. Cek penggunaan resource (CPU/RAM/Disk)
+free -h
+df -h /home/gopal-ichiro/backups
 
-### Individual Workers
-```bash
-pnpm worker:icmp       # ICMP poller for real devices (isDemo: false)
-pnpm demo:generator    # Synthetic metrics for demo devices (isDemo: true)
-pnpm worker:snmp       # SNMP poller for real devices
-pnpm worker:backup     # Autobackup config via SSH (cron)
-pnpm worker:retention  # Data retention cleanup (>30 hari)
-```
+# 3. Cek log error PM2
+pm2 logs --lines 50 --nostream | grep -i "error\|fatal\|crash"
 
-### Production (PM2)
-```bash
-pnpm build
-pnpm pm2:start         # Starts web + all workers
-pnpm pm2:logs          # View logs
-pnpm pm2:status        # Check status
-pnpm pm2:stop          # Stop all
-```
-
-### Testing & Quality Commands (Phase 4)
-```bash
-pnpm test:coverage     # Generate code coverage report
-pnpm bench             # Run quick performance benchmarks
-pnpm bench:all         # Run all benchmark suites
-pnpm generate:postman  # Generate OpenAPI spec + Postman collection
-```
-
-### Production Deployment (Phase 5)
-```bash
-./scripts/deploy-production.sh   # Run production deployment
-./scripts/smoke-test.sh          # Run post-deploy smoke tests
+# 4. Cek koneksi MySQL
+mysql -u hk_nova -p'HkNova2026!DbPass' hk_nova_prod -e "SHOW PROCESSLIST;"
 ```
 
 ---
 
-## Customer Management Operations
+## 2. Managing PM2 Workers ⚙️
 
-### Operational Procedures
-1. **Daily Tasks:**
-   - Review `/dashboard/customers` for new pending provisioning.
-   - Monitor rate limiter & circuit breaker status via `/api/customers/operations-monitor`.
-2. **Incident Response:**
-   - **MikroTik Timeout / Offline:** Periksa konektivitas jaringan dan port API `8728`. Jika Circuit Breaker berstatus `OPEN`, tunggu 60 detik untuk pemulihan otomatis.
-   - **Provisioning Failure:** Periksa `CustomerProvisioningLog` di detail customer untuk melihat pesan error spesifik dari RouterOS.
-
----
-
-## Architecture: Dual-Mode Monitoring
-
-| Mode | Worker | Target Devices | Metric Source | Use Case |
-|------|--------|----------------|---------------|----------|
-| **Real** | `worker:icmp` | `isDemo: false` | `REAL` (actual ping) | Production monitoring |
-| **Demo** | `demo:generator` | `isDemo: true` | `GENERATOR` (synthetic) | UI testing, demos, dev |
-
-### Device Classification
-- **Real devices** (`isDemo: false`): User-added devices, require network reachability
-- **Demo devices** (`isDemo: true`): 18 pre-seeded devices with known behaviors:
-  - `8.8.x.x`, `1.1.1.x`, `9.9.9.9`, `127.0.0.x` → **UP** (reachable)
-  - `10.10.x.x` → **DOWN** (fictitious private IPs)
+| Command | Deskripsi |
+|---------|-----------|
+| `pm2 status` | Cek status seluruh worker & web app |
+| `pm2 logs` | Stream live logs semua worker |
+| `pm2 restart all` | Restart seluruh service HK-NOVA |
+| `pm2 restart hk-nova-icmp-worker` | Restart worker ICMP poller saja |
+| `pm2 restart hk-nova-snmp-worker` | Restart worker SNMP poller saja |
+| `pm2 save` | Simpan state PM2 agar auto-start saat reboot |
 
 ---
 
-## Common Operations
+## 3. Incident Response Procedures 🚨
 
-### Seed Database
+### Incident 1: High CPU / Memory Threshold Exceeded (>85%)
+1. Identifikasi worker/proses penyebab:
+   ```bash
+   pm2 list
+   top -b -n 1 | head -n 20
+   ```
+2. Jika disebabkan worker tertentu:
+   ```bash
+   pm2 restart <worker-name>
+   ```
+3. Jika disebabkan database connection spike:
+   ```bash
+   mysql -u root -p -e "SHOW FULL PROCESSLIST;"
+   ```
+
+### Incident 2: ICMP / SNMP Polling Stuck or Delayed
+1. Cek status Redis:
+   ```bash
+   redis-cli ping
+   ```
+2. Restart ICMP & SNMP worker:
+   ```bash
+   pm2 restart hk-nova-icmp-worker hk-nova-snmp-worker
+   ```
+
+### Incident 3: Device DOWN False Positives
+1. Tes ping manual dari terminal:
+   ```bash
+   ping -c 4 <ip_device>
+   ```
+2. Verifikasi status di Web Dashboard atau API:
+   ```bash
+   curl -s http://localhost:3000/api/devices/<device_id>
+   ```
+
+---
+
+## 4. Maintenance & Backups 💾
+
+### Automated Database Backup
+- Backup otomatis database dilakukan setiap hari jam 01:00 AM via cron.
+- File tersimpan di: `/home/gopal-ichiro/backups/db/`
+- Retention: 30 hari otomatis dibersihkan.
+
+### Trigger Manual Backup Database
 ```bash
-pnpm db:seed        # Core devices (3 real + credentials + SNMP history)
-pnpm demo:seed      # 18 demo devices + 24h metrics + sample alerts
-pnpm demo:reset     # Full reset: migrate + seed + demo:seed
+/usr/bin/mysqldump -u hk_nova -p'HkNova2026!DbPass' hk_nova_prod | gzip > /home/gopal-ichiro/backups/db/hk_nova_manual_$(date +%Y%m%d_%H%M%S).sql.gz
 ```
 
-### Toggle Demo Generator (Admin)
-1. Go to `/dashboard/devices`
-2. Toggle **⚡ Demo Generator** switch
-3. Or via API: `POST /api/settings/demo-mode { "enabled": true }`
-
-### Add Real Device
-1. Go to `/dashboard/devices` → **Tambah Device**
-2. Fill: Name, IP, Type, Vendor, Location
-3. Device starts as `UNKNOWN` → becomes `UP`/`DOWN` after ICMP poller runs
-
-### View Logs
+### Restore Database
 ```bash
-# PM2 logs
-pnpm pm2:logs hk-nova-icmp-worker
-pnpm pm2:logs hk-nova-demo-generator
-
-# Direct (development)
-pnpm worker:icmp      # See ICMP poll cycles
-pnpm demo:generator   # See synthetic metric generation
+gunzip -c /home/gopal-ichiro/backups/db/<file_backup>.sql.gz | mysql -u hk_nova -p'HkNova2026!DbPass' hk_nova_prod
 ```
 
 ---
 
-## Troubleshooting
+## 5. Contact & Escalation 📞
 
-### All Devices Show UNKNOWN
-**Cause**: ICMP poller not running
-```bash
-pnpm worker:icmp      # Start in dev
-# or
-pnpm pm2:start        # Start in production
-```
-
-### Demo Devices Not Updating
-**Cause**: Demo generator disabled
-```bash
-pnpm demo:generator   # Start in dev
-# or enable in UI: /dashboard/devices → ⚡ Demo Generator toggle
-```
-
-### Real Device Stays UNKNOWN (Not Changing to UP/DOWN)
-**Causes**:
-1. ICMP poller not running → start it
-2. IP not reachable from server → check firewall/network
-3. Device in MAINTENANCE status → excluded from polling
-4. Check logs: `pnpm pm2:logs hk-nova-icmp-worker`
-
-### No Metrics in Charts
-- Select a device in dropdown (Monitoring page)
-- Check time range (1h/6h/24h/7d)
-- Verify metric exists: `SELECT * FROM Metric WHERE deviceId='...' AND metricType='ICMP'`
-
----
-
-## Configuration
-
-### Environment Variables (`.env`)
-```env
-DATABASE_URL="mysql://user:pass@localhost:3306/hk_nova"
-JWT_SECRET="your-secret-key"
-TELEGRAM_BOT_TOKEN="..."       # Optional: alerts
-TELEGRAM_CHAT_ID="..."         # Optional: alerts
-
-# Polling intervals (cron format) — lihat .env.example lengkap
-ICMP_POLL_INTERVAL="*/1 * * * *"        # Every minute
-SNMP_POLL_INTERVAL="*/5 * * * *"        # Every 5 minutes
-BACKUP_CRON_SCHEDULE="0 2 * * *"        # Daily 2 AM
-# ANOMALY_CHECK_INTERVAL & ENABLE_ML_ANOMALY  # Reserved (ML belum diimplementasikan)
-```
-
-### Key Constants (`src/lib/constants.ts`)
-```typescript
-ICMP_BATCH_SIZE = 20          # Devices per batch
-ICMP_PING_RETRIES = 2         # Retries per ping
-ICMP_PING_TIMEOUT = 3000      # ms per attempt
-ICMP_ALERT_COOLDOWN_MS = 5*60*1000  # 5 min notification cooldown
-```
-
----
-
-## Monitoring Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/devices` | List devices with latest metrics |
-| `GET /api/monitoring/summary` | Dashboard stats (up/down/unknown counts) |
-| `GET /api/devices/:id/metrics` | Time-series metrics for charts |
-| `GET /api/alerts` | Active alerts |
-| `GET /api/settings/demo-mode` | Demo generator status |
-
----
-
-## Database Schema Key Models
-
-```prisma
-Device {
-  id, name, ip, type, vendor, model, location
-  status: UP | DOWN | UNKNOWN | MAINTENANCE
-  isDemo: Boolean
-  metrics: Metric[]
-  alerts: Alert[]
-}
-
-Metric {
-  deviceId, timestamp, metricType: 'ICMP' | 'SNMP'
-  source: REAL | DEMO | GENERATOR
-  latency?, packetLoss?
-  cpuUtil?, memUtil?, interfaceData?
-}
-
-Alert {
-  type: DEVICE_DOWN | DEVICE_UP | HIGH_UTILIZATION | ANOMALY_DETECTED | BACKUP_FAILED
-  severity: LOW | MEDIUM | HIGH | CRITICAL
-  status: ACTIVE | RESOLVED | ACKNOWLEDGED
-}
-```
-
----
-
-## Production Checklist
-
-- [ ] `DATABASE_URL` configured
-- [ ] `JWT_SECRET` set (32+ chars)
-- [ ] `pnpm build` succeeds
-- [ ] `pnpm db:migrate:prod` applied
-- [ ] `pnpm pm2:start` - all processes online
-- [ ] ICMP poller reaching real devices (check logs)
-- [ ] Demo generator enabled (if demo devices needed)
-- [ ] Telegram alerts configured (optional)
-- [ ] Backup schedule verified
-- [ ] Log rotation configured (PM2 handles)
-- [ ] Prometheus metrics verified (`/api/metrics`)
-- [ ] Platform monitoring dashboard accessible (`/dashboard/platform-monitoring`)
-
----
-
-## Monitoring & Observability (Phase 4)
-
-### Monitoring Endpoints
-- **Prometheus Metrics:** `GET /api/metrics`
-- **Platform Health:** `GET /api/platform/health`
-- **Platform Monitoring Data:** `GET /api/monitoring/platform`
-- **Suspicious Patterns:** `GET /api/audit-logs/monitoring/patterns`
-- **Worker Status:** `GET /api/workers/status`
-
-### Dashboards
-- **Platform Monitoring:** `/dashboard/platform-monitoring`
-- **Network Monitoring:** `/dashboard/monitoring`
-- **Alerts Management:** `/dashboard/alerts`
-- **Audit Logs:** `/dashboard/audit-logs`
-
-### Troubleshooting & Metrics
-```bash
-# Check active alerts
-curl http://localhost:3000/api/metrics | grep alerts_active
-
-# Check worker health
-curl http://localhost:3000/api/metrics | grep worker_last_run_timestamp
-
-# Check rate limit violations
-curl http://localhost:3000/api/metrics | grep rate_limit_violations_total
-
-# View platform monitoring data
-curl http://localhost:3000/api/monitoring/platform | jq
-```
-
----
-
-## Useful Commands Reference
-
-```bash
-# Database
-pnpm db:studio        # Prisma Studio UI
-pnpm db:migrate       # Dev migration
-pnpm generate         # Regenerate Prisma client
-
-# Testing
-pnpm test             # Unit tests
-pnpm test:watch       # Watch mode
-pnpm test:coverage    # Coverage report
-
-# Demo
-pnpm demo:agents      # Setup SNMP agent simulators (requires Docker)
-pnpm demo:setup       # demo:seed + agents hint
-
-# Lint/Format
-pnpm lint             # ESLint
-pnpm format           # Prettier
-```
+- **System Admin / DevOps**: sysadmin@yourdomain.com
+- **NOC On-Call**: noc@yourdomain.com
+- **Repository**: `/home/gopal-ichiro/Documents/magang/hk-nova`
