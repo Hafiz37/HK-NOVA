@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}Analytics - HK-NOVA{% endblock %}
+
+{% block extra_css %}
+<link href="/static/css/charts.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-graph-up-arrow"></i> Analytics & Reports</h2>
+    <div class="chart-time-selector">
+        <button class="btn-time" onclick="changeTimeRange(7)">7D</button>
+        <button class="btn-time active" onclick="changeTimeRange(30)">30D</button>
+        <button class="btn-time" onclick="changeTimeRange(90)">90D</button>
+    </div>
+</div>
+
+<!-- Reliability Score Section -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-4">
+        <div class="card chart-card h-100">
+            <div class="card-header">
+                <i class="bi bi-speedometer"></i> Overall Reliability Score
+            </div>
+            <div class="card-body">
+                <div id="reliability-score-gauge" style="width: 100%; height: 280px;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-trophy"></i> Top Performers
+            </div>
+            <div class="card-body" style="max-height: 280px; overflow-y: auto;">
+                <div id="top-performers-list">
+                    <div class="text-center text-muted py-4">
+                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                        Loading...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Problematic Devices Section -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-exclamation-triangle"></i> Problematic Devices (Success Rate &lt; 80%)</span>
+                <span class="badge bg-danger" id="problematic-count">0</span>
+            </div>
+            <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                <div id="problematic-devices-list">
+                    <div class="text-center text-muted py-4">
+                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                        Loading...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Device Type Analysis -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card chart-card h-100">
+            <div class="card-header">
+                <i class="bi bi-pie-chart"></i> Success Rate by Device Type
+            </div>
+            <div class="card-body">
+                <div id="device-type-chart" style="width: 100%; height: 350px;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card chart-card h-100">
+            <div class="card-header">
+                <i class="bi bi-bar-chart"></i> Backup Frequency by Group
+            </div>
+            <div class="card-body">
+                <div id="backup-frequency-chart" style="width: 100%; height: 350px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Historical Trends -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card chart-card">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> Historical Success Rate Trend
+            </div>
+            <div class="card-body">
+                <div id="success-rate-trend" style="width: 100%; height: 350px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export & Reports -->
+<div class="row g-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-file-earmark-text"></i> Reports & Export
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">Generate and download comprehensive reports</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-primary" onclick="exportReport('pdf')">
+                        <i class="bi bi-file-pdf"></i> Export as PDF
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="exportReport('csv')">
+                        <i class="bi bi-file-spreadsheet"></i> Export as CSV
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="emailReport()">
+                        <i class="bi bi-envelope"></i> Email Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/vendor/apexcharts.min.js"></script>
+<script src="/static/js/charts.js"></script>
+<script>
+let currentDays = 30;
+
+async function loadAnalytics(days) {
+    currentDays = days;
+    
+    // Load reliability score
+    loadReliabilityScore(days);
+    
+    // Load top performers and problematic devices
+    loadDevicePerformance(days);
+    
+    // Load charts
+    loadDeviceTypeChart(days);
+    loadBackupFrequencyChart(days);
+    loadSuccessRateTrend(days);
+}
+
+async function loadReliabilityScore(days) {
+    try {
+        const response = await fetch(`/api/v1/analytics/reliability-score?days=${days}`);
+        const data = await response.json();
+        
+        // Render gauge
+        if (window.HKNovaCharts) {
+            document.getElementById('reliability-score-gauge').innerHTML = '';
+            const options = {
+                series: [data.overall_score],
+                chart: { type: 'radialBar', height: 280 },
+                plotOptions: {
+                    radialBar: {
+                        hollow: { size: '65%' },
+                        dataLabels: {
+                            value: { 
+                                fontSize: '32px',
+                                formatter: (val) => val.toFixed(1) + '%'
+                            }
+                        }
+                    }
+                },
+                fill: {
+                    type: 'gradient',
+                    gradient: {
+                        gradientToColors: ['#10b981'],
+                        stops: [0, 100]
+                    }
+                },
+                labels: ['Reliability Score']
+            };
+            
+            const chart = new ApexCharts(document.querySelector("#reliability-score-gauge"), {
+                ...window.HKNovaCharts.chartTheme || {},
+                ...options
+            });
+            chart.render();
+        }
+        
+    } catch (error) {
+        console.error('Error loading reliability score:', error);
+    }
+}
+
+async function loadDevicePerformance(days) {
+    try {
+        const response = await fetch(`/api/v1/analytics/reliability-score?days=${days}`);
+        const data = await response.json();
+        
+        // Top performers
+        const topHtml = data.top_performers.length > 0 
+            ? data.top_performers.map(d => `
+                <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                    <div>
+                        <strong>${d.hostname}</strong>
+                        <small class="text-muted d-block">${d.device_type}</small>
+                    </div>
+                    <div class="text-end">
+                        <span class="badge bg-success">${d.score.toFixed(1)}%</span>
+                        <small class="text-muted d-block">${d.total_backups} backups</small>
+                    </div>
+                </div>
+            `).join('')
+            : '<p class="text-center text-muted py-4">No data available</p>';
+        
+        document.getElementById('top-performers-list').innerHTML = topHtml;
+        
+        // Problematic devices
+        document.getElementById('problematic-count').textContent = data.problematic_devices.length;
+        
+        const probHtml = data.problematic_devices.length > 0
+            ? data.problematic_devices.map(d => `
+                <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                    <div>
+                        <strong>${d.hostname}</strong>
+                        <small class="text-muted d-block">${d.device_type} - ${d.group || 'No group'}</small>
+                    </div>
+                    <div class="text-end">
+                        <span class="badge bg-danger">${d.score.toFixed(1)}%</span>
+                        <small class="text-muted d-block">${d.success_backups}/${d.total_backups} successful</small>
+                    </div>
+                </div>
+            `).join('')
+            : '<p class="text-center text-muted py-4">All devices performing well! 🎉</p>';
+        
+        document.getElementById('problematic-devices-list').innerHTML = probHtml;
+        
+    } catch (error) {
+        console.error('Error loading device performance:', error);
+    }
+}
+
+async function loadDeviceTypeChart(days) {
+    // Placeholder - you can implement this based on your data
+    console.log('Loading device type chart for', days, 'days');
+}
+
+async function loadBackupFrequencyChart(days) {
+    // Placeholder - you can implement this based on your data
+    console.log('Loading backup frequency chart for', days, 'days');
+}
+
+async function loadSuccessRateTrend(days) {
+    try {
+        const response = await fetch(`/api/v1/analytics/backup-trend?days=${days}`);
+        const data = await response.json();
+        
+        const dates = data.data.map(d => d.date);
+        const successRates = data.data.map(d => {
+            const total = d.success + d.failed;
+            return total > 0 ? (d.success / total * 100).toFixed(1) : 0;
+        });
+        
+        const options = {
+            series: [{ name: 'Success Rate (%)', data: successRates }],
+            chart: { type: 'area', height: 350 },
+            xaxis: { categories: dates, type: 'datetime' },
+            yaxis: { 
+                title: { text: 'Success Rate (%)' },
+                min: 0,
+                max: 100
+            },
+            stroke: { curve: 'smooth', width: 3 },
+            fill: {
+                type: 'gradient',
+                gradient: { opacityFrom: 0.6, opacityTo: 0.1 }
+            },
+            colors: ['#10b981']
+        };
+        
+        const chart = new ApexCharts(document.querySelector("#success-rate-trend"), {
+            ...window.HKNovaCharts?.chartTheme || {},
+            ...options
+        });
+        chart.render();
+        
+    } catch (error) {
+        console.error('Error loading success rate trend:', error);
+    }
+}
+
+function changeTimeRange(days) {
+    document.querySelectorAll('.btn-time').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    loadAnalytics(days);
+}
+
+function exportReport(format) {
+    alert(`Export as ${format.toUpperCase()} - Coming soon!`);
+}
+
+function emailReport() {
+    alert('Email report - Coming soon!');
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+    loadAnalytics(30);
+});
+</script>
+{% endblock %}

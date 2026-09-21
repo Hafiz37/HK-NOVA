@@ -1,0 +1,16 @@
+<!-- Chart Card Component -->
+{% macro chart_card(title, chart_id, height='350px', actions='') %}
+<div class="card chart-card h-100">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-graph-up"></i> {{ title }}</span>
+        {% if actions %}
+        <div class="chart-actions">
+            {{ actions | safe }}
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <div id="{{ chart_id }}" style="width: 100%; height: {{ height }};"></div>
+    </div>
+</div>
+{% endmacro %}

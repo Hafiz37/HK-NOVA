@@ -1,0 +1,238 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   HK-NOVA Charts CSS
+   Styling for ApexCharts and data visualization components
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Chart Card Styling */
+.chart-card {
+    transition: all var(--transition-base);
+}
+
+.chart-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.chart-card .card-header {
+    background: rgba(99, 102, 241, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Chart Container */
+.apexcharts-canvas {
+    margin: 0 auto;
+}
+
+.apexcharts-tooltip {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-medium) !important;
+    box-shadow: var(--shadow-lg) !important;
+    border-radius: var(--radius-md) !important;
+}
+
+.apexcharts-tooltip-title {
+    background: var(--bg-hover) !important;
+    border-bottom: 1px solid var(--border-subtle) !important;
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
+}
+
+.apexcharts-tooltip-series-group {
+    padding: 8px 12px !important;
+}
+
+.apexcharts-legend {
+    padding: 8px 12px !important;
+}
+
+/* Chart Time Range Selector */
+.chart-time-selector {
+    display: inline-flex;
+    gap: 4px;
+    background: var(--bg-hover);
+    padding: 4px;
+    border-radius: var(--radius-md);
+}
+
+.chart-time-selector .btn-time {
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.chart-time-selector .btn-time:hover {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+.chart-time-selector .btn-time.active {
+    background: var(--primary);
+    color: #ffffff;
+}
+
+/* Chart Error State */
+.chart-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    color: var(--text-muted);
+}
+
+.chart-error i {
+    font-size: 2rem;
+    margin-bottom: 8px;
+}
+
+/* Enhanced Stat Cards */
+.stat-card {
+    position: relative;
+    overflow: hidden;
+    transition: all var(--transition-base);
+}
+
+.stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-xl);
+}
+
+.stat-card.stat-card-primary {
+    border-left: 4px solid var(--primary);
+}
+
+.stat-card.stat-card-success {
+    border-left: 4px solid var(--success);
+}
+
+.stat-card.stat-card-danger {
+    border-left: 4px solid var(--danger);
+}
+
+.stat-card.stat-card-info {
+    border-left: 4px solid var(--info);
+}
+
+.stat-card.stat-card-warning {
+    border-left: 4px solid var(--warning);
+}
+
+.stat-card-glow {
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.15), transparent 70%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--transition-slow);
+}
+
+.stat-card:hover .stat-card-glow {
+    opacity: 1;
+}
+
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+    margin: 12px 0;
+}
+
+.stat-subtext {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.trend-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.trend-badge.trend-up {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success-light);
+}
+
+.trend-badge.trend-down {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger-light);
+}
+
+/* Loading State for Charts */
+@keyframes chartPulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 0.3; }
+}
+
+.chart-loading {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: chartPulse 1.5s ease-in-out infinite;
+}
+
+/* Responsive Charts */
+@media (max-width: 767.98px) {
+    .stat-value {
+        font-size: 2rem;
+    }
+    
+    .chart-time-selector {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .chart-time-selector .btn-time {
+        flex: 1;
+    }
+}
+
+/* ApexCharts toolbar customization */
+.apexcharts-toolbar {
+    z-index: 11 !important;
+}
+
+.apexcharts-menu {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-medium) !important;
+}
+
+.apexcharts-menu-item:hover {
+    background: var(--bg-hover) !important;
+}
+
+/* Chart legend customization */
+.apexcharts-legend-text {
+    color: var(--text-secondary) !important;
+    font-size: 13px !important;
+}
+
+/* Data labels */
+.apexcharts-datalabel {
+    font-weight: 600 !important;
+}
+
+/* Grid lines */
+.apexcharts-gridline {
+    stroke: var(--border-subtle) !important;
+}
+
+/* Chart animations enhancement */
+.apexcharts-svg {
+    transition: all var(--transition-base);
+}

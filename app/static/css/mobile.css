@@ -1,0 +1,309 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   HK-NOVA Mobile Enhancements
+   Mobile-first responsive improvements and bottom navigation
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Mobile Bottom Navigation */
+.mobile-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: rgba(30, 41, 59, 0.98);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border-subtle);
+    box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.3);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0;
+    z-index: 1030;
+}
+
+.mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    height: 100%;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.7rem;
+    font-weight: 500;
+    transition: all var(--transition-fast);
+    position: relative;
+}
+
+.mobile-nav-item i {
+    font-size: 1.3rem;
+    margin-bottom: 2px;
+}
+
+.mobile-nav-item span {
+    font-size: 0.65rem;
+}
+
+.mobile-nav-item:hover,
+.mobile-nav-item:focus {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.mobile-nav-item.active {
+    color: var(--primary-light);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.mobile-nav-item.active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--primary);
+}
+
+/* Adjust body padding on mobile when bottom nav is visible */
+@media (max-width: 767.98px) {
+    body {
+        padding-bottom: 60px;
+    }
+}
+
+/* Touch-optimized controls */
+@media (max-width: 767.98px) {
+    .btn {
+        min-height: 44px;
+        padding: 0.5rem 1rem;
+    }
+    
+    .btn-sm {
+        min-height: 36px;
+        padding: 0.375rem 0.75rem;
+    }
+    
+    .form-control,
+    .form-select {
+        min-height: 44px;
+    }
+    
+    .form-check-input {
+        width: 1.25rem;
+        height: 1.25rem;
+    }
+}
+
+/* Responsive Table Improvements */
+@media (max-width: 991.98px) {
+    .table-responsive-mobile {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .table-responsive-mobile table {
+        min-width: 800px;
+    }
+    
+    .table thead th:first-child {
+        position: sticky;
+        left: 0;
+        background: var(--bg-hover);
+        z-index: 10;
+    }
+    
+    .table tbody td:first-child {
+        position: sticky;
+        left: 0;
+        background: var(--bg-surface);
+        z-index: 9;
+    }
+    
+    .table-hover tbody tr:hover td:first-child {
+        background: var(--bg-hover);
+    }
+}
+
+/* Mobile Card Adjustments */
+@media (max-width: 767.98px) {
+    .card {
+        border-radius: var(--radius-md);
+        margin-bottom: 1rem;
+    }
+    
+    .card-header {
+        padding: 0.75rem 1rem;
+        font-size: 0.875rem;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+    
+    .stat-value {
+        font-size: 2rem;
+    }
+}
+
+/* Mobile Navigation Hamburger Enhancement */
+@media (max-width: 991.98px) {
+    .navbar-collapse {
+        background: var(--bg-surface);
+        border-radius: var(--radius-md);
+        margin-top: 0.5rem;
+        padding: 0.5rem 0;
+        box-shadow: var(--shadow-lg);
+    }
+    
+    .navbar-nav .nav-link {
+        padding: 0.75rem 1rem;
+        margin: 0;
+        border-radius: 0;
+        border-left: 3px solid transparent;
+    }
+    
+    .navbar-nav .nav-link.active {
+        border-left-color: var(--primary);
+        background: rgba(99, 102, 241, 0.1);
+    }
+    
+    .navbar-nav .nav-link.active::after {
+        display: none;
+    }
+}
+
+/* Pull to Refresh Indicator */
+.pull-to-refresh-indicator {
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-surface);
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-lg);
+    display: none;
+    z-index: 1040;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* Swipe Actions Hint */
+.swipe-hint {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--danger);
+    color: white;
+    padding: 0.5rem;
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+tr:active .swipe-hint {
+    opacity: 1;
+}
+
+/* Mobile Search Bar */
+@media (max-width: 767.98px) {
+    .search-bar-mobile {
+        position: sticky;
+        top: 56px;
+        background: var(--bg-app);
+        z-index: 100;
+        padding: 0.5rem 0;
+        margin: -1rem -0.75rem 1rem;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+}
+
+/* Landscape Mode Adjustments */
+@media (max-width: 767.98px) and (orientation: landscape) {
+    .mobile-bottom-nav {
+        height: 50px;
+    }
+    
+    .mobile-nav-item i {
+        font-size: 1.1rem;
+    }
+    
+    .mobile-nav-item span {
+        display: none;
+    }
+    
+    body {
+        padding-bottom: 50px;
+    }
+}
+
+/* Tablet Optimizations (768px - 991px) */
+@media (min-width: 768px) and (max-width: 991.98px) {
+    .container-fluid {
+        padding-left: 2rem;
+        padding-right: 2rem;
+    }
+    
+    .card-body {
+        padding: 1.5rem;
+    }
+}
+
+/* Hide mobile nav on desktop */
+@media (min-width: 768px) {
+    .mobile-bottom-nav {
+        display: none;
+    }
+    
+    body {
+        padding-bottom: 0;
+    }
+}
+
+/* Touch Feedback */
+@media (hover: none) and (pointer: coarse) {
+    .btn:active {
+        transform: scale(0.98);
+    }
+    
+    .mobile-nav-item:active {
+        background: var(--bg-hover);
+    }
+    
+    .card:active {
+        transform: scale(0.99);
+    }
+}
+
+/* Safe Area Insets for Notch Devices */
+@supports (padding: max(0px)) {
+    .mobile-bottom-nav {
+        padding-bottom: max(0px, env(safe-area-inset-bottom));
+        height: calc(60px + max(0px, env(safe-area-inset-bottom)));
+    }
+    
+    body {
+        padding-bottom: calc(60px + max(0px, env(safe-area-inset-bottom)));
+    }
+}
+
+/* Reduce Motion for Mobile */
+@media (prefers-reduced-motion: reduce) {
+    .mobile-nav-item,
+    .mobile-bottom-nav {
+        transition: none;
+    }
+}

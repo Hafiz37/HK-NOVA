@@ -1,0 +1,512 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Clone' if clone else ('Edit' if device else 'Add') }} Device - HK-NOVA{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const deviceType = document.querySelector('select[name="device_type"]');
+    const engine = document.querySelector('select[name="backup_engine"]');
+    const portInput = document.getElementById('port-input');
+    const portLabel = document.getElementById('port-label');
+
+    const enginePorts = { netmiko: 22, scp: 22, oxidized: 8888, pfsense: 443, proxmox: 22 };
+    const proxyEngines = ['netmiko', 'scp'];
+    const firewallTypes = ['pfsense', 'opnsense'];
+    const proxmoxTypes  = ['proxmox'];
+
+    const engineHints = {
+        netmiko:  'SSH CLI — for network devices (switches, routers, firewalls)',
+        scp:      'Pulls a config file directly over SCP/SFTP',
+        oxidized: 'Delegates to a running Oxidized instance via its REST API',
+        pfsense:  'Uses the pfSense / OPNsense XML config API over HTTPS',
+        proxmox:  'Connects via SFTP and downloads all Proxmox VE config files as a .tar.gz archive (SSH port 22)',
+    };
+
+    const engineHintEl = document.getElementById('engine-hint');
+
+    let userChangedPort = {{ 'true' if device else 'false' }};
+    portInput.addEventListener('input', function() { userChangedPort = true; });
+
+    function updatePortHint() {
+        const eng = engine.value;
+        const defaultPort = enginePorts[eng] || 22;
+        portLabel.textContent = (eng === 'pfsense') ? 'Web Port' : 'SSH Port';
+        if (!userChangedPort) {
+            portInput.value = defaultPort;
+        }
+        portInput.placeholder = defaultPort;
+        if (engineHintEl) engineHintEl.textContent = engineHints[eng] || '';
+    }
+
+    deviceType.addEventListener('change', function() {
+        const dt = this.value.toLowerCase();
+        if (firewallTypes.includes(dt)) {
+            engine.value = 'pfsense';
+        } else if (proxmoxTypes.includes(dt)) {
+            engine.value = 'proxmox';
+        } else if (['pfsense', 'proxmox'].includes(engine.value)) {
+            engine.value = 'netmiko';
+        }
+        userChangedPort = false;
+        updatePortHint();
+    });
+
+    function updateProxyVisibility() {
+        const proxySection = document.getElementById('proxy-section');
+        if (!proxySection) return;
+        // Keep the section visible if the device already has proxy values
+        // saved — otherwise editing a device whose engine was later changed to
+        // one without proxy support would hide the orphan data and give users
+        // no way to clear it.
+        const hostInput = proxySection.querySelector('input[name="proxy_host"]');
+        const portInput = proxySection.querySelector('input[name="proxy_port"]');
+        const credSelect = proxySection.querySelector('select[name="proxy_credential_id"]');
+        const hasExistingProxy =
+            (hostInput && hostInput.value.trim() !== '') ||
+            (portInput && portInput.value.trim() !== '') ||
+            (credSelect && credSelect.value !== '');
+        const supported = proxyEngines.includes(engine.value);
+        proxySection.style.display = (supported || hasExistingProxy) ? '' : 'none';
+    }
+
+    engine.addEventListener('change', function() {
+        userChangedPort = false;
+        updatePortHint();
+        updateProxyVisibility();
+    });
+
+    // Set initial state
+    portLabel.textContent = (engine.value === 'pfsense') ? 'Web Port' : 'SSH Port';
+    if (engineHintEl) engineHintEl.textContent = engineHints[engine.value] || '';
+    updateProxyVisibility();
+
+    // ============================================================================
+    // DESTINATION MANAGEMENT JAVASCRIPT
+    // ============================================================================
+    (function() {
+        const groupSelect = document.querySelector('select[name="group"]');
+        const destinationCheckboxes = document.querySelectorAll('.destination-checkbox:not([disabled])');
+        const overrideInfo = document.getElementById('override-info');
+        const noDestWarning = document.getElementById('no-dest-warning');
+        const form = document.querySelector('form');
+        
+        let defaultDestIds = [];
+        
+        async function loadGroupDestinations(groupName) {
+            if (!groupName) {
+                destinationCheckboxes.forEach(cb => {
+                    cb.checked = false;
+                    if (!cb.hasAttribute('data-originally-disabled')) {
+                        cb.disabled = false;
+                    }
+                    cb.classList.remove('group-locked');
+                    cb.closest('.form-check').classList.remove('group-locked-item');
+                    const lockIcon = document.getElementById('lock-' + cb.value);
+                    if (lockIcon) lockIcon.style.display = 'none';
+                });
+                defaultDestIds = [];
+                updateUI(false);
+                checkOverride();
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/groups/api/groups/${groupName}/destinations`, {
+                    credentials: 'same-origin'
+                });
+                if (!response.ok) {
+                    console.warn('Failed to load group destinations:', response.statusText);
+                    return;
+                }
+                
+                const data = await response.json();
+                defaultDestIds = data.default_destination_ids || [];
+                const hasDefaults = data.has_defaults || false;
+                
+                destinationCheckboxes.forEach(cb => {
+                    const destId = parseInt(cb.value);
+                    const isGroupDefault = defaultDestIds.includes(destId);
+                    const isDestDisabled = cb.hasAttribute('data-originally-disabled');
+                    
+                    if (isGroupDefault) {
+                        cb.checked = true;
+                        cb.disabled = true;
+                        cb.classList.add('group-locked');
+                        cb.closest('.form-check').classList.add('group-locked-item');
+                        
+                        const lockIcon = document.getElementById('lock-' + destId);
+                        if (lockIcon) lockIcon.style.display = 'inline';
+                    } else {
+                        cb.checked = false;
+                        cb.disabled = isDestDisabled;
+                        cb.classList.remove('group-locked');
+                        cb.closest('.form-check').classList.remove('group-locked-item');
+                        
+                        const lockIcon = document.getElementById('lock-' + destId);
+                        if (lockIcon) lockIcon.style.display = 'none';
+                    }
+                });
+                
+                updateUI(hasDefaults);
+                checkOverride();
+                
+            } catch (error) {
+                console.error('Error loading group destinations:', error);
+            }
+        }
+        
+        function updateUI(hasDefaults) {
+            const groupInfoBox = document.getElementById('group-dest-info');
+            const noGroupWarning = document.getElementById('no-group-dest-warning');
+            
+            if (hasDefaults) {
+                if (groupInfoBox) groupInfoBox.style.display = 'block';
+                if (noGroupWarning) noGroupWarning.style.display = 'none';
+            } else {
+                if (groupInfoBox) groupInfoBox.style.display = 'none';
+                if (noGroupWarning) noGroupWarning.style.display = 'block';
+            }
+        }
+        
+        function checkOverride() {
+            const selected = Array.from(destinationCheckboxes)
+                .filter(cb => cb.checked && !cb.disabled)
+                .map(cb => parseInt(cb.value))
+                .sort((a, b) => a - b);
+            
+            const defaults = [...defaultDestIds].sort((a, b) => a - b);
+            const extras = selected.filter(id => !defaults.includes(id));
+            
+            const extrasInfo = document.getElementById('extras-info');
+            
+            if (extras.length > 0) {
+                if (extrasInfo) {
+                    extrasInfo.style.display = 'block';
+                    extrasInfo.querySelector('#extras-count').textContent = extras.length;
+                }
+            } else {
+                if (extrasInfo) extrasInfo.style.display = 'none';
+            }
+            
+            if (noDestWarning && defaults.length === 0) {
+                const totalSelected = Array.from(destinationCheckboxes).filter(cb => cb.checked).length;
+                noDestWarning.style.display = totalSelected === 0 ? 'block' : 'none';
+            }
+        }
+        
+        if (groupSelect) {
+            groupSelect.addEventListener('change', function() {
+                loadGroupDestinations(this.value);
+            });
+            
+            const initialGroup = groupSelect.value;
+            if (initialGroup) {
+                loadGroupDestinations(initialGroup);
+            }
+        }
+        
+        destinationCheckboxes.forEach(cb => {
+            cb.addEventListener('change', checkOverride);
+        });
+        
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                const allChecked = Array.from(destinationCheckboxes).filter(cb => cb.checked);
+                const groupDefaults = defaultDestIds.length;
+                
+                if (groupDefaults === 0 && allChecked.length === 0) {
+                    e.preventDefault();
+                    alert('❌ Group has no default destinations.\nPlease select at least 1 destination.');
+                    
+                    const container = document.getElementById('destinations-container');
+                    if (container) {
+                        container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                    
+                    if (noDestWarning) {
+                        noDestWarning.style.display = 'block';
+                    }
+                    
+                    return false;
+                }
+            });
+        }
+        
+    })();
+    // ============================================================================
+    // END DESTINATION MANAGEMENT
+    // ============================================================================
+});
+</script>
+<style>
+/* Locked checkbox styling */
+.group-locked-item {
+    background-color: rgba(99, 102, 241, 0.1);
+    border-left: 2px solid var(--primary);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+}
+
+.group-locked-item:hover {
+    background-color: rgba(99, 102, 241, 0.15);
+}
+
+.group-locked:disabled {
+    cursor: not-allowed;
+    opacity: 0.9;
+}
+
+.group-locked-item label {
+    font-weight: 500;
+    color: var(--primary-light);
+    cursor: not-allowed;
+}
+
+.group-locked-item .bi-lock-fill {
+    margin-right: 0.25rem;
+    font-size: 0.875rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set src = clone if clone else device %}
+<h2><i class="bi bi-router"></i> {{ 'Clone' if clone else ('Edit' if device else 'Add') }} Device</h2>
+
+{% if clone %}
+<div class="alert alert-info py-2 mt-2">
+    <i class="bi bi-copy"></i> Cloning from <strong>{{ clone.hostname }}</strong> — change the hostname and IP address, then save.
+</div>
+{% endif %}
+
+<div class="card mt-3">
+    <div class="card-body">
+        <form method="post" action="{{ '/devices/' ~ device.id ~ '/edit' if device else '/devices/add' }}">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Hostname</label>
+                    <input type="text" name="hostname" class="form-control" value="{{ src.hostname if src else '' }}" required {% if clone %}autofocus{% endif %}>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">IP Address</label>
+                    <input type="text" name="ip_address" class="form-control" value="{{ src.ip_address if src else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Device Type</label>
+                    <select name="device_type" class="form-select">
+                        {% for key, label in device_types.items() %}
+                        <option value="{{ key }}" {{ 'selected' if src and src.device_type == key else '' }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Backup Engine</label>
+                    <select name="backup_engine" class="form-select">
+                        {% for key, label in engine_types.items() %}
+                        <option value="{{ key }}" {{ 'selected' if src and src.backup_engine == key else '' }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div id="engine-hint" class="form-text text-info mt-1"></div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Credential</label>
+                    <select name="credential_id" class="form-select">
+                        <option value="">-- None --</option>
+                        {% for c in credentials %}
+                        <option value="{{ c.id }}" {{ 'selected' if src and src.credential_id == c.id else '' }}>{{ c.name }} ({{ c.username }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Group</label>
+                    <select name="group" class="form-select">
+                        {% set current_group = src.group if src else 'default' %}
+                        {% for g in groups %}
+                        <option value="{{ g.name }}" {{ 'selected' if g.name == current_group else '' }}>{{ g.name }}</option>
+                        {% endfor %}
+                        {% if current_group and current_group not in groups|map(attribute='name')|list %}
+                        <option value="{{ current_group }}" selected>{{ current_group }}</option>
+                        {% endif %}
+                    </select>
+                    <div class="form-text">Manage groups at <a href="/groups">Settings → Groups</a></div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" id="port-label">Port</label>
+                    <input type="number" name="port" id="port-input" class="form-control" value="{{ src.port if src else 22 }}"
+                           placeholder="22 for SSH, 443 for API">
+                </div>
+                {% if device %}
+                <div class="col-md-4">
+                    <label class="form-label">Enabled</label>
+                    <select name="enabled" class="form-select">
+                        <option value="true" {{ 'selected' if device.enabled else '' }}>Yes</option>
+                        <option value="false" {{ 'selected' if not device.enabled else '' }}>No</option>
+                    </select>
+                </div>
+                {% endif %}
+                
+                <!-- ============================================ -->
+                <!-- BACKUP DESTINATIONS SECTION                 -->
+                <!-- ============================================ -->
+                <div class="col-12">
+                    <hr class="my-1">
+                    
+                    <!-- Info: Group has defaults (locked) -->
+                    <div id="group-dest-info" class="alert alert-info py-2 mb-2" style="display:none;">
+                        <i class="bi bi-lock"></i>
+                        <strong>Group destinations are locked.</strong>
+                        You may add extras but cannot remove group defaults.
+                    </div>
+                    
+                    <!-- Warning: No group defaults -->
+                    <div id="no-group-dest-warning" class="alert alert-warning py-2 mb-2" style="display:none;">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Group has no default destinations.</strong>
+                        Please select at least 1 destination below.
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">
+                            <i class="bi bi-hdd-network"></i> Backup Destinations
+                        </label>
+                        <small class="text-muted">
+                            Select where backups will be saved (defaults from group)
+                        </small>
+                    </div>
+                    
+                    <!-- Destinations Grid -->
+                    <div class="row g-2" id="destinations-container">
+                        {% for dest in destinations %}
+                        <div class="col-md-6 col-lg-4">
+                            <div class="form-check">
+                                <input class="form-check-input destination-checkbox" 
+                                       type="checkbox" 
+                                       name="destination_ids" 
+                                       value="{{ dest.id }}" 
+                                       id="dest-{{ dest.id }}"
+                                       data-dest-type="{{ dest.dest_type.value }}"
+                                       {% if not dest.enabled %}disabled data-originally-disabled{% endif %}
+                                       {% if device and device.destination_ids_override and dest.id in device.destination_ids_override %}checked{% endif %}>
+                                
+                                <label class="form-check-label {% if not dest.enabled %}text-muted{% endif %}" 
+                                       for="dest-{{ dest.id }}">
+                                    <span id="lock-{{ dest.id }}" style="display:none;" class="text-primary">
+                                        <i class="bi bi-lock-fill"></i>
+                                    </span>
+                                    
+                                    <span class="badge bg-{{ 
+                                        'success' if dest.dest_type.value == 'local' else (
+                                        'primary' if dest.dest_type.value == 'telegram' else (
+                                        'info' if dest.dest_type.value == 'git' else (
+                                        'warning' if dest.dest_type.value == 'smb' else 
+                                        'secondary'
+                                    ))) }} me-1">
+                                        {{ dest.dest_type.value }}
+                                    </span>
+                                    
+                                    {{ dest.name }}
+                                    
+                                    {% if not dest.enabled %}
+                                    <small class="text-muted">(disabled)</small>
+                                    {% endif %}
+                                </label>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="col-12 text-muted">
+                            <i class="bi bi-exclamation-circle"></i>
+                            No destinations configured. 
+                            <a href="/destinations/add" target="_blank">Add destinations first</a>.
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- Info: User added extras -->
+                    <div id="extras-info" class="alert alert-success py-2 mt-2" style="display:none;">
+                        <i class="bi bi-plus-circle"></i>
+                        <strong>Additional destinations:</strong>
+                        Using group defaults + <span id="extras-count">0</span> extra(s)
+                    </div>
+                    
+                    <hr class="my-1">
+                </div>
+                <!-- ============================================ -->
+                <!-- END DESTINATIONS SECTION                    -->
+                <!-- ============================================ -->
+                
+                <div class="col-12" id="proxy-section">
+                    <hr class="my-1">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <span class="fw-semibold small text-secondary">
+                                <i class="bi bi-diagram-3"></i> SSH Proxy / Jump Host
+                                <span class="fw-normal text-muted">— applies to Netmiko and SCP engines only; leave blank for direct connection</span>
+                            </span>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Proxy Host
+                                <i class="bi bi-info-circle text-muted ms-1"
+                                   data-bs-toggle="tooltip"
+                                   data-bs-placement="top"
+                                   data-bs-title="SSH jump host — HK-NOVA SSHes to this host first, then opens a channel to the device from there. Used when devices are only reachable via a bastion/jump host (e.g. remote sites connected via autossh)."></i>
+                            </label>
+                            <input type="text" name="proxy_host" class="form-control"
+                                   value="{{ src.proxy_host if src and src.proxy_host else '' }}"
+                                   placeholder="jump-host IP or hostname">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Proxy Port</label>
+                            <input type="number" name="proxy_port" class="form-control"
+                                   value="{{ src.proxy_port if src and src.proxy_port else '' }}"
+                                   placeholder="22">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Proxy Credential
+                                <i class="bi bi-info-circle text-muted ms-1"
+                                   data-bs-toggle="tooltip"
+                                   data-bs-title="Credential used to authenticate to the jump host. Leave as 'Same as device' if they share the same username/password."></i>
+                            </label>
+                            <select name="proxy_credential_id" class="form-select">
+                                <option value="">— Same as device —</option>
+                                {% for c in credentials %}
+                                <option value="{{ c.id }}" {{ 'selected' if src and src.proxy_credential_id == c.id else '' }}>
+                                    {{ c.name }} ({{ c.username }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <hr class="my-1">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    <textarea name="notes" class="form-control" rows="2">{{ src.notes if src and src.notes else '' }}</textarea>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check mt-3">
+                        <input type="checkbox" class="form-check-input" id="is_critical" name="is_critical" value="1"
+                               {{ 'checked' if src and src.is_critical else '' }}>
+                        <label class="form-check-label" for="is_critical">
+                            <strong>Critical Device</strong> <span class="text-muted">(enable frequent monitoring)</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label for="monitoring_interval" class="form-label">Monitoring Interval (minutes)</label>
+                    <input type="number" class="form-control" id="monitoring_interval" name="monitoring_interval" 
+                           min="1" max="1440" placeholder="Default: 15 minutes"
+                           value="{{ src.monitoring_interval if src and src.monitoring_interval else '' }}">
+                    <div class="form-text">Only applies to critical devices. Leave empty for default (15 minutes).</div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg"></i> {{ 'Save Changes' if device else ('Save Clone' if clone else 'Add Device') }}
+                </button>
+                <a href="{{ '/devices/' ~ device.id if device else ('/devices/' ~ clone.id if clone else '/devices') }}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

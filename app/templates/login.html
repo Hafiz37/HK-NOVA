@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - HK-NOVA</title>
+    <link href="/static/vendor/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/vendor/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="/static/css/app.css" rel="stylesheet">
+</head>
+<body class="d-flex align-items-center justify-content-center" style="min-height:100vh;">
+<div class="card shadow login-card" style="width:100%;max-width:420px;">
+    <div class="card-body p-5">
+        <div class="text-center mb-5">
+            <img src="/static/assets/logo/LOGO-HK_NOVA.png" alt="HK-NOVA" class="mb-3" style="max-width: 200px; height: auto; mix-blend-mode: screen;">
+            <p class="text-muted small mb-0">Advanced Network Configuration Manager</p>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ error }}
+        </div>
+        {% endif %}
+
+        <form method="post" action="/login">
+            <input type="hidden" name="next" value="{{ next }}">
+            <div class="mb-3">
+                <label class="form-label">Username</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                    <input type="text" name="username" class="form-control" placeholder="Enter username" autofocus autocomplete="username" required>
+                </div>
+            </div>
+            <div class="mb-4">
+                <label class="form-label">Password</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                    <input type="password" name="password" class="form-control" placeholder="Enter password" autocomplete="current-password" required>
+                </div>
+            </div>
+            <div class="mb-4 form-check">
+                <input type="checkbox" class="form-check-input" id="remember" name="remember" value="1" checked>
+                <label class="form-check-label" for="remember">Remember me for 14 days</label>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 py-3">
+                <i class="bi bi-box-arrow-in-right me-2"></i> Sign In
+            </button>
+        </form>
+    </div>
+    <div class="card-footer text-center text-muted small py-3">
+        <span class="text-primary fw-semibold">HK-NOVA</span> v2.0
+    </div>
+</div>
+<script src="/static/vendor/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<!-- Mobile Bottom Navigation -->
+<nav class="mobile-bottom-nav d-md-none">
+    <a href="/" class="mobile-nav-item {% if request.path == '/' %}active{% endif %}">
+        <i class="bi bi-speedometer2"></i>
+        <span>Dashboard</span>
+    </a>
+    <a href="/devices" class="mobile-nav-item {% if request.path.startswith('/devices') %}active{% endif %}">
+        <i class="bi bi-router"></i>
+        <span>Devices</span>
+    </a>
+    <a href="/backups" class="mobile-nav-item {% if request.path.startswith('/backups') %}active{% endif %}">
+        <i class="bi bi-archive"></i>
+        <span>Backups</span>
+    </a>
+    <a href="/jobs" class="mobile-nav-item {% if request.path.startswith('/jobs') %}active{% endif %}">
+        <i class="bi bi-clock-history"></i>
+        <span>Jobs</span>
+    </a>
+</nav>

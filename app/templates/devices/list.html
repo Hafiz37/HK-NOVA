@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Devices - HK-NOVA{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-router"></i> Devices</h2>
+    <div>
+        <a href="/devices/import/oxidized" class="btn btn-info"><i class="bi bi-cloud-download"></i> Import from Oxidized</a>
+        <a href="/devices/test-all" class="btn btn-warning"><i class="bi bi-plug"></i> Test All</a>
+        <a href="/devices/add" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Device</a>
+    </div>
+</div>
+
+{% if devices %}
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0" id="devices-table" data-enhance="true" data-sortable="true" data-density="true" data-exportable="true">
+            <thead>
+                <tr>
+                    <th style="width: 40px;" data-sortable="false"><input type="checkbox" class="form-check-input" id="select-all"></th>
+                    <th>Hostname</th>
+                    <th>IP Address</th>
+                    <th>Type</th>
+                    <th>Engine</th>
+                    <th>Group</th>
+                    <th>Status</th>
+                    <th data-sortable="false">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for device in devices %}
+                <tr>
+                    <td><input type="checkbox" class="form-check-input device-check" value="{{ device.id }}"></td>
+                    <td>
+                        <a href="/devices/{{ device.id }}">{{ device.hostname }}</a>
+                        {% if device.is_critical %}
+                        <span class="badge bg-danger ms-1">CRITICAL</span>
+                        {% endif %}
+                        {% if not device.enabled %}
+                        <span class="badge bg-secondary ms-1">DISABLED</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <code>{{ device.ip_address }}</code>
+                        {% if device.proxy_host %}
+                        <i class="bi bi-diagram-3 text-info ms-1"
+                           data-bs-toggle="tooltip"
+                           data-bs-title="Via jump-host: {{ device.proxy_host }}:{{ device.proxy_port or 22 }}{% if device.proxy_credential %} (user: {{ device.proxy_credential.username }}){% endif %}"
+                           style="cursor: default;"></i>
+                        {% endif %}
+                    </td>
+                    <td><span class="badge bg-secondary">{{ device_type_labels.get(device.device_type, device.device_type) }}</span></td>
+                    <td>{{ device.backup_engine }}</td>
+                    <td>{{ device.group or '-' }}</td>
+                    <td>
+                        {% if device.enabled %}
+                        <span class="badge bg-success">Enabled</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Disabled</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-info" hx-post="/backups/{{ device.id }}/now" hx-target="#status-{{ device.id }}" hx-swap="innerHTML">
+                                <i class="bi bi-download"></i> Backup
+                            </button>
+                            <button class="btn btn-outline-warning" hx-post="/devices/{{ device.id }}/test" hx-target="#status-{{ device.id }}" hx-swap="innerHTML">
+                                <i class="bi bi-plug"></i> Test
+                            </button>
+                            <a href="/devices/{{ device.id }}/edit" class="btn btn-outline-light"><i class="bi bi-pencil"></i></a>
+                            <a href="/devices/{{ device.id }}/clone" class="btn btn-outline-secondary" title="Clone device"><i class="bi bi-copy"></i></a>
+                        </div>
+                        <span id="status-{{ device.id }}" class="ms-2"></span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-center text-muted py-4">No devices yet. <a href="/devices/add">Add one</a>.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+{% from 'components/empty-state.html' import empty_state %}
+{{ empty_state('no-devices', 'No Devices Yet', 'Add your first network device to get started', '/devices/add', 'plus-lg', 'Add Device') }}
+{% endif %}
+
+<!-- Batch edit bar -->
+<div id="batch-bar" class="fixed-bottom bg-dark border-top border-secondary p-3" style="display: none;">
+    <form method="post" action="/devices/batch-edit" class="container-fluid d-flex align-items-center gap-3 flex-wrap">
+        <input type="hidden" name="device_ids" id="batch-device-ids">
+        <strong><span id="batch-count">0</span> selected</strong>
+        <select name="credential_id" class="form-select form-select-sm" style="width: auto;">
+            <option value="">-- Credential: no change --</option>
+            <option value="__none__">-- Clear credential --</option>
+            {% for c in credentials %}
+            <option value="{{ c.id }}">{{ c.name }} ({{ c.username }})</option>
+            {% endfor %}
+        </select>
+        <select name="group" class="form-select form-select-sm" style="width: auto;">
+            <option value="">-- Group: no change --</option>
+            {% for g in groups %}
+            <option value="{{ g.name }}">{{ g.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-pencil-square"></i> Apply</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearSelection()">Cancel</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/table-enhancements.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAll = document.getElementById('select-all');
+    const batchBar = document.getElementById('batch-bar');
+    const batchCount = document.getElementById('batch-count');
+    const batchIds = document.getElementById('batch-device-ids');
+
+    function updateBatchBar() {
+        const checked = document.querySelectorAll('.device-check:checked');
+        const all = document.querySelectorAll('.device-check');
+        const ids = Array.from(checked).map(cb => cb.value);
+        batchIds.value = ids.join(',');
+        batchCount.textContent = ids.length;
+        batchBar.style.display = ids.length > 0 ? '' : 'none';
+        selectAll.indeterminate = ids.length > 0 && ids.length < all.length;
+        selectAll.checked = ids.length === all.length && all.length > 0;
+    }
+
+    selectAll.addEventListener('change', function() {
+        document.querySelectorAll('.device-check').forEach(cb => cb.checked = this.checked);
+        updateBatchBar();
+    });
+
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('device-check')) updateBatchBar();
+    });
+
+    window.clearSelection = function() {
+        document.querySelectorAll('.device-check').forEach(cb => cb.checked = false);
+        selectAll.checked = false;
+        updateBatchBar();
+    };
+});
+</script>
+{% endblock %}

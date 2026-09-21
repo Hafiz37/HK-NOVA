@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 400" width="500" height="400">
+  <defs>
+    <linearGradient id="grad5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ef4444;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#dc2626;stop-opacity:0.1" />
+    </linearGradient>
+  </defs>
+  <rect width="500" height="400" fill="url(#grad5)" opacity="0.1"/>
+  <g transform="translate(250, 180)">
+    <!-- Alert Triangle -->
+    <path d="M 0,-70 L 70,60 L -70,60 Z" fill="#334155" stroke="#ef4444" stroke-width="4"/>
+    <circle cx="0" cy="45" r="5" fill="#ef4444"/>
+    <line x1="0" y1="-20" x2="0" y2="25" stroke="#ef4444" stroke-width="4" stroke-linecap="round"/>
+    
+    <!-- Text -->
+    <text x="0" y="120" text-anchor="middle" fill="#cbd5e1" font-family="Inter, sans-serif" font-size="18" font-weight="600">Something Went Wrong</text>
+    <text x="0" y="145" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="14">Please try again or contact support</text>
+  </g>
+</svg>

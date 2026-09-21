@@ -1,0 +1,15 @@
+<!-- Empty State Component -->
+{% macro empty_state(illustration, title, description, action_url='', action_icon='', action_text='') %}
+<div class="empty-state">
+    <img src="/static/assets/illustrations/{{ illustration }}.svg" 
+         alt="{{ title }}" 
+         class="empty-state-image">
+    <h3 class="empty-state-title">{{ title }}</h3>
+    <p class="empty-state-description">{{ description }}</p>
+    {% if action_url %}
+    <a href="{{ action_url }}" class="btn btn-primary mt-3">
+        <i class="bi bi-{{ action_icon }}"></i> {{ action_text }}
+    </a>
+    {% endif %}
+</div>
+{% endmacro %}
