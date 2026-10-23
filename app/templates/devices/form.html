@@ -85,14 +85,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // ============================================================================
     (function() {
         const groupSelect = document.querySelector('select[name="group"]');
-        const destinationCheckboxes = document.querySelectorAll('.destination-checkbox:not([disabled])');
+        const destinationCheckboxes = document.querySelectorAll('.destination-checkbox');
         const overrideInfo = document.getElementById('override-info');
         const noDestWarning = document.getElementById('no-dest-warning');
         const form = document.querySelector('form');
         
         let defaultDestIds = [];
         
-        async function loadGroupDestinations(groupName) {
+        async function loadGroupDestinations(groupName, preserveExisting = false) {
             if (!groupName) {
                 destinationCheckboxes.forEach(cb => {
                     cb.checked = false;
@@ -137,7 +137,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         const lockIcon = document.getElementById('lock-' + destId);
                         if (lockIcon) lockIcon.style.display = 'inline';
                     } else {
-                        cb.checked = false;
+                        if (!preserveExisting) {
+                            cb.checked = false;
+                        }
                         cb.disabled = isDestDisabled;
                         cb.classList.remove('group-locked');
                         cb.closest('.form-check').classList.remove('group-locked-item');
@@ -196,12 +198,13 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (groupSelect) {
             groupSelect.addEventListener('change', function() {
-                loadGroupDestinations(this.value);
+                loadGroupDestinations(this.value, false);
             });
             
             const initialGroup = groupSelect.value;
             if (initialGroup) {
-                loadGroupDestinations(initialGroup);
+                const isEditMode = {{ 'true' if device else 'false' }};
+                loadGroupDestinations(initialGroup, isEditMode);
             }
         }
         
@@ -387,7 +390,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                        id="dest-{{ dest.id }}"
                                        data-dest-type="{{ dest.dest_type.value }}"
                                        {% if not dest.enabled %}disabled data-originally-disabled{% endif %}
-                                       {% if device and device.destination_ids_override and dest.id in device.destination_ids_override %}checked{% endif %}>
+                                       {% if (device or clone) and active_destination_ids and dest.id in active_destination_ids %}checked{% endif %}>
                                 
                                 <label class="form-check-label {% if not dest.enabled %}text-muted{% endif %}" 
                                        for="dest-{{ dest.id }}">

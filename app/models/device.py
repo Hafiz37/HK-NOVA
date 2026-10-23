@@ -215,3 +215,23 @@ class Device(Base):
     credential = relationship("Credential", foreign_keys=[credential_id], back_populates="devices")
     proxy_credential = relationship("Credential", foreign_keys=[proxy_credential_id])
     backups = relationship("Backup", back_populates="device", cascade="all, delete-orphan")
+
+    def get_active_destination_ids(self, db) -> list[int]:
+        """
+        Return the actual list of destination IDs for this device.
+        Priority:
+        1. device.destination_ids_override (if set and not empty)
+        2. group.destination_ids (from associated group)
+        3. Empty list (if no group or no destinations)
+        """
+        if self.destination_ids_override:
+            return self.destination_ids_override
+        
+        from app.models.group import Group
+        
+        if self.group:
+            group = db.query(Group).filter(Group.name == self.group).first()
+            if group and group.destination_ids:
+                return group.destination_ids
+        
+        return []

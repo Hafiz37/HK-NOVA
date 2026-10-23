@@ -96,7 +96,7 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Password</label>
-                        <input type="password" name="smb_password" class="form-control" value="{{ cfg.get('password', '') }}" placeholder="{{ '(unchanged)' if destination and cfg.get('password') else '' }}">
+                        <input type="password" name="smb_password" class="form-control" placeholder="{{ '(unchanged)' if destination and cfg.get('password') else '' }}">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">File Extension <span class="text-danger">*</span></label>
@@ -154,7 +154,7 @@
                     </div>
                     <div class="col-md-9" id="git-token-field">
                         <label class="form-label">Token</label>
-                        <input type="password" name="git_token" class="form-control" value="{{ cfg.get('token', '') }}" placeholder="{{ '(unchanged)' if destination and cfg.get('token') else 'ghp_... or personal access token' }}">
+                        <input type="password" name="git_token" class="form-control" placeholder="{{ '(unchanged)' if destination and cfg.get('token') else 'ghp_... or personal access token' }}">
                     </div>
                     <div class="col-md-9" id="git-ssh-field" style="display:none">
                         <label class="form-label">SSH Key Path</label>
@@ -166,7 +166,7 @@
                     </div>
                     <div class="col-md-4" id="git-pass-field" style="display:none">
                         <label class="form-label">Password</label>
-                        <input type="password" name="git_password" class="form-control" value="{{ cfg.get('password', '') }}" placeholder="{{ '(unchanged)' if destination and cfg.get('password') else '' }}">
+                        <input type="password" name="git_password" class="form-control" placeholder="{{ '(unchanged)' if destination and cfg.get('password') else '' }}">
                     </div>
                 </div>
             </div>
@@ -177,7 +177,7 @@
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label">Bot Token</label>
-                        <input type="password" name="telegram_bot_token" id="telegram_bot_token" class="form-control" value="{{ cfg.get('bot_token', '') }}" placeholder="{{ '(unchanged)' if destination and cfg.get('bot_token') else '123456789:ABCdefGHIjklMNOpqrsTUVwxyz' }}">
+                        <input type="password" name="telegram_bot_token" id="telegram_bot_token" class="form-control" placeholder="{{ '(unchanged)' if destination and cfg.get('bot_token') else '123456789:ABCdefGHIjklMNOpqrsTUVwxyz' }}">
                         <div class="form-text">Get from @BotFather on Telegram</div>
                     </div>
                     <div class="col-md-6">

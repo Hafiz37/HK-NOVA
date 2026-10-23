@@ -87,6 +87,7 @@ async def add_device_form(request: Request, db: Session = Depends(get_db)):
             "device_types": DEVICE_TYPES,
             "engine_types": ENGINE_TYPES,
             "groups": db.query(Group).order_by(Group.name).all(),
+            "active_destination_ids": [],
         },
     )
 
@@ -323,6 +324,14 @@ async def clone_device_form(device_id: int, request: Request, db: Session = Depe
     if not source:
         raise HTTPException(status_code=404, detail="Device not found")
     credentials = db.query(Credential).order_by(Credential.name).all()
+    destinations = db.query(Destination).order_by(
+        Destination.enabled.desc(),
+        Destination.name
+    ).all()
+    
+    # Get active destination IDs from source device for cloning
+    active_destination_ids = source.get_active_destination_ids(db)
+    
     return request.app.state.templates.TemplateResponse(
         request,
         "devices/form.html",
@@ -330,9 +339,11 @@ async def clone_device_form(device_id: int, request: Request, db: Session = Depe
             "device": None,
             "clone": source,
             "credentials": credentials,
+            "destinations": destinations,
             "device_types": DEVICE_TYPES,
             "engine_types": ENGINE_TYPES,
             "groups": db.query(Group).order_by(Group.name).all(),
+            "active_destination_ids": active_destination_ids,
         },
     )
 
@@ -347,6 +358,10 @@ async def edit_device_form(device_id: int, request: Request, db: Session = Depen
         Destination.enabled.desc(),
         Destination.name
     ).all()
+    
+    # Get active destination IDs (group defaults + override)
+    active_destination_ids = device.get_active_destination_ids(db)
+    
     return request.app.state.templates.TemplateResponse(
         request,
         "devices/form.html",
@@ -357,6 +372,7 @@ async def edit_device_form(device_id: int, request: Request, db: Session = Depen
             "device_types": DEVICE_TYPES,
             "engine_types": ENGINE_TYPES,
             "groups": db.query(Group).order_by(Group.name).all(),
+            "active_destination_ids": active_destination_ids,
         },
     )
 
