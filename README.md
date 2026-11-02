@@ -471,6 +471,48 @@ sudo rm -rf /opt/hk-nova
 
 ---
 
+## Backup Failure Handling
+
+HK-NOVA includes an intelligent **Smart Retry, Auto-Fix, and Diagnostic Dashboard** system to handle and troubleshoot backup errors automatically.
+
+### 1. Smart Retry Mechanism
+- **Exponential Backoff**: Base delay of 2 seconds (Attempt 1: 2s, Attempt 2: 4s, Attempt 3: 8s; max 60s).
+- **Max Retries**: 3 attempts per destination (`BACKUP_RETRY_MAX_ATTEMPTS`).
+- **Rate Limit Handling**: Respects HTTP 429 `Retry-After` header cooldown automatically.
+- **Smart Fallback**: If all configured remote destinations fail, HK-NOVA automatically executes an emergency fallback save to Local Storage.
+
+### 2. Error Classification
+- **Retry Allowed (Transient)**:
+  - `network_timeout`: Socket / HTTP read/connect timeouts.
+  - `network_connection`: Connection refused, reset, unreachable route.
+  - `rate_limit`: API rate limits (e.g. Telegram 429).
+  - `temporary_unavailable`: 502/503/504 temporary gateway/service errors.
+  - `smb_temporary`: Transient SMB pipe or network disconnects.
+- **No Retry (Permanent)**:
+  - `auth_failure`: Invalid credentials, 401 Unauthorized, SSH key rejected.
+  - `permission_denied`: 403 Forbidden, lack of write access on SMB or disk.
+  - `invalid_config`: Missing required config parameters or bad format (400).
+  - `disk_full`: ENOSPC or storage quota exhausted.
+  - `invalid_params`: Value/Type errors.
+
+### 3. Auto-Fix Strategies
+Before retrying transient errors, HK-NOVA attempts automated remediations:
+- **Rate Limit (Telegram)**: Cooldown based on `Retry-After` response header.
+- **Network Timeout**: Progressively doubles timeout (`current * 2.0`, capped at 300s).
+- **Git Push Conflict**: Pulls latest remote changes before retrying push.
+- **SMB Hostname Resolution**: Automatically resolves DNS hostnames to IPv4 if name lookup fails.
+
+### 4. Diagnostic Dashboard & Root Cause Analysis
+- **Dashboard URL**: `/diagnostics`
+- **Features**:
+  - Filter failures by timeframe (`24h`, `7d`, `30d`) and status (`unresolved`, `all`).
+  - Summary metrics: total failures, affected devices, most common error %, auto-fix success rate.
+  - Error distribution bar chart with severity color coding.
+  - Device detail view (`/diagnostics/device/{id}`) with root cause analysis, step-by-step remediation guide with copyable commands, failure timeline, and auto-fix history.
+  - Actions: **Retry Backup Now**, **Mark as Resolved**, and **Download Diagnostic JSON**.
+
+---
+
 ## Contributing
 
 Contributions welcome! Please:
