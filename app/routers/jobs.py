@@ -129,7 +129,7 @@ async def add_schedule(
 
 @router.get("/{schedule_id}/edit")
 async def edit_schedule_form(schedule_id: int, request: Request, db: Session = Depends(get_db)):
-    schedule = db.query(Schedule).get(schedule_id)
+    schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
     devices = db.query(Device).filter(Device.enabled == True).order_by(Device.hostname).all()
