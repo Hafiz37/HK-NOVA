@@ -1,15 +1,27 @@
+import asyncio
 import hashlib
 import json
 import logging
+import traceback
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.device import Device
 from app.models.backup import Backup, BackupStatus
 from app.models.destination import Destination
 from app.models.job import JobRun, JobStatus
 from app.modules.engines import get_engine
 from app.modules.destinations import get_destination
+from app.modules.retry_service import (
+    classify_error,
+    is_retryable,
+    calculate_backoff,
+    record_backup_failure,
+)
+from app.modules.auto_fix import apply_auto_fix, extract_retry_after
+from app.modules.diagnostic_analyzer import analyze_backup_failure
+from app.modules.notifications import send_failure_diagnostic_notification
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +80,28 @@ async def run_backup_for_device(
         )
         db.add(backup)
         db.commit()
+
+        diag_report = analyze_backup_failure(device, backup, [])
+        logger.info(f"📊 Diagnostic analysis generated for {device.hostname}: {diag_report['primary_cause']}")
+        record_backup_failure(
+            db=db,
+            device_id=device.id,
+            backup_id=backup.id,
+            error_type="auth_failure",
+            error_category="permanent",
+            retry_count=0,
+            max_retries=get_settings().BACKUP_RETRY_MAX_ATTEMPTS,
+            destination_type=None,
+            destination_name=None,
+            error_message="No credential assigned to device",
+            root_cause_analysis=json.dumps(diag_report),
+            suggested_solution=json.dumps(diag_report.get("solution_steps", [])),
+        )
+        try:
+            await send_failure_diagnostic_notification(db, device, backup, diag_report)
+        except Exception as notif_err:
+            logger.error("Failed to send failure notification: %s", notif_err)
+
         return backup
 
     backup = Backup(
@@ -86,6 +120,30 @@ async def run_backup_for_device(
         backup.error_message = str(e)
         db.commit()
         logger.error("Binary backup failed for %s: %s", device.hostname, e)
+
+        err_type, err_cat = classify_error(e)
+        diag_report = analyze_backup_failure(device, backup, [])
+        logger.info(f"📊 Diagnostic analysis generated for {device.hostname}: {diag_report['primary_cause']}")
+        record_backup_failure(
+            db=db,
+            device_id=device.id,
+            backup_id=backup.id,
+            error_type=err_type,
+            error_category=err_cat,
+            retry_count=0,
+            max_retries=get_settings().BACKUP_RETRY_MAX_ATTEMPTS,
+            destination_type=None,
+            destination_name=None,
+            error_message=str(e),
+            error_traceback=traceback.format_exc(),
+            root_cause_analysis=json.dumps(diag_report),
+            suggested_solution=json.dumps(diag_report.get("solution_steps", [])),
+        )
+        try:
+            await send_failure_diagnostic_notification(db, device, backup, diag_report)
+        except Exception as notif_err:
+            logger.error("Failed to send failure notification: %s", notif_err)
+
         return backup
 
     if binary_result is not None:
@@ -101,6 +159,30 @@ async def run_backup_for_device(
         backup.error_message = str(e)
         db.commit()
         logger.error("Backup failed for %s: %s", device.hostname, e)
+
+        err_type, err_cat = classify_error(e)
+        diag_report = analyze_backup_failure(device, backup, [])
+        logger.info(f"📊 Diagnostic analysis generated for {device.hostname}: {diag_report['primary_cause']}")
+        record_backup_failure(
+            db=db,
+            device_id=device.id,
+            backup_id=backup.id,
+            error_type=err_type,
+            error_category=err_cat,
+            retry_count=0,
+            max_retries=get_settings().BACKUP_RETRY_MAX_ATTEMPTS,
+            destination_type=None,
+            destination_name=None,
+            error_message=str(e),
+            error_traceback=traceback.format_exc(),
+            root_cause_analysis=json.dumps(diag_report),
+            suggested_solution=json.dumps(diag_report.get("solution_steps", [])),
+        )
+        try:
+            await send_failure_diagnostic_notification(db, device, backup, diag_report)
+        except Exception as notif_err:
+            logger.error("Failed to send failure notification: %s", notif_err)
+
         return backup
 
     return await _handle_text_backup(
@@ -235,46 +317,100 @@ async def _handle_binary_backup(
 
     results: list[tuple[str, str]] = []
     save_errors: list[str] = []
+    failures_for_analysis = []
+    recorded_failures = []
+    settings = get_settings()
+    max_retries = getattr(settings, "BACKUP_RETRY_MAX_ATTEMPTS", 3)
+
     for dest in destinations:
         dest_type = dest.dest_type.value
-        try:
-            backend = get_destination(dest_type)
-            config_with_meta = {
-                **(dest.config_json or {}),
-                "_device_meta": device_metadata,
-                "_backup_meta": backup_metadata,
-            }
-            
-            if dest_type == "telegram" and config_with_meta.get("bot_token"):
-                try:
-                    config_with_meta["bot_token"] = dest.decrypt_token(config_with_meta["bot_token"])
-                except Exception:
-                    pass
-            
-            path = await backend.save_binary(
-                hostname=device.hostname,
-                data=file_bytes,
-                extension=extension,
-                config=config_with_meta,
+        backend = get_destination(dest_type)
+        config_with_meta = {
+            **(dest.config_json or {}),
+            "_device_meta": device_metadata,
+            "_backup_meta": backup_metadata,
+        }
+        
+        if dest_type == "telegram" and config_with_meta.get("bot_token"):
+            try:
+                config_with_meta["bot_token"] = dest.decrypt_token(config_with_meta["bot_token"])
+            except Exception:
+                pass
+
+        dest_success = False
+        last_error = None
+        last_error_type = "unknown"
+        last_error_category = "permanent"
+        auto_fix_applied_info = None
+        attempt_count = 0
+
+        for attempt in range(1, max_retries + 1):
+            attempt_count = attempt
+            try:
+                path = await backend.save_binary(
+                    hostname=device.hostname,
+                    data=file_bytes,
+                    extension=extension,
+                    config=config_with_meta,
+                )
+                results.append((dest_type, path))
+                logger.info(f"✅ Backup success: {device.hostname} → {dest.name} ({dest_type})")
+                dest_success = True
+                break
+            except NotImplementedError:
+                logger.warning(
+                    "Destination '%s' does not support archive backups — skipping for %s",
+                    dest_type, device.hostname,
+                )
+                break
+            except Exception as e:
+                last_error = e
+                last_error_type, last_error_category = classify_error(e)
+                can_retry = is_retryable(last_error_category) and (attempt < max_retries)
+
+                if can_retry:
+                    auto_fix_res = await apply_auto_fix(last_error_type, e, dest_type, config_with_meta)
+                    if auto_fix_res.get("applied"):
+                        auto_fix_applied_info = auto_fix_res
+                        logger.info(f"🔧 Auto-fix applied: {auto_fix_res.get('strategy')} for {device.hostname} → {dest.name}")
+
+                    retry_after = extract_retry_after(e)
+                    delay = calculate_backoff(attempt, retry_after=retry_after)
+                    logger.warning(f"🔄 Retry {attempt}/{max_retries}: {device.hostname} → {dest.name} - {last_error_type}")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"❌ Backup failed: {device.hostname} → {dest.name} after {attempt} retries - {last_error_type}")
+                    break
+
+        if not dest_success and last_error is not None:
+            save_errors.append(f"{dest.name}: {last_error}")
+            failures_for_analysis.append((dest, last_error_type, str(last_error), attempt_count))
+            bf = record_backup_failure(
+                db=db,
+                device_id=device.id,
+                backup_id=backup.id,
+                error_type=last_error_type,
+                error_category=last_error_category,
+                retry_count=attempt_count,
+                max_retries=max_retries,
+                destination_type=dest_type,
+                destination_name=dest.name,
+                error_message=str(last_error),
+                error_traceback=traceback.format_exc(),
+                auto_fix_attempted=bool(auto_fix_applied_info and auto_fix_applied_info.get("applied")),
+                auto_fix_result=json.dumps(auto_fix_applied_info) if auto_fix_applied_info else None,
             )
-            results.append((dest_type, path))
-            logger.info(
-                "Saved binary backup for %s to %s: %s",
-                device.hostname, dest_type, path,
-            )
-        except NotImplementedError:
-            logger.warning(
-                "Destination '%s' does not support archive backups — skipping for %s",
-                dest_type, device.hostname,
-            )
-        except Exception as e:
-            logger.error(
-                "Failed to save binary backup to %s for %s: %s",
-                dest_type, device.hostname, e,
-            )
-            save_errors.append(f"{dest_type}: {e}")
+            recorded_failures.append(bf)
 
     if not results:
+        diag_report = analyze_backup_failure(device, backup, failures_for_analysis)
+        logger.info(f"📊 Diagnostic analysis generated for {device.hostname}: {diag_report['primary_cause']}")
+        report_json = json.dumps(diag_report)
+        solution_json = json.dumps(diag_report.get("solution_steps", []))
+        for bf in recorded_failures:
+            bf.root_cause_analysis = report_json
+            bf.suggested_solution = solution_json
+
         backup.config_hash = config_hash
         backup.file_size = len(file_bytes)
         backup.status = BackupStatus.failed
@@ -284,6 +420,12 @@ async def _handle_binary_backup(
         )
         db.commit()
         logger.error("Binary backup for %s failed — no destination accepted the archive", device.hostname)
+
+        try:
+            await send_failure_diagnostic_notification(db, device, backup, diag_report)
+        except Exception as notif_err:
+            logger.error("Failed to send failure notification: %s", notif_err)
+
         return backup
 
     dest_label, primary_path = _summarize_results(results)
@@ -363,60 +505,100 @@ async def _handle_text_backup(
 
     results: list[tuple[str, str]] = []
     save_errors: list[str] = []
+    failures_for_analysis = []
+    recorded_failures = []
+    settings = get_settings()
+    max_retries = getattr(settings, "BACKUP_RETRY_MAX_ATTEMPTS", 3)
     
     for dest in destinations:
         dest_type = dest.dest_type.value
-        try:
-            backend = get_destination(dest_type)
-            config_with_meta = {
-                **(dest.config_json or {}),
-                "_device_meta": device_metadata,
-                "_backup_meta": backup_metadata,
-            }
-            
-            if dest_type == "telegram" and config_with_meta.get("bot_token"):
-                try:
-                    config_with_meta["bot_token"] = dest.decrypt_token(config_with_meta["bot_token"])
-                except Exception:
-                    pass
-            
-            path = await backend.save(
-                hostname=device.hostname,
-                config_text=config_text,
-                config=config_with_meta,
-            )
-            results.append((dest_type, path))
-            logger.info(
-                f"✅ Backup success: {device.hostname} → {dest.name} ({dest_type})"
-            )
-            
-        except Exception as e:
-            error_msg = str(e)
-            save_errors.append(f"{dest.name}: {error_msg}")
-            
-            if dest_type == "telegram":
-                if "429" in error_msg or "rate" in error_msg.lower():
+        backend = get_destination(dest_type)
+        config_with_meta = {
+            **(dest.config_json or {}),
+            "_device_meta": device_metadata,
+            "_backup_meta": backup_metadata,
+        }
+        
+        if dest_type == "telegram" and config_with_meta.get("bot_token"):
+            try:
+                config_with_meta["bot_token"] = dest.decrypt_token(config_with_meta["bot_token"])
+            except Exception:
+                pass
+        
+        dest_success = False
+        last_error = None
+        last_error_type = "unknown"
+        last_error_category = "permanent"
+        auto_fix_applied_info = None
+        attempt_count = 0
+
+        for attempt in range(1, max_retries + 1):
+            attempt_count = attempt
+            try:
+                path = await backend.save(
+                    hostname=device.hostname,
+                    config_text=config_text,
+                    config=config_with_meta,
+                )
+                results.append((dest_type, path))
+                logger.info(
+                    f"✅ Backup success: {device.hostname} → {dest.name} ({dest_type})"
+                )
+                dest_success = True
+                break
+            except Exception as e:
+                last_error = e
+                last_error_type, last_error_category = classify_error(e)
+                can_retry = is_retryable(last_error_category) and (attempt < max_retries)
+
+                if can_retry:
+                    auto_fix_res = await apply_auto_fix(last_error_type, e, dest_type, config_with_meta)
+                    if auto_fix_res.get("applied"):
+                        auto_fix_applied_info = auto_fix_res
+                        logger.info(f"🔧 Auto-fix applied: {auto_fix_res.get('strategy')} for {device.hostname} → {dest.name}")
+
+                    retry_after = extract_retry_after(e)
+                    delay = calculate_backoff(attempt, retry_after=retry_after)
                     logger.warning(
-                        f"⚠️ TELEGRAM RATE LIMITED: {device.hostname} → {dest.name}\n"
-                        f"   Error: {error_msg}\n"
-                        f"   Recommendation: Wait before retry or reduce backup frequency"
+                        f"🔄 Retry {attempt}/{max_retries}: {device.hostname} → {dest.name} - {last_error_type}"
                     )
-                elif "connection" in error_msg.lower() or "timeout" in error_msg.lower():
-                    logger.warning(
-                        f"⚠️ TELEGRAM CONNECTION FAILED: {device.hostname} → {dest.name}\n"
-                        f"   Error: {error_msg}\n"
-                        f"   Recommendation: Check network connectivity or Telegram API status"
-                    )
+                    await asyncio.sleep(delay)
                 else:
                     logger.error(
-                        f"❌ Telegram error: {device.hostname} → {dest.name}: {error_msg}"
+                        f"❌ Backup failed: {device.hostname} → {dest.name} after {attempt} retries - {last_error_type}"
                     )
-            else:
-                logger.error(
-                    f"❌ Backup failed: {device.hostname} → {dest.name}: {error_msg}"
-                )
+                    break
+
+        if not dest_success and last_error is not None:
+            save_errors.append(f"{dest.name}: {last_error}")
+            failures_for_analysis.append((dest, last_error_type, str(last_error), attempt_count))
+            bf = record_backup_failure(
+                db=db,
+                device_id=device.id,
+                backup_id=backup.id,
+                error_type=last_error_type,
+                error_category=last_error_category,
+                retry_count=attempt_count,
+                max_retries=max_retries,
+                destination_type=dest_type,
+                destination_name=dest.name,
+                error_message=str(last_error),
+                error_traceback=traceback.format_exc(),
+                auto_fix_attempted=bool(auto_fix_applied_info and auto_fix_applied_info.get("applied")),
+                auto_fix_result=json.dumps(auto_fix_applied_info) if auto_fix_applied_info else None,
+            )
+            recorded_failures.append(bf)
     
     if not results:
+        diag_report = analyze_backup_failure(device, backup, failures_for_analysis)
+        logger.info(f"📊 Diagnostic analysis generated for {device.hostname}: {diag_report['primary_cause']}")
+        report_json = json.dumps(diag_report)
+        solution_json = json.dumps(diag_report.get("solution_steps", []))
+        for bf in recorded_failures:
+            bf.root_cause_analysis = report_json
+            bf.suggested_solution = solution_json
+        db.commit()
+
         logger.warning(
             f"⚠️ ALL DESTINATIONS FAILED for {device.hostname}\n"
             f"   Attempted: {len(destinations)} destination(s)\n"
@@ -427,6 +609,11 @@ async def _handle_text_backup(
         fallback_success = await _save_to_local_fallback(
             db, device, backup, config_text
         )
+
+        try:
+            await send_failure_diagnostic_notification(db, device, backup, diag_report)
+        except Exception as notif_err:
+            logger.error("Failed to send failure notification: %s", notif_err)
         
         if fallback_success:
             backup.status = BackupStatus.success
@@ -445,6 +632,16 @@ async def _handle_text_backup(
             )
             db.commit()
             return backup
+
+    # If partial failures occurred, also update diagnosis on those failures
+    if recorded_failures:
+        diag_report = analyze_backup_failure(device, backup, failures_for_analysis)
+        report_json = json.dumps(diag_report)
+        solution_json = json.dumps(diag_report.get("solution_steps", []))
+        for bf in recorded_failures:
+            bf.root_cause_analysis = report_json
+            bf.suggested_solution = solution_json
+        db.commit()
     
     dest_label, primary_path = _summarize_results(results)
     backup.config_text = config_text
