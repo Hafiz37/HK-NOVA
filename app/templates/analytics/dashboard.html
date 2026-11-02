@@ -3,15 +3,91 @@
 
 {% block extra_css %}
 <link href="/static/css/charts.css" rel="stylesheet">
+<style>
+.analytics-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+.analytics-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+.stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+@media (max-width: 768px) {
+    .analytics-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .analytics-controls {
+        justify-content: space-between;
+    }
+    .chart-card .card-body {
+        padding: 0.75rem;
+    }
+    #device-type-chart,
+    #backup-frequency-chart,
+    #success-rate-trend,
+    #reliability-score-gauge,
+    #backup-heatmap {
+        height: 250px !important;
+    }
+}
+@media (max-width: 576px) {
+    .btn-time {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+}
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div id="toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 9999;"></div>
+
+<div class="analytics-header">
     <h2><i class="bi bi-graph-up-arrow"></i> Analytics & Reports</h2>
-    <div class="chart-time-selector">
-        <button class="btn-time" onclick="changeTimeRange(7)">7D</button>
-        <button class="btn-time active" onclick="changeTimeRange(30)">30D</button>
-        <button class="btn-time" onclick="changeTimeRange(90)">90D</button>
+    <div class="analytics-controls">
+        <button class="btn btn-sm btn-outline-secondary" onclick="refreshAnalytics()" title="Refresh Data">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+        <div class="dropdown d-inline-block">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="timeRangeDropdown" data-bs-toggle="dropdown">
+                <i class="bi bi-calendar3"></i> <span id="current-range-text">Last 30 Days</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><h6 class="dropdown-header">Quick Ranges</h6></li>
+                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(1, 'Yesterday')">Yesterday</a></li>
+                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(7, 'Last 7 Days')">Last 7 Days</a></li>
+                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(30, 'Last 30 Days')">Last 30 Days</a></li>
+                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(90, 'Last 90 Days')">Last 90 Days</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Custom Range</h6></li>
+                <li class="px-3 py-2">
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">Start Date</label>
+                        <input type="date" class="form-control form-control-sm" id="start-date">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">End Date</label>
+                        <input type="date" class="form-control form-control-sm" id="end-date">
+                    </div>
+                    <button class="btn btn-sm btn-primary w-100" onclick="applyCustomRange()">Apply</button>
+                </li>
+            </ul>
+        </div>
     </div>
 </div>
 
@@ -23,15 +99,19 @@
                 <i class="bi bi-speedometer"></i> Overall Reliability Score
             </div>
             <div class="card-body">
-                <div id="reliability-score-gauge" style="width: 100%; height: 280px;"></div>
+                <div id="reliability-score-gauge" style="width: 100%; height: 280px;">
+                    <div class="text-center py-5">
+                        <div class="spinner-border" role="status"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
     
     <div class="col-lg-8">
         <div class="card h-100">
-            <div class="card-header">
-                <i class="bi bi-trophy"></i> Top Performers
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-trophy"></i> Top Performers</span>
             </div>
             <div class="card-body" style="max-height: 280px; overflow-y: auto;">
                 <div id="top-performers-list">
@@ -40,6 +120,24 @@
                         Loading...
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Anomaly Detection Alert -->
+<div class="row g-3 mb-4" id="anomaly-section" style="display: none;">
+    <div class="col-12">
+        <div class="alert alert-warning border-warning">
+            <div class="d-flex align-items-start">
+                <div class="flex-shrink-0">
+                    <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                    <h5 class="alert-heading mb-2">Anomalies Detected</h5>
+                    <div id="anomaly-list"></div>
+                </div>
+                <button type="button" class="btn-close" onclick="document.getElementById('anomaly-section').style.display='none'"></button>
             </div>
         </div>
     </div>
@@ -73,7 +171,11 @@
                 <i class="bi bi-pie-chart"></i> Success Rate by Device Type
             </div>
             <div class="card-body">
-                <div id="device-type-chart" style="width: 100%; height: 350px;"></div>
+                <div id="device-type-chart" style="width: 100%; height: 350px;">
+                    <div class="text-center py-5">
+                        <div class="spinner-border" role="status"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -84,7 +186,11 @@
                 <i class="bi bi-bar-chart"></i> Backup Frequency by Group
             </div>
             <div class="card-body">
-                <div id="backup-frequency-chart" style="width: 100%; height: 350px;"></div>
+                <div id="backup-frequency-chart" style="width: 100%; height: 350px;">
+                    <div class="text-center py-5">
+                        <div class="spinner-border" role="status"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -98,7 +204,89 @@
                 <i class="bi bi-graph-up"></i> Historical Success Rate Trend
             </div>
             <div class="card-body">
-                <div id="success-rate-trend" style="width: 100%; height: 350px;"></div>
+                <div id="success-rate-trend" style="width: 100%; height: 350px;">
+                    <div class="text-center py-5">
+                        <div class="spinner-border" role="status"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Backup Activity Heatmap -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card chart-card">
+            <div class="card-header">
+                <i class="bi bi-calendar-heat"></i> Backup Activity Heatmap (Day × Hour)
+            </div>
+            <div class="card-body">
+                <div id="backup-heatmap" style="width: 100%; height: 350px;">
+                    <div class="text-center py-5">
+                        <div class="spinner-border" role="status"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Performance Metrics -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-3 col-md-6">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                        <i class="bi bi-speedometer2"></i>
+                    </div>
+                </div>
+                <h6 class="text-muted mb-1">Avg Backup Duration</h6>
+                <h3 class="mb-0" id="avg-duration">--</h3>
+                <small class="text-muted" id="avg-duration-detail">Calculating...</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div class="stat-icon bg-success bg-opacity-10 text-success">
+                        <i class="bi bi-hdd"></i>
+                    </div>
+                </div>
+                <h6 class="text-muted mb-1">Avg Backup Size</h6>
+                <h3 class="mb-0" id="avg-size">--</h3>
+                <small class="text-muted" id="avg-size-detail">Calculating...</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div class="stat-icon bg-warning bg-opacity-10 text-warning">
+                        <i class="bi bi-clock-history"></i>
+                    </div>
+                </div>
+                <h6 class="text-muted mb-1">Peak Backup Hour</h6>
+                <h3 class="mb-0" id="peak-hour">--</h3>
+                <small class="text-muted" id="peak-hour-detail">Analyzing...</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div class="stat-icon bg-info bg-opacity-10 text-info">
+                        <i class="bi bi-lightning"></i>
+                    </div>
+                </div>
+                <h6 class="text-muted mb-1">Fastest Device</h6>
+                <h3 class="mb-0" id="fastest-device">--</h3>
+                <small class="text-muted" id="fastest-device-detail">Analyzing...</small>
             </div>
         </div>
     </div>
@@ -114,14 +302,17 @@
             <div class="card-body">
                 <p class="text-muted mb-3">Generate and download comprehensive reports</p>
                 <div class="d-flex gap-2 flex-wrap">
-                    <button class="btn btn-primary" onclick="exportReport('pdf')">
-                        <i class="bi bi-file-pdf"></i> Export as PDF
+                    <button class="btn btn-primary" onclick="exportReport('csv')">
+                        <i class="bi bi-file-spreadsheet"></i> Export CSV
                     </button>
-                    <button class="btn btn-outline-primary" onclick="exportReport('csv')">
-                        <i class="bi bi-file-spreadsheet"></i> Export as CSV
+                    <button class="btn btn-outline-primary" onclick="exportReport('excel')">
+                        <i class="bi bi-file-earmark-excel"></i> Export Excel
                     </button>
-                    <button class="btn btn-outline-secondary" onclick="emailReport()">
-                        <i class="bi bi-envelope"></i> Email Report
+                    <button class="btn btn-outline-secondary" onclick="exportReport('json')">
+                        <i class="bi bi-file-code"></i> Export JSON
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="exportReport('pdf')">
+                        <i class="bi bi-file-pdf"></i> Export PDF
                     </button>
                 </div>
             </div>
@@ -140,24 +331,25 @@ let currentDays = 30;
 async function loadAnalytics(days) {
     currentDays = days;
     
-    // Load reliability score
     loadReliabilityScore(days);
-    
-    // Load top performers and problematic devices
     loadDevicePerformance(days);
-    
-    // Load charts
     loadDeviceTypeChart(days);
     loadBackupFrequencyChart(days);
     loadSuccessRateTrend(days);
+    loadPerformanceMetrics(days);
+    loadAnomalies(days);
+    loadBackupHeatmap(days);
 }
 
 async function loadReliabilityScore(days) {
     try {
+        showLoading('reliability-score-gauge');
         const response = await fetch(`/api/v1/analytics/reliability-score?days=${days}`);
+        
+        if (!response.ok) throw new Error('Failed to load reliability score');
+        
         const data = await response.json();
         
-        // Render gauge
         if (window.HKNovaCharts) {
             document.getElementById('reliability-score-gauge').innerHTML = '';
             const options = {
@@ -193,15 +385,20 @@ async function loadReliabilityScore(days) {
         
     } catch (error) {
         console.error('Error loading reliability score:', error);
+        showError('Failed to load reliability score');
+        document.getElementById('reliability-score-gauge').innerHTML = 
+            '<div class="text-center text-danger py-5"><i class="bi bi-exclamation-triangle"></i> Failed to load</div>';
     }
 }
 
 async function loadDevicePerformance(days) {
     try {
         const response = await fetch(`/api/v1/analytics/reliability-score?days=${days}`);
+        
+        if (!response.ok) throw new Error('Failed to load device performance');
+        
         const data = await response.json();
         
-        // Top performers
         const topHtml = data.top_performers.length > 0 
             ? data.top_performers.map(d => `
                 <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
@@ -219,7 +416,6 @@ async function loadDevicePerformance(days) {
         
         document.getElementById('top-performers-list').innerHTML = topHtml;
         
-        // Problematic devices
         document.getElementById('problematic-count').textContent = data.problematic_devices.length;
         
         const probHtml = data.problematic_devices.length > 0
@@ -235,29 +431,194 @@ async function loadDevicePerformance(days) {
                     </div>
                 </div>
             `).join('')
-            : '<p class="text-center text-muted py-4">All devices performing well! 🎉</p>';
+            : '<p class="text-center text-muted py-4">All devices performing well!</p>';
         
         document.getElementById('problematic-devices-list').innerHTML = probHtml;
         
     } catch (error) {
         console.error('Error loading device performance:', error);
+        showError('Failed to load device performance data');
     }
 }
 
 async function loadDeviceTypeChart(days) {
-    // Placeholder - you can implement this based on your data
-    console.log('Loading device type chart for', days, 'days');
+    try {
+        showLoading('device-type-chart');
+        const response = await fetch(`/api/v1/analytics/device-type-distribution?days=${days}`);
+        
+        if (!response.ok) throw new Error('Failed to load device type data');
+        
+        const data = await response.json();
+        
+        if (data.data.length === 0) {
+            document.getElementById('device-type-chart').innerHTML = 
+                '<div class="text-center text-muted py-5">No data available</div>';
+            return;
+        }
+        
+        const categories = data.data.map(d => d.device_type);
+        const successRates = data.data.map(d => d.success_rate);
+        const deviceCounts = data.data.map(d => d.device_count);
+        
+        const options = {
+            series: [{
+                name: 'Success Rate (%)',
+                data: successRates
+            }],
+            chart: {
+                type: 'bar',
+                height: 350,
+                events: {
+                    dataPointSelection: (event, chartContext, config) => {
+                        const deviceType = categories[config.dataPointIndex];
+                        showDeviceTypeDetail(deviceType, days);
+                    }
+                }
+            },
+            plotOptions: {
+                bar: {
+                    horizontal: true,
+                    distributed: true,
+                    dataLabels: {
+                        position: 'top'
+                    }
+                }
+            },
+            colors: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'],
+            dataLabels: {
+                enabled: true,
+                formatter: (val) => val.toFixed(1) + '%',
+                offsetX: 0,
+                style: {
+                    fontSize: '12px',
+                    colors: ['#fff']
+                }
+            },
+            xaxis: {
+                categories: categories.map((cat, idx) => `${cat} (${deviceCounts[idx]})`),
+                title: { text: 'Success Rate (%)' },
+                max: 100
+            },
+            yaxis: {
+                title: { text: 'Device Type' }
+            },
+            tooltip: {
+                y: {
+                    formatter: (val, { dataPointIndex }) => {
+                        return `${val.toFixed(1)}% (${deviceCounts[dataPointIndex]} devices) - Click for details`;
+                    }
+                }
+            }
+        };
+        
+        document.getElementById('device-type-chart').innerHTML = '';
+        const chart = new ApexCharts(document.querySelector("#device-type-chart"), {
+            ...window.HKNovaCharts?.chartTheme || {},
+            ...options
+        });
+        chart.render();
+        
+    } catch (error) {
+        console.error('Error loading device type chart:', error);
+        showError('Failed to load device type chart');
+        document.getElementById('device-type-chart').innerHTML = 
+            '<div class="text-center text-danger py-5"><i class="bi bi-exclamation-triangle"></i> Failed to load data</div>';
+    }
 }
 
 async function loadBackupFrequencyChart(days) {
-    // Placeholder - you can implement this based on your data
-    console.log('Loading backup frequency chart for', days, 'days');
+    try {
+        showLoading('backup-frequency-chart');
+        const response = await fetch(`/api/v1/analytics/backup-frequency-by-group?days=${days}`);
+        
+        if (!response.ok) throw new Error('Failed to load backup frequency data');
+        
+        const data = await response.json();
+        
+        if (data.data.length === 0) {
+            document.getElementById('backup-frequency-chart').innerHTML = 
+                '<div class="text-center text-muted py-5">No data available</div>';
+            return;
+        }
+        
+        const groups = data.data.map(d => d.group);
+        const totalBackups = data.data.map(d => d.total_backups);
+        const successBackups = data.data.map(d => d.success_backups);
+        const failedBackups = data.data.map(d => d.failed_backups);
+        
+        const options = {
+            series: [
+                { name: 'Success', data: successBackups },
+                { name: 'Failed', data: failedBackups }
+            ],
+            chart: {
+                type: 'bar',
+                height: 350,
+                stacked: true,
+                events: {
+                    dataPointSelection: (event, chartContext, config) => {
+                        const group = groups[config.dataPointIndex];
+                        showGroupDetail(group, days);
+                    }
+                }
+            },
+            plotOptions: {
+                bar: {
+                    horizontal: false,
+                    columnWidth: '55%'
+                }
+            },
+            colors: ['#10b981', '#ef4444'],
+            xaxis: {
+                categories: groups,
+                title: { text: 'Group' }
+            },
+            yaxis: {
+                title: { text: 'Backup Count' }
+            },
+            legend: {
+                position: 'top',
+                horizontalAlign: 'center'
+            },
+            tooltip: {
+                y: {
+                    formatter: (val) => val + ' backups - Click for details'
+                }
+            },
+            dataLabels: {
+                enabled: false
+            }
+        };
+        
+        document.getElementById('backup-frequency-chart').innerHTML = '';
+        const chart = new ApexCharts(document.querySelector("#backup-frequency-chart"), {
+            ...window.HKNovaCharts?.chartTheme || {},
+            ...options
+        });
+        chart.render();
+        
+    } catch (error) {
+        console.error('Error loading backup frequency chart:', error);
+        showError('Failed to load backup frequency chart');
+        document.getElementById('backup-frequency-chart').innerHTML = 
+            '<div class="text-center text-danger py-5"><i class="bi bi-exclamation-triangle"></i> Failed to load data</div>';
+    }
 }
 
 async function loadSuccessRateTrend(days) {
     try {
+        showLoading('success-rate-trend');
         const response = await fetch(`/api/v1/analytics/backup-trend?days=${days}`);
+        
+        if (!response.ok) throw new Error('Failed to load success rate trend');
+        
         const data = await response.json();
+        
+        if (data.data.length === 0) {
+            document.getElementById('success-rate-trend').innerHTML = 
+                '<div class="text-center text-muted py-5">No data available</div>';
+            return;
+        }
         
         const dates = data.data.map(d => d.date);
         const successRates = data.data.map(d => {
@@ -282,6 +643,7 @@ async function loadSuccessRateTrend(days) {
             colors: ['#10b981']
         };
         
+        document.getElementById('success-rate-trend').innerHTML = '';
         const chart = new ApexCharts(document.querySelector("#success-rate-trend"), {
             ...window.HKNovaCharts?.chartTheme || {},
             ...options
@@ -290,26 +652,258 @@ async function loadSuccessRateTrend(days) {
         
     } catch (error) {
         console.error('Error loading success rate trend:', error);
+        showError('Failed to load success rate trend');
+        document.getElementById('success-rate-trend').innerHTML = 
+            '<div class="text-center text-danger py-5"><i class="bi bi-exclamation-triangle"></i> Failed to load data</div>';
     }
 }
 
-function changeTimeRange(days) {
-    document.querySelectorAll('.btn-time').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
+async function loadPerformanceMetrics(days) {
+    try {
+        const response = await fetch(`/api/v1/analytics/performance-metrics?days=${days}`);
+        
+        if (!response.ok) throw new Error('Failed to load performance metrics');
+        
+        const data = await response.json();
+        
+        document.getElementById('avg-duration').textContent = data.avg_duration;
+        document.getElementById('avg-duration-detail').textContent = data.duration_detail;
+        
+        document.getElementById('avg-size').textContent = data.avg_size;
+        document.getElementById('avg-size-detail').textContent = data.size_detail;
+        
+        document.getElementById('peak-hour').textContent = data.peak_hour;
+        document.getElementById('peak-hour-detail').textContent = data.peak_hour_detail;
+        
+        document.getElementById('fastest-device').textContent = data.fastest_device;
+        document.getElementById('fastest-device-detail').textContent = data.fastest_device_detail;
+        
+    } catch (error) {
+        console.error('Error loading performance metrics:', error);
+        document.getElementById('avg-duration').textContent = 'N/A';
+        document.getElementById('avg-duration-detail').textContent = 'Data unavailable';
+        document.getElementById('avg-size').textContent = 'N/A';
+        document.getElementById('avg-size-detail').textContent = 'Data unavailable';
+        document.getElementById('peak-hour').textContent = 'N/A';
+        document.getElementById('peak-hour-detail').textContent = 'Data unavailable';
+        document.getElementById('fastest-device').textContent = 'N/A';
+        document.getElementById('fastest-device-detail').textContent = 'Data unavailable';
+    }
+}
+
+async function loadAnomalies(days) {
+    try {
+        const response = await fetch(`/api/v1/analytics/anomalies?days=${days}`);
+        
+        if (!response.ok) throw new Error('Failed to load anomalies');
+        
+        const data = await response.json();
+        
+        if (data.anomalies && data.anomalies.length > 0) {
+            const anomalyHtml = data.anomalies.map(a => `
+                <div class="mb-2">
+                    <strong><i class="bi bi-${a.icon}"></i> ${a.title}</strong>
+                    <p class="mb-0">${a.description}</p>
+                </div>
+            `).join('<hr class="my-2">');
+            
+            document.getElementById('anomaly-list').innerHTML = anomalyHtml;
+            document.getElementById('anomaly-section').style.display = 'block';
+        } else {
+            document.getElementById('anomaly-section').style.display = 'none';
+        }
+        
+    } catch (error) {
+        console.error('Error loading anomalies:', error);
+        document.getElementById('anomaly-section').style.display = 'none';
+    }
+}
+
+async function loadBackupHeatmap(days) {
+    try {
+        showLoading('backup-heatmap');
+        const response = await fetch(`/api/v1/analytics/backup-heatmap?days=${days}`);
+        
+        if (!response.ok) throw new Error('Failed to load heatmap data');
+        
+        const data = await response.json();
+        
+        if (!data.data || data.data.length === 0) {
+            document.getElementById('backup-heatmap').innerHTML = 
+                '<div class="text-center text-muted py-5">No data available</div>';
+            return;
+        }
+        
+        const options = {
+            series: data.data,
+            chart: {
+                type: 'heatmap',
+                height: 350
+            },
+            dataLabels: {
+                enabled: false
+            },
+            colors: ['#10b981'],
+            xaxis: {
+                type: 'category',
+                categories: data.hours,
+                title: { text: 'Hour of Day' }
+            },
+            yaxis: {
+                title: { text: 'Day of Week' }
+            },
+            plotOptions: {
+                heatmap: {
+                    shadeIntensity: 0.5,
+                    radius: 0,
+                    colorScale: {
+                        ranges: [
+                            { from: 0, to: 0, color: '#f3f4f6', name: 'No backups' },
+                            { from: 1, to: 5, color: '#93c5fd', name: 'Low' },
+                            { from: 6, to: 15, color: '#3b82f6', name: 'Medium' },
+                            { from: 16, to: 30, color: '#1d4ed8', name: 'High' },
+                            { from: 31, to: 1000, color: '#1e3a8a', name: 'Very High' }
+                        ]
+                    }
+                }
+            },
+            tooltip: {
+                y: {
+                    formatter: (val) => val + ' backups'
+                }
+            }
+        };
+        
+        document.getElementById('backup-heatmap').innerHTML = '';
+        const chart = new ApexCharts(document.querySelector("#backup-heatmap"), {
+            ...window.HKNovaCharts?.chartTheme || {},
+            ...options
+        });
+        chart.render();
+        
+    } catch (error) {
+        console.error('Error loading backup heatmap:', error);
+        showError('Failed to load backup heatmap');
+        document.getElementById('backup-heatmap').innerHTML = 
+            '<div class="text-center text-danger py-5"><i class="bi bi-exclamation-triangle"></i> Failed to load data</div>';
+    }
+}
+
+function changeTimeRange(days, label) {
+    currentDays = days;
+    document.getElementById('current-range-text').textContent = label;
     loadAnalytics(days);
+    return false;
+}
+
+function applyCustomRange() {
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
+    
+    if (!startDate || !endDate) {
+        showError('Please select both start and end dates');
+        return;
+    }
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end - start);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays > 365) {
+        showError('Date range cannot exceed 365 days');
+        return;
+    }
+    
+    if (start > end) {
+        showError('Start date must be before end date');
+        return;
+    }
+    
+    currentDays = diffDays;
+    document.getElementById('current-range-text').textContent = `${startDate} to ${endDate}`;
+    loadAnalytics(diffDays);
+    showSuccess(`Custom range applied: ${diffDays} days`);
+}
+
+function refreshAnalytics() {
+    loadAnalytics(currentDays);
+    showSuccess('Analytics data refreshed');
 }
 
 function exportReport(format) {
-    alert(`Export as ${format.toUpperCase()} - Coming soon!`);
+    if (format === 'csv') {
+        window.location.href = `/api/v1/analytics/export-csv?days=${currentDays}`;
+        showSuccess('Exporting CSV report...');
+    } else if (format === 'json') {
+        window.location.href = `/api/v1/analytics/export-json?days=${currentDays}`;
+        showSuccess('Exporting JSON report...');
+    } else if (format === 'excel') {
+        window.location.href = `/api/v1/analytics/export-excel?days=${currentDays}`;
+        showSuccess('Exporting Excel report...');
+    } else if (format === 'pdf') {
+        showError('PDF export coming soon!');
+    } else {
+        showError('Unknown format');
+    }
 }
 
-function emailReport() {
-    alert('Email report - Coming soon!');
+function showLoading(elementId) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        element.innerHTML = '<div class="text-center py-5"><div class="spinner-border" role="status"></div></div>';
+    }
 }
 
-// Initialize on load
+function showToast(message, type = 'info') {
+    const toastContainer = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type} alert-dismissible fade show`;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    toastContainer.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 150);
+    }, 4000);
+}
+
+function showSuccess(message) {
+    showToast(message, 'success');
+}
+
+function showError(message) {
+    showToast(message, 'danger');
+}
+
+function showInfo(message) {
+    showToast(message, 'info');
+}
+
+function showDeviceTypeDetail(deviceType, days) {
+    showInfo(`Loading devices of type: ${deviceType}`);
+    window.location.href = `/devices?filter_type=${encodeURIComponent(deviceType)}`;
+}
+
+function showGroupDetail(group, days) {
+    showInfo(`Loading group: ${group}`);
+    window.location.href = `/devices?filter_group=${encodeURIComponent(group)}`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadAnalytics(30);
+    
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
+    document.getElementById('start-date').value = thirtyDaysAgo;
+    document.getElementById('end-date').value = today;
+    document.getElementById('end-date').max = today;
 });
 </script>
 {% endblock %}
