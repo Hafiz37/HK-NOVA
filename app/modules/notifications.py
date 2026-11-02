@@ -126,6 +126,79 @@ async def send_config_change_notifications(
         logger.error("Failed to send config change notifications: %s", e)
 
 
+async def send_failure_diagnostic_notification(
+    db: Session,
+    device,
+    backup,
+    diagnostic_report: dict,
+) -> None:
+    """Send failure diagnostic notifications with root cause analysis and remediation steps."""
+    from app.config import get_settings
+    settings = get_settings()
+
+    if not getattr(settings, "BACKUP_FAILURE_NOTIFICATION_ENABLED", True):
+        return
+
+    try:
+        import apprise
+    except ImportError:
+        logger.debug("apprise not installed, skipping notifications")
+        return
+
+    channels = db.query(NotificationChannel).filter(
+        NotificationChannel.enabled == True,
+        NotificationChannel.on_failure == True,
+    ).all()
+
+    if not channels:
+        return
+
+    urls = []
+    for ch in channels:
+        try:
+            urls.append(ch.get_url())
+        except Exception as e:
+            logger.warning("Failed to decrypt URL for channel %s: %s", ch.name, e)
+
+    if not urls:
+        return
+
+    apobj = apprise.Apprise()
+    for url in urls:
+        apobj.add(url)
+
+    base_url = settings.BASE_URL or "http://localhost:8000"
+    dashboard_link = f"{base_url}/diagnostics/device/{device.id}"
+
+    primary_cause = diagnostic_report.get("primary_cause", "Backup failed across destinations")
+    affected = ", ".join(diagnostic_report.get("affected_destinations", [])) or "All destinations"
+    solutions = diagnostic_report.get("solution_steps", [])
+    solution_lines = [f"{i+1}. {step}" for i, step in enumerate(solutions)]
+
+    title = f"🚨 HK-NOVA Backup Alert: {device.hostname} Failed"
+
+    body_lines = [
+        f"🖥️ Device: {device.hostname} ({device.ip_address})",
+        f"📁 Group: {getattr(device, 'group', None) or 'default'}",
+        f"🎯 Affected Destinations: {affected}",
+        "",
+        f"🔍 Root Cause Analysis:",
+        f"{primary_cause}",
+        "",
+        "🛠️ Recommended Remediation Steps:",
+        *solution_lines,
+        "",
+        f"🔗 Diagnostic Dashboard: {dashboard_link}",
+    ]
+    body = "\n".join(body_lines)
+
+    try:
+        await apobj.async_notify(title=title, body=body, notify_type=apprise.NotifyType.FAILURE)
+        logger.info(f"📧 Failure notification sent to {len(urls)} channels for device {device.hostname}")
+    except Exception as e:
+        logger.error("Failed to send failure diagnostic notification for %s: %s", device.hostname, e)
+
+
 async def test_notification(url: str) -> tuple[bool, str]:
     """Send a test notification to validate the Apprise URL. Returns (success, message)."""
     try:
