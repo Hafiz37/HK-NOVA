@@ -1,0 +1,367 @@
+{% extends "base.html" %}
+{% block title %}Backup Failure Diagnostics - HK-NOVA{% endblock %}
+
+{% block extra_css %}
+<link href="/static/css/charts.css" rel="stylesheet">
+<style>
+.badge-auth_failure, .badge-permission_denied, .badge-disk_full {
+    background-color: #dc3545 !important;
+    color: #fff;
+}
+.badge-network_timeout, .badge-network_connection, .badge-smb_temporary {
+    background-color: #fd7e14 !important;
+    color: #fff;
+}
+.badge-rate_limit {
+    background-color: #ffc107 !important;
+    color: #000;
+}
+.badge-unknown, .badge-invalid_params, .badge-invalid_config {
+    background-color: #6c757d !important;
+    color: #fff;
+}
+.stat-card-glow-diag {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    filter: blur(40px);
+    opacity: 0.15;
+    pointer-events: none;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <!-- Header -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+        <div>
+            <h2 class="mb-1"><i class="bi bi-tools text-danger"></i> Backup Failure Diagnostics</h2>
+            <p class="text-muted mb-0">Root cause analysis, smart retry status, and auto-fix monitoring</p>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <!-- Time Filter -->
+            <div class="btn-group" role="group" aria-label="Time Filter">
+                <a href="/diagnostics?time_filter=24h&status={{ status }}" class="btn btn-sm {% if time_filter == '24h' %}btn-primary{% else %}btn-outline-secondary{% endif %}">24h</a>
+                <a href="/diagnostics?time_filter=7d&status={{ status }}" class="btn btn-sm {% if time_filter == '7d' %}btn-primary{% else %}btn-outline-secondary{% endif %}">7d</a>
+                <a href="/diagnostics?time_filter=30d&status={{ status }}" class="btn btn-sm {% if time_filter == '30d' %}btn-primary{% else %}btn-outline-secondary{% endif %}">30d</a>
+            </div>
+            <!-- Status Filter -->
+            <div class="btn-group" role="group" aria-label="Status Filter">
+                <a href="/diagnostics?time_filter={{ time_filter }}&status=unresolved" class="btn btn-sm {% if status == 'unresolved' %}btn-danger{% else %}btn-outline-secondary{% endif %}">Unresolved</a>
+                <a href="/diagnostics?time_filter={{ time_filter }}&status=all" class="btn btn-sm {% if status == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">All</a>
+            </div>
+            <a href="/diagnostics?time_filter={{ time_filter }}&status={{ status }}" class="btn btn-sm btn-outline-light" title="Refresh">
+                <i class="bi bi-arrow-clockwise"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row g-3 mb-4">
+        <!-- 1. Total Failed Backups -->
+        <div class="col-sm-6 col-xl-3">
+            <div class="card stat-card stat-card-danger h-100 position-relative overflow-hidden">
+                <div class="card-body">
+                    <span class="text-muted text-uppercase fw-semibold small">Total Failures</span>
+                    <h3 class="display-6 fw-bold my-2 text-danger">{{ total_failures }}</h3>
+                    <small class="text-muted">In selected period ({{ time_filter }})</small>
+                </div>
+                <div class="stat-card-glow-diag bg-danger"></div>
+            </div>
+        </div>
+        <!-- 2. Devices with Failures -->
+        <div class="col-sm-6 col-xl-3">
+            <div class="card stat-card stat-card-warning h-100 position-relative overflow-hidden">
+                <div class="card-body">
+                    <span class="text-muted text-uppercase fw-semibold small">Devices with Failures</span>
+                    <h3 class="display-6 fw-bold my-2 text-warning">{{ devices_with_failures }}</h3>
+                    <small class="text-muted">Distinct affected devices</small>
+                </div>
+                <div class="stat-card-glow-diag bg-warning"></div>
+            </div>
+        </div>
+        <!-- 3. Most Common Error -->
+        <div class="col-sm-6 col-xl-3">
+            <div class="card stat-card h-100 position-relative overflow-hidden">
+                <div class="card-body">
+                    <span class="text-muted text-uppercase fw-semibold small">Most Common Error</span>
+                    <h4 class="fw-bold my-2 text-info text-truncate" title="{{ most_common_error or 'None' }}">
+                        {{ most_common_error or 'None' }}
+                    </h4>
+                    <small class="text-muted">
+                        {% if most_common_error %}
+                        {{ most_common_error_pct }}% of total failures
+                        {% else %}
+                        No failures recorded
+                        {% endif %}
+                    </small>
+                </div>
+                <div class="stat-card-glow-diag bg-info"></div>
+            </div>
+        </div>
+        <!-- 4. Auto-fix Success Rate -->
+        <div class="col-sm-6 col-xl-3">
+            <div class="card stat-card stat-card-success h-100 position-relative overflow-hidden">
+                <div class="card-body">
+                    <span class="text-muted text-uppercase fw-semibold small">Auto-Fix Success Rate</span>
+                    <h3 class="display-6 fw-bold my-2 text-success">{{ auto_fix_success_rate }}%</h3>
+                    <small class="text-muted">Self-healing remediations</small>
+                </div>
+                <div class="stat-card-glow-diag bg-success"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Distribution Chart -->
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-dark d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-bar-chart-fill text-primary me-2"></i> Error Distribution
+                    </h5>
+                    <small class="text-muted">Frequency by Error Type</small>
+                </div>
+                <div class="card-body">
+                    {% if error_distribution %}
+                    <div id="error-distribution-chart" style="min-height: 260px;"></div>
+                    {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-check-circle text-success fs-1 d-block mb-2"></i>
+                        No backup failures recorded in the selected time range.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Failed Devices Table -->
+    <div class="card shadow-sm" id="failures-table-container">
+        <div class="card-header bg-dark d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-exclamation-octagon-fill text-danger me-2"></i> Failed Backups & Devices
+            </h5>
+            <small class="text-muted">Page {{ page }} of {{ total_pages }} ({{ total_failures }} total)</small>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>
+                            <a href="/diagnostics?time_filter={{ time_filter }}&status={{ status }}&sort_by=hostname&sort_order={% if sort_by == 'hostname' and sort_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-light">
+                                Hostname {% if sort_by == 'hostname' %}<i class="bi bi-arrow-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="/diagnostics?time_filter={{ time_filter }}&status={{ status }}&sort_by=ip&sort_order={% if sort_by == 'ip' and sort_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-light">
+                                IP Address {% if sort_by == 'ip' %}<i class="bi bi-arrow-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="/diagnostics?time_filter={{ time_filter }}&status={{ status }}&sort_by=timestamp&sort_order={% if sort_by == 'timestamp' and sort_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-light">
+                                Last Failure {% if sort_by == 'timestamp' %}<i class="bi bi-arrow-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="/diagnostics?time_filter={{ time_filter }}&status={{ status }}&sort_by=error_type&sort_order={% if sort_by == 'error_type' and sort_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-light">
+                                Error Type {% if sort_by == 'error_type' %}<i class="bi bi-arrow-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="/diagnostics?time_filter={{ time_filter }}&status={{ status }}&sort_by=retry_count&sort_order={% if sort_by == 'retry_count' and sort_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-light">
+                                Retries {% if sort_by == 'retry_count' %}<i class="bi bi-arrow-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="/diagnostics?time_filter={{ time_filter }}&status={{ status }}&sort_by=status&sort_order={% if sort_by == 'status' and sort_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-light">
+                                Status {% if sort_by == 'status' %}<i class="bi bi-arrow-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                            </a>
+                        </th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for failure in failures %}
+                    <tr>
+                        <td>
+                            <div class="fw-bold">{{ failure.device.hostname if failure.device else 'Unknown' }}</div>
+                            <small class="text-muted">{{ failure.destination_name or failure.destination_type or 'All Destinations' }}</small>
+                        </td>
+                        <td>
+                            <code>{{ failure.device.ip_address if failure.device else '-' }}</code>
+                        </td>
+                        <td>
+                            <div>{{ failure.timestamp | localtime }}</div>
+                            <small class="text-muted" title="{{ failure.error_message }}">{{ failure.error_message[:60] if failure.error_message else '-' }}{% if failure.error_message and failure.error_message|length > 60 %}...{% endif %}</small>
+                        </td>
+                        <td>
+                            <span class="badge badge-{{ failure.error_type }} px-2 py-1">
+                                {{ failure.error_type }}
+                            </span>
+                            {% if failure.auto_fix_attempted %}
+                            <span class="badge bg-info text-dark ms-1" title="Auto-fix attempted">
+                                <i class="bi bi-wrench"></i> Auto-fix
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {% if failure.retry_count >= failure.max_retries %}bg-danger{% else %}bg-secondary{% endif %}">
+                                {{ failure.retry_count }}/{{ failure.max_retries }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if failure.resolved %}
+                            <span class="badge bg-success"><i class="bi bi-check-circle"></i> Resolved</span>
+                            {% else %}
+                            <span class="badge bg-danger"><i class="bi bi-exclamation-circle"></i> Unresolved</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <div class="btn-group btn-group-sm">
+                                <a href="/diagnostics/device/{{ failure.device_id }}" class="btn btn-outline-info" title="View Details">
+                                    <i class="bi bi-eye"></i> Details
+                                </a>
+                                <form method="post" action="/diagnostics/device/{{ failure.device_id }}/retry" class="d-inline" onsubmit="return confirm('Trigger backup retry for {{ failure.device.hostname if failure.device else device_id }}?');">
+                                    <button type="submit" class="btn btn-outline-primary" title="Retry Backup Now">
+                                        <i class="bi bi-arrow-repeat"></i> Retry
+                                    </button>
+                                </form>
+                                {% if not failure.resolved %}
+                                <form method="post" action="/diagnostics/failure/{{ failure.id }}/resolve" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-success" title="Mark as Resolved">
+                                        <i class="bi bi-check-lg"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted">
+                            <i class="bi bi-shield-check text-success fs-2 d-block mb-2"></i>
+                            No failures found matching criteria.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="card-footer bg-dark d-flex justify-content-between align-items-center">
+            <span class="small text-muted">Showing {{ ((page - 1) * page_size) + 1 }} - {{ [page * page_size, total_failures]|min }} of {{ total_failures }}</span>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                    <a class="page-link" href="/diagnostics?time_filter={{ time_filter }}&status={{ status }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}&page={{ page - 1 }}">&laquo;</a>
+                </li>
+                {% for p in range(1, total_pages + 1) %}
+                {% if p == page or (p >= page - 2 and p <= page + 2) or p == 1 or p == total_pages %}
+                <li class="page-item {% if p == page %}active{% endif %}">
+                    <a class="page-link" href="/diagnostics?time_filter={{ time_filter }}&status={{ status }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}&page={{ p }}">{{ p }}</a>
+                </li>
+                {% endif %}
+                {% endfor %}
+                <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="/diagnostics?time_filter={{ time_filter }}&status={{ status }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}&page={{ page + 1 }}">&raquo;</a>
+                </li>
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script src="/static/vendor/apexcharts.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    {% if error_distribution %}
+    const errorData = {{ error_distribution | tojson }};
+    const categories = Object.keys(errorData);
+    const seriesData = Object.values(errorData);
+
+    const severityColors = {
+        'auth_failure': '#dc3545',
+        'permission_denied': '#dc3545',
+        'disk_full': '#dc3545',
+        'network_timeout': '#fd7e14',
+        'network_connection': '#fd7e14',
+        'smb_temporary': '#fd7e14',
+        'rate_limit': '#ffc107',
+        'unknown': '#6c757d',
+        'invalid_config': '#6c757d',
+        'invalid_params': '#6c757d'
+    };
+
+    const colors = categories.map(cat => severityColors[cat] || '#0d6efd');
+
+    const options = {
+        chart: {
+            type: 'bar',
+            height: 280,
+            toolbar: { show: false },
+            background: 'transparent'
+        },
+        theme: {
+            mode: 'dark'
+        },
+        series: [{
+            name: 'Failures',
+            data: seriesData
+        }],
+        colors: colors,
+        plotOptions: {
+            bar: {
+                borderRadius: 4,
+                distributed: true,
+                horizontal: false,
+                columnWidth: '45%'
+            }
+        },
+        dataLabels: {
+            enabled: true,
+            style: {
+                colors: ['#fff']
+            }
+        },
+        xaxis: {
+            categories: categories,
+            labels: {
+                style: {
+                    colors: '#adb5bd',
+                    fontSize: '12px'
+                }
+            }
+        },
+        yaxis: {
+            labels: {
+                style: {
+                    colors: '#adb5bd'
+                }
+            }
+        },
+        legend: {
+            show: false
+        },
+        tooltip: {
+            theme: 'dark',
+            y: {
+                formatter: function(val) {
+                    return val + ' failure(s)';
+                }
+            }
+        }
+    };
+
+    const chart = new ApexCharts(document.querySelector("#error-distribution-chart"), options);
+    chart.render();
+    {% endif %}
+});
+</script>
+{% endblock %}
+

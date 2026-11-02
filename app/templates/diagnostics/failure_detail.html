@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+{% block title %}Device Diagnostics: {{ device.hostname }} - HK-NOVA{% endblock %}
+
+{% block extra_css %}
+<style>
+.code-box {
+    background-color: #1a1e24;
+    border: 1px solid #2d333b;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: monospace;
+    font-size: 0.9rem;
+    position: relative;
+}
+.copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+}
+.timeline-card .accordion-button:not(.collapsed) {
+    background-color: rgba(220, 53, 69, 0.15);
+    color: #ff6b6b;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/diagnostics" class="text-decoration-none">Diagnostics</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ device.hostname }}</li>
+        </ol>
+    </nav>
+
+    <!-- Header & Action Buttons -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-cpu text-info"></i> Diagnostics: <span class="text-primary">{{ device.hostname }}</span>
+            </h2>
+            <p class="text-muted mb-0">Detailed root cause analysis, execution timeline, and auto-fix logs</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <form method="post" action="/diagnostics/device/{{ device.id }}/retry" class="d-inline">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-arrow-repeat me-1"></i> Retry Backup Now
+                </button>
+            </form>
+            <a href="/devices/{{ device.id }}/edit" class="btn btn-outline-secondary">
+                <i class="bi bi-pencil me-1"></i> Edit Device Config
+            </a>
+            <a href="/destinations" class="btn btn-outline-secondary">
+                <i class="bi bi-folder2-open me-1"></i> Edit Destination Config
+            </a>
+            {% if unresolved_count > 0 and latest_failure %}
+            <form method="post" action="/diagnostics/failure/{{ latest_failure.id }}/resolve" class="d-inline">
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-check2-all me-1"></i> Mark as Resolved
+                </button>
+            </form>
+            {% endif %}
+            <button class="btn btn-outline-info" onclick="downloadDiagnosticLog()">
+                <i class="bi bi-download me-1"></i> Download Full Log
+            </button>
+        </div>
+    </div>
+
+    <!-- Row 1: Device Info Card & Root Cause Analysis Card -->
+    <div class="row g-3 mb-4">
+        <!-- Device Info Card -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-dark d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0"><i class="bi bi-info-circle me-2 text-primary"></i> Device Profile</h5>
+                    {% if device.enabled %}
+                    <span class="badge bg-success">Active</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Disabled</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush bg-transparent">
+                        <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                            <span class="text-muted">Hostname:</span>
+                            <span class="fw-semibold">{{ device.hostname }}</span>
+                        </li>
+                        <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                            <span class="text-muted">IP Address:</span>
+                            <code>{{ device.ip_address }}</code>
+                        </li>
+                        <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                            <span class="text-muted">Device Type:</span>
+                            <span>{{ device.device_type }}</span>
+                        </li>
+                        <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                            <span class="text-muted">Group:</span>
+                            <span class="badge bg-secondary">{{ device.group or 'default' }}</span>
+                        </li>
+                        <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                            <span class="text-muted">Engine:</span>
+                            <span>{{ device.backup_engine }} (Port {{ device.port }})</span>
+                        </li>
+                        <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                            <span class="text-muted">Last Successful Backup:</span>
+                            <span class="fw-semibold text-success">
+                                {% if last_successful_backup %}
+                                {{ last_successful_backup.timestamp | localtime }}
+                                {% else %}
+                                Never
+                                {% endif %}
+                            </span>
+                        </li>
+                        <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                            <span class="text-muted">Diagnostic Status:</span>
+                            {% if unresolved_count > 0 %}
+                            <span class="badge bg-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> {{ unresolved_count }} Unresolved</span>
+                            {% else %}
+                            <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Healthy / Resolved</span>
+                            {% endif %}
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Root Cause Analysis Card -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm h-100 border-{% if analysis and analysis.severity == 'high' %}danger{% elif analysis and analysis.severity == 'medium' %}warning{% else %}info{% endif %}">
+                <div class="card-header bg-dark d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-search me-2 text-danger"></i> Root Cause Analysis
+                    </h5>
+                    {% if analysis %}
+                    <div class="d-flex gap-2">
+                        <span class="badge {% if analysis.severity == 'high' %}bg-danger{% elif analysis.severity == 'medium' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %} text-uppercase">
+                            Severity: {{ analysis.severity }}
+                        </span>
+                        <span class="badge {% if analysis.is_device_issue %}bg-danger{% else %}bg-primary{% endif %}">
+                            {{ 'Device Issue' if analysis.is_device_issue else 'Configuration Issue' }}
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if analysis %}
+                    <div class="mb-3">
+                        <span class="text-muted small text-uppercase fw-bold d-block mb-1">Primary Root Cause</span>
+                        <h4 class="fw-bold text-light mb-2">{{ analysis.primary_cause }}</h4>
+                        <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                            <span class="text-muted small">Affected Destinations:</span>
+                            {% for dest in analysis.affected_destinations %}
+                            <span class="badge bg-secondary">{{ dest }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary">All configured destinations</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    {% if analysis.quick_fix %}
+                    <div class="alert alert-dark border border-warning d-flex align-items-center mb-3">
+                        <i class="bi bi-lightning-charge-fill text-warning fs-4 me-3"></i>
+                        <div>
+                            <strong>Quick Fix:</strong> {{ analysis.quick_fix }}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if analysis.documentation_link %}
+                    <div class="small">
+                        <i class="bi bi-book me-1 text-info"></i>
+                        <a href="{{ analysis.documentation_link }}" target="_blank" class="text-info text-decoration-none">
+                            Read relevant documentation & troubleshooting guide &rarr;
+                        </a>
+                    </div>
+                    {% endif %}
+
+                    {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-shield-check text-success fs-1 d-block mb-2"></i>
+                        No diagnostic failures found for this device.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 2: Solution Steps Card -->
+    {% if solution_steps %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-dark">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-check2-square text-success me-2"></i> Step-by-Step Remediation Guide
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="list-group list-group-flush bg-transparent">
+                {% for step in solution_steps %}
+                <div class="list-group-item bg-transparent px-0 py-2">
+                    <div class="form-check d-flex align-items-start gap-2">
+                        <input class="form-check-input mt-1" type="checkbox" id="stepCheck{{ loop.index }}">
+                        <label class="form-check-label flex-grow-1" for="stepCheck{{ loop.index }}">
+                            <span class="fw-semibold text-primary me-2">{{ loop.index }}.</span>
+                            {{ step }}
+                        </label>
+                    </div>
+                    {% if 'ping' in step.lower() or 'ssh' in step.lower() or 'git' in step.lower() %}
+                    <div class="code-box mt-2 ms-4">
+                        <code>
+                            {% if 'ping' in step.lower() %}ping -c 4 {{ device.ip_address }}{% elif 'git' in step.lower() %}git status && git pull origin main{% else %}{{ step }}{% endif %}
+                        </code>
+                        <button class="btn btn-sm btn-outline-secondary copy-btn" onclick="navigator.clipboard.writeText('{% if 'ping' in step.lower() %}ping -c 4 {{ device.ip_address }}{% elif 'git' in step.lower() %}git status && git pull origin main{% else %}{{ step }}{% endif %}'); this.innerText='Copied!'; setTimeout(() => this.innerText='Copy', 1500)">
+                            Copy
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Row 3: Failure Timeline (Accordion) -->
+    <div class="card shadow-sm mb-4 timeline-card">
+        <div class="card-header bg-dark d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-clock-history text-warning me-2"></i> Failure Timeline & Retry Attempts
+            </h5>
+            <small class="text-muted">{{ timeline | length }} recorded session(s)</small>
+        </div>
+        <div class="card-body p-0">
+            <div class="accordion accordion-flush" id="timelineAccordion">
+                {% for session in timeline %}
+                <div class="accordion-item bg-dark border-secondary">
+                    <h2 class="accordion-header" id="heading{{ loop.index }}">
+                        <button class="accordion-button {% if not loop.first %}collapsed{% endif %} bg-dark text-light" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}" aria-expanded="{{ 'true' if loop.first else 'false' }}" aria-controls="collapse{{ loop.index }}">
+                            <div class="d-flex flex-wrap align-items-center justify-content-between w-100 me-3 gap-2">
+                                <div>
+                                    <i class="bi bi-calendar3 me-2"></i> {{ session.timestamp | localtime }}
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    {% if session.status == 'resolved' %}
+                                    <span class="badge bg-success">Resolved</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Failed</span>
+                                    {% endif %}
+                                    <span class="badge bg-secondary">{{ session.attempts | length }} destination attempt(s)</span>
+                                </div>
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="collapse{{ loop.index }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" aria-labelledby="heading{{ loop.index }}" data-bs-parent="#timelineAccordion">
+                        <div class="accordion-body bg-dark text-light">
+                            <ul class="list-group list-group-flush bg-transparent">
+                                {% for item in session.attempts %}
+                                <li class="list-group-item bg-transparent text-light border-secondary px-0">
+                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                        <div>
+                                            <strong class="text-info">{{ item.destination_name or item.destination_type or 'General' }}</strong>
+                                            <span class="badge bg-secondary ms-2">{{ item.destination_type or 'all' }}</span>
+                                            <span class="badge badge-{{ item.error_type }} ms-1">{{ item.error_type }}</span>
+                                        </div>
+                                        <div>
+                                            <span class="badge {% if item.retry_count >= item.max_retries %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                                Retries: {{ item.retry_count }}/{{ item.max_retries }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <!-- Attempts Details -->
+                                    <div class="small text-muted mb-2">
+                                        <div><strong>Error:</strong> {{ item.error_message }}</div>
+                                        {% if item.auto_fix_attempted %}
+                                        <div class="text-info mt-1">
+                                            <i class="bi bi-wrench"></i> <strong>Auto-fix applied:</strong> {{ item.auto_fix_result or 'Applied' }}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% if item.error_traceback %}
+                                    <details class="mt-1">
+                                        <summary class="small text-muted cursor-pointer">View Error Traceback</summary>
+                                        <pre class="code-box text-danger mt-2 mb-0" style="max-height: 200px; overflow-y: auto;">{{ item.error_traceback }}</pre>
+                                    </details>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="p-4 text-center text-muted">No timeline sessions available.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 4: Auto-Fix History Table -->
+    {% if auto_fix_history %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-dark">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-wrench text-info me-2"></i> Auto-Fix History
+            </h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Attempt #</th>
+                        <th>Destination</th>
+                        <th>Strategy</th>
+                        <th>Result</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for af in auto_fix_history %}
+                    <tr>
+                        <td>{{ af.retry_count }}</td>
+                        <td>{{ af.destination_name or af.destination_type or 'All' }}</td>
+                        <td>
+                            <span class="badge bg-info text-dark">
+                                {{ af.parsed_auto_fix.strategy if af.parsed_auto_fix else 'auto_fix' }}
+                            </span>
+                        </td>
+                        <td>
+                            <small>{{ af.parsed_auto_fix.message if af.parsed_auto_fix else (af.auto_fix_result or '-') }}</small>
+                        </td>
+                        <td>{{ af.timestamp | localtime }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function downloadDiagnosticLog() {
+    const data = {
+        device: {
+            id: {{ device.id }},
+            hostname: {{ device.hostname | tojson }},
+            ip_address: {{ device.ip_address | tojson }},
+            device_type: {{ device.device_type | tojson }},
+            group: {{ (device.group or 'default') | tojson }}
+        },
+        analysis: {{ (analysis or {}) | tojson }},
+        solution_steps: {{ solution_steps | tojson }},
+        timeline_count: {{ timeline | length }}
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `diagnostic-log-${data.device.hostname}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}
