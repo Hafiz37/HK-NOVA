@@ -314,7 +314,7 @@ app.state.templates.env.filters["localtime"] = _localtime
 app.state.templates.env.filters["timeuntil"] = _timeuntil
 
 # Include routers
-from app.routers import dashboard, devices, credentials, backups, jobs, destinations, api, groups, notifications, locations, analytics
+from app.routers import dashboard, devices, credentials, backups, jobs, destinations, api, groups, notifications, locations, analytics, diagnostics
 
 app.include_router(dashboard.router)
 app.include_router(devices.router)
@@ -327,6 +327,7 @@ app.include_router(groups.router)
 app.include_router(notifications.router)
 app.include_router(locations.router, prefix="/api/v1")
 app.include_router(analytics.router)
+app.include_router(diagnostics.router)
 
 # Import analytics web router
 from app.routers import analytics_web

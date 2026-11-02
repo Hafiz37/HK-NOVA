@@ -203,6 +203,46 @@ def _apply_migrations() -> None:
                     conn.commit()
             mark_applied("v161_repair_column_swap")
 
+        # ── v17: backup_failures table ────────────────────────────────────────
+        if not is_applied("v17_backup_failures"):
+            tables = {r[0] for r in conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table'")
+            ).fetchall()}
+            if "backup_failures" not in tables:
+                logger.info("Migration v17: creating backup_failures table")
+                conn.execute(text("""
+                    CREATE TABLE backup_failures (
+                        id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        backup_id           INTEGER,
+                        device_id           INTEGER NOT NULL,
+                        error_type          VARCHAR(50) NOT NULL,
+                        error_category      VARCHAR(20) NOT NULL,
+                        retry_count         INTEGER DEFAULT 0,
+                        max_retries         INTEGER DEFAULT 3,
+                        destination_type    VARCHAR(50),
+                        destination_name    VARCHAR(255),
+                        error_message       TEXT,
+                        error_traceback     TEXT,
+                        root_cause_analysis TEXT,
+                        suggested_solution  TEXT,
+                        auto_fix_attempted  BOOLEAN DEFAULT 0,
+                        auto_fix_result     TEXT,
+                        resolved            BOOLEAN DEFAULT 0,
+                        resolved_at         DATETIME,
+                        timestamp           DATETIME DEFAULT (datetime('now')),
+                        FOREIGN KEY (backup_id) REFERENCES backups (id) ON DELETE CASCADE,
+                        FOREIGN KEY (device_id) REFERENCES devices (id) ON DELETE CASCADE
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_failures_id ON backup_failures (id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_failures_backup_id ON backup_failures (backup_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_failures_device_id ON backup_failures (device_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_failures_error_type ON backup_failures (error_type)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_failures_timestamp ON backup_failures (timestamp)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_failures_device_id_resolved ON backup_failures (device_id, resolved)"))
+                conn.commit()
+            mark_applied("v17_backup_failures")
+
         # ── Add future migrations here ────────────────────────────────────────
         # Pattern:
         #
