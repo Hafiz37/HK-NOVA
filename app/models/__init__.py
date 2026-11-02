@@ -6,5 +6,6 @@ from app.models.destination import Destination
 from app.models.group import Group
 from app.models.notification import NotificationChannel
 from app.models.location import Location
+from app.models.backup_failure import BackupFailure
 
-__all__ = ["Device", "Credential", "Backup", "JobRun", "Schedule", "Destination", "Group", "NotificationChannel", "Location"]
+__all__ = ["Device", "Credential", "Backup", "JobRun", "Schedule", "Destination", "Group", "NotificationChannel", "Location", "BackupFailure"]
