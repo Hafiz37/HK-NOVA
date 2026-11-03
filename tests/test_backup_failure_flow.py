@@ -17,23 +17,20 @@ from app.modules.backup_service import run_backup_for_device
 
 
 @pytest.fixture
-def client():
-    return TestClient(app)
+def client(web_client):
+    return web_client
 
 
 @pytest.fixture
 def auth_headers():
-    from app.config import get_settings
     import base64
-    settings = get_settings()
-    credentials = base64.b64encode(
-        f"{settings.AUTH_USERNAME}:{settings.AUTH_PASSWORD}".encode()
-    ).decode()
+    credentials = base64.b64encode(b"admin:test-password-123").decode()
     return {"Authorization": f"Basic {credentials}"}
 
 
+
 @pytest.mark.asyncio
-async def test_full_backup_failure_flow(client, auth_headers):
+async def test_full_backup_failure_flow(client, auth_headers, web_db):
     """
     Simulate full backup failure:
     1. Backup fails across destinations with retries
@@ -45,7 +42,7 @@ async def test_full_backup_failure_flow(client, auth_headers):
     """
     import uuid
     uid = uuid.uuid4().hex[:8]
-    db = SessionLocal()
+    db = web_db()
     cred = None
     device = None
     dest = None

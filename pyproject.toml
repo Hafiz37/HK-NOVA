@@ -22,6 +22,7 @@ dependencies = [
     "python-multipart",
     "jinja2",
     "cryptography",
+    "bcrypt>=4.0",
     "python-dotenv",
     "apprise>=1.9",
 ]

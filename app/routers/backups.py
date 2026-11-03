@@ -1,3 +1,5 @@
+from app.security import get_current_user, require_operator_or_admin
+from datetime import timezone
 import difflib
 import io
 import json
@@ -14,6 +16,8 @@ from app.database import get_db
 from app.models.device import Device
 from app.models.backup import Backup, BackupStatus
 from app.models.destination import Destination
+from app.models.user import User
+from app.modules.audit_service import AuditService
 from app.modules.backup_service import run_backup_for_device
 
 router = APIRouter(prefix="/backups")
@@ -70,7 +74,7 @@ def _parse_archive_manifest(config_text: str) -> dict | None:
     return None
 
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(get_current_user)])
 async def list_backups(
     request: Request,
     page: int = 1,
@@ -131,6 +135,7 @@ async def list_backups(
 async def batch_delete_backups(
     request: Request,
     db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     """Delete multiple backup records and their files on disk."""
     form = await request.form()
@@ -138,22 +143,28 @@ async def batch_delete_backups(
     if not backup_ids:
         return RedirectResponse(url="/backups", status_code=303)
 
+    selected_ids = set()
     for bid in backup_ids:
         try:
             bid_int = int(bid)
         except (ValueError, TypeError):
             continue
-        backup = db.query(Backup).get(bid_int)
-        if not backup:
-            continue
+        if bid_int > 0:
+            selected_ids.add(bid_int)
+    backups = db.query(Backup).filter(Backup.id.in_(selected_ids)).all()
+    for backup in backups:
         await _delete_backup_file(db, backup)
         db.delete(backup)
 
     db.commit()
+    AuditService.log(
+        db, action="BATCH_DELETE", resource_type="backups", user=actor, request=request,
+        new_value={"deleted_count": len(backups), "criteria": {"backup_ids": sorted(selected_ids)}},
+    )
     return RedirectResponse(url="/backups", status_code=303)
 
 
-@router.get("/device/{device_id}/history")
+@router.get("/device/{device_id}/history", dependencies=[Depends(get_current_user)])
 async def device_history(
     device_id: int,
     request: Request,
@@ -192,7 +203,7 @@ async def device_history(
     )
 
 
-@router.get("/compare")
+@router.get("/compare", dependencies=[Depends(get_current_user)])
 async def compare_backups(
     request: Request,
     a: int,
@@ -248,7 +259,7 @@ async def compare_backups(
     )
 
 
-@router.get("/trigger")
+@router.get("/trigger", dependencies=[Depends(require_operator_or_admin)])
 async def trigger_form(request: Request, db: Session = Depends(get_db)):
     devices = db.query(Device).filter(Device.enabled == True).order_by(Device.hostname).all()
     destinations = db.query(Destination).filter(Destination.enabled == True).all()
@@ -264,31 +275,66 @@ async def trigger_backup(
     device_ids: list[int] = Form(...),
     destination_ids: list[int] = Form(default=[]),
     db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     dest_ids = destination_ids or None
-    for device_id in device_ids:
-        device = db.query(Device).get(device_id)
-        if device:
-            await run_backup_for_device(db, device, destination_ids=dest_ids)
+    # Resolve unique existing selections while retaining the submitted order.
+    selected_ids = list(dict.fromkeys(device_ids))
+    devices_by_id = {device.id: device for device in db.query(Device).filter(Device.id.in_(selected_ids)).all()}
+    devices = [devices_by_id[device_id] for device_id in selected_ids if device_id in devices_by_id]
+    selected = set(devices_by_id)
+    enabled = db.query(Device).filter(Device.enabled == True).all()
+    groups = {device.group for device in devices}
+    scope, resource_name = "selected", "selected devices"
+    if selected and selected == {device.id for device in enabled}:
+        scope, resource_name = "all", "all devices"
+    elif selected and len(groups) == 1:
+        group_name = next(iter(groups))
+        if group_name and selected == {device.id for device in enabled if device.group == group_name}:
+            scope, resource_name = "group", f"group:{group_name}"
+    metadata = {"scope": scope, "device_count": len(devices)}
+    status = "success"
+    try:
+        for device in devices:
+            backup = await run_backup_for_device(db, device, destination_ids=dest_ids)
+            if backup.status == BackupStatus.failed:
+                status = "failed"
+    except Exception:
+        db.rollback()
+        AuditService.log(db, action="TRIGGER", resource_type="backups", user=actor,
+                         request=request, resource_name=resource_name, new_value=metadata, status="failed")
+        raise
+    AuditService.log(db, action="TRIGGER", resource_type="backups", user=actor,
+                     request=request, resource_name=resource_name, new_value=metadata, status=status)
     return RedirectResponse(url="/backups", status_code=303)
 
 
 @router.post("/{device_id}/now")
-async def backup_now(device_id: int, request: Request, db: Session = Depends(get_db)):
-    device = db.query(Device).get(device_id)
+async def backup_now(device_id: int, request: Request, db: Session = Depends(get_db),
+                     actor: User = Depends(require_operator_or_admin)):
+    device = db.get(Device, device_id)
     if not device:
         return HTMLResponse('<span class="badge bg-danger">Device not found</span>')
+    hostname = device.hostname
+    status = "success"
     try:
         backup = await run_backup_for_device(db, device)
         if backup.status == BackupStatus.success:
-            return HTMLResponse(f'<span class="badge bg-success">Backup OK ({backup.file_size} bytes)</span>')
+            response = HTMLResponse(f'<span class="badge bg-success">Backup OK ({backup.file_size} bytes)</span>')
         else:
-            return HTMLResponse(f'<span class="badge bg-danger">Failed: {backup.error_message}</span>')
+            if backup.status == BackupStatus.failed:
+                status = "failed"
+            response = HTMLResponse(f'<span class="badge bg-danger">Failed: {backup.error_message}</span>')
     except Exception:
-        return HTMLResponse('<span class="badge bg-danger">Backup error</span>')
+        db.rollback()
+        status = "failed"
+        response = HTMLResponse('<span class="badge bg-danger">Backup error</span>')
+    AuditService.log(db, action="TRIGGER", resource_type="backups", user=actor, request=request,
+                     resource_id=device_id, resource_name=hostname, status=status)
+    return response
 
 
-@router.get("/{backup_id}")
+@router.get("/{backup_id}", dependencies=[Depends(get_current_user)])
 async def backup_detail(backup_id: int, request: Request, db: Session = Depends(get_db)):
     backup = db.query(Backup).get(backup_id)
     if not backup:
@@ -335,7 +381,7 @@ async def backup_detail(backup_id: int, request: Request, db: Session = Depends(
     )
 
 
-@router.get("/{backup_id}/download")
+@router.get("/{backup_id}/download", dependencies=[Depends(get_current_user)])
 async def download_backup(backup_id: int, db: Session = Depends(get_db)):
     backup = db.query(Backup).get(backup_id)
     if not backup:
@@ -369,7 +415,7 @@ async def download_backup(backup_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/{backup_id}/file")
+@router.get("/{backup_id}/file", dependencies=[Depends(get_current_user)])
 async def download_single_file(
     backup_id: int,
     path: str,
@@ -406,7 +452,7 @@ async def download_single_file(
     )
 
 
-@router.get("/{backup_id}/view-file")
+@router.get("/{backup_id}/view-file", dependencies=[Depends(get_current_user)])
 async def view_single_file(
     backup_id: int,
     path: str,
@@ -432,15 +478,25 @@ async def view_single_file(
 
 
 @router.post("/{backup_id}/delete")
-async def delete_backup(backup_id: int, db: Session = Depends(get_db)):
+async def delete_backup(backup_id: int, request: Request, db: Session = Depends(get_db),
+                        actor: User = Depends(require_operator_or_admin)):
     """Delete a backup record and its file on disk if it exists."""
     backup = db.query(Backup).get(backup_id)
     if not backup:
         raise HTTPException(status_code=404, detail="Backup not found")
 
+    device = db.get(Device, backup.device_id)
+    device_name = device.hostname if device else None
+    timestamp = backup.timestamp
+    if timestamp is not None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc) if timestamp.tzinfo is None else timestamp.astimezone(timezone.utc)
+    old_value = {"device_name": device_name, "timestamp": timestamp.isoformat() if timestamp else None,
+                 "size": backup.file_size}
     await _delete_backup_file(db, backup)
     db.delete(backup)
     db.commit()
+    AuditService.log(db, action="DELETE", resource_type="backups", user=actor, request=request,
+                     resource_id=backup_id, resource_name=device_name, old_value=old_value)
     return RedirectResponse(url="/backups", status_code=303)
 
 

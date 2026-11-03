@@ -8,8 +8,8 @@ All settings are configured via environment variables in `.env` (or in the `envi
 |----------|---------|-------------|
 | `DATABASE_URL` | `sqlite:///./hk-nova.db` | Database connection string |
 | `SECRET_KEY` | `change-me` | Encryption key for stored credentials |
-| `AUTH_USERNAME` | `admin` | Web UI / API username |
-| `AUTH_PASSWORD` | `admin` | Web UI / API password |
+| `AUTH_USERNAME` | `admin` | Initial admin username; only used when users is empty |
+| `AUTH_PASSWORD` | `admin` | Initial admin password; only used when users is empty |
 | `HOST` | `0.0.0.0` | Listen address |
 | `PORT` | `5005` | Listen port |
 | `CORS_ORIGINS` | `http://localhost:5005,...` | Comma-separated allowed origins |
@@ -159,7 +159,7 @@ Keys are stored in `ssh_keys/` with secure permissions (`600` for private, `644`
 - **Remember me for 14 days** — HMAC-SHA256 signed session cookie
 - HTTP Basic Auth also supported for API / curl access
 - Default credentials are auto-generated during install
-- Change password: edit `AUTH_PASSWORD` in `.env` and restart, or use `./manage.sh set-password`
+- Change password in **Profile** (`/profile`). `AUTH_PASSWORD` only provisions an empty users table.
 
 ---
 
@@ -236,13 +236,10 @@ sudo journalctl -u hk-nova -f
 sudo chown -R hk-nova:hk-nova /opt/hk-nova/backups
 ```
 
-**Show or change admin password:**
-```bash
-cd /opt/hk-nova
-./manage.sh show-password
-./manage.sh set-password
-./manage.sh reset-password
-```
+**Change your account password:**
+Open **Profile** (`/profile`) and supply your current password and a new password.
+Stored bcrypt hashes cannot be displayed as plaintext. Environment changes do not
+reset existing accounts; an admin manages roles/status through **Users**.
 
 **Database locked:**
 ```bash
@@ -278,3 +275,12 @@ hk-nova/
 ├── pyproject.toml
 └── README.md
 ```
+
+### Akun admin awal di tabel users
+
+`AUTH_USERNAME` dan `AUTH_PASSWORD` hanya dipakai untuk seeding admin pada startup
+jika tabel `users` kosong. Password disimpan dengan bcrypt. Akun existing tidak
+ditimpa saat restart. Login web dan HTTP Basic selalu memverifikasi akun aktif di
+database. Ganti password lewat `/profile`, bukan melalui `.env` atau `manage.sh`.
+Password baru minimal 8 karakter dan maksimal 72 byte UTF-8. Kredensial bootstrap
+lama yang lebih pendek tetap dapat dipakai untuk login lalu diganti melalui Profile.

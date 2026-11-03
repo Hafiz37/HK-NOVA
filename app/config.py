@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     PORT: int = 5005
     BASE_URL: str = Field(default="http://localhost:8000", description="Base URL for notification links")
     
-    # Security settings
+    # Bootstrap credentials: used only when users is empty. Login uses the database.
     AUTH_USERNAME: str = "admin"
     AUTH_PASSWORD: str = "admin"  # CHANGE THIS IN PRODUCTION!
     CORS_ORIGINS: str = "http://localhost:5005,http://127.0.0.1:5005,http://0.0.0.0:5005"

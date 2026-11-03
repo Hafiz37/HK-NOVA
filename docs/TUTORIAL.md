@@ -80,7 +80,7 @@ The script will:
 
 1. Open browser to `http://localhost:5005` (or your server IP)
 2. Default username: **admin**
-3. Password: Value you set in `AUTH_PASSWORD` environment variable
+3. Initial password: value of `AUTH_PASSWORD` when the users table was first seeded. After changing it in **Profile**, use the stored account password; editing the environment does not reset it.
 4. Click **Login**
 
 **Security Note:** Change default password immediately after first login via Settings.

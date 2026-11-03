@@ -6,7 +6,7 @@
 
 <div class="card mt-3">
     <div class="card-body">
-        <form method="post" action="{{ '/notifications/' ~ channel.id ~ '/edit' if channel else '/notifications/add' }}">
+        {% if can_edit(current_user) %}<form method="post" action="{{ '/notifications/' ~ channel.id ~ '/edit' if channel else '/notifications/add' }}">
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label">Name</label>
@@ -63,7 +63,7 @@
                 <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> {{ 'Save Changes' if channel else 'Add Channel' }}</button>
                 <a href="/notifications" class="btn btn-outline-secondary">Cancel</a>
             </div>
-        </form>
+        </form>{% endif %}
     </div>
 </div>
 {% endblock %}

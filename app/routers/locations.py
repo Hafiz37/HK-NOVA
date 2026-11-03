@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from app.security import get_current_user, require_operator_or_admin
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 import logging
 
 from app.database import get_db
+from app.modules.audit_service import AuditService
+from app.models.user import User, UserRole
 from app.models.location import Location
 from app.models.device import Device
 from app.schemas.location import LocationCreate, LocationRead, LocationUpdate
@@ -14,7 +17,14 @@ router = APIRouter(prefix="/locations", tags=["locations"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/", response_model=list[LocationRead])
+def _location_metadata(location):
+    if location is None:
+        return None
+    return {field: getattr(location, field) for field in (
+        "name", "enabled", "group_id", "telegram_destination_id", "device_count")}
+
+
+@router.get("/", response_model=list[LocationRead], dependencies=[Depends(get_current_user)])
 async def list_locations(
     enabled_only: bool = Query(False, description="Filter active locations only"),
     search: Optional[str] = Query(None, description="Search by name"),
@@ -47,9 +57,10 @@ async def list_locations(
 
 
 @router.post("/", response_model=LocationRead, status_code=201)
-async def create_location(
+async def create_location(request: Request, 
     location: LocationCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     """
     Create new location with auto-setup:
@@ -57,8 +68,11 @@ async def create_location(
     - Creates group with multi-destination (Local + Main + Location channel)
     - Links everything together
     """
+    name = location.name
     try:
         new_location = await location_service.create_location(db, location)
+        AuditService.log(db, action="CREATE", resource_type="locations", user=actor, request=request,
+                         resource_id=new_location.id, resource_name=new_location.name, new_value=_location_metadata(new_location))
         
         # Enrich response
         result = LocationRead.from_orm(new_location).model_dump()
@@ -70,13 +84,19 @@ async def create_location(
         return LocationRead(**result)
     
     except ValueError as e:
+        db.rollback()
+        AuditService.log(db, action="CREATE", resource_type="locations", user=actor, request=request,
+                         resource_name=name, status="failed")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        db.rollback()
+        AuditService.log(db, action="CREATE", resource_type="locations", user=actor, request=request,
+                         resource_name=name, status="failed")
         logger.error(f"Error creating location: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/{location_id}", response_model=LocationRead)
+@router.get("/{location_id}", response_model=LocationRead, dependencies=[Depends(get_current_user)])
 async def get_location(
     location_id: int,
     db: Session = Depends(get_db)
@@ -101,14 +121,20 @@ async def get_location(
 
 
 @router.put("/{location_id}", response_model=LocationRead)
-async def update_location(
+async def update_location(request: Request, 
     location_id: int,
     update_data: LocationUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     """Update location fields"""
+    existing = db.get(Location, location_id)
+    old_value = _location_metadata(existing)
+    name = existing.name if existing else None
     try:
         updated = await location_service.update_location(db, location_id, update_data)
+        AuditService.log(db, action="UPDATE", resource_type="locations", user=actor, request=request,
+                         resource_id=updated.id, resource_name=updated.name, old_value=old_value, new_value=_location_metadata(updated))
         
         # Enrich response
         result = LocationRead.from_orm(updated).model_dump()
@@ -120,16 +146,23 @@ async def update_location(
         return LocationRead(**result)
     
     except ValueError as e:
+        db.rollback()
+        AuditService.log(db, action="UPDATE", resource_type="locations", user=actor, request=request,
+                         resource_id=location_id, resource_name=name, status="failed")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        db.rollback()
+        AuditService.log(db, action="UPDATE", resource_type="locations", user=actor, request=request,
+                         resource_id=location_id, resource_name=name, status="failed")
         logger.error(f"Error updating location: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.delete("/{location_id}", status_code=204)
-async def delete_location(
+async def delete_location(request: Request, 
     location_id: int,
     cascade: bool = Query(False, description="Hard delete if true, soft delete if false"),
+    current_user: User = Depends(require_operator_or_admin),
     db: Session = Depends(get_db)
 ):
     """
@@ -137,21 +170,36 @@ async def delete_location(
     - cascade=False: Disable location (soft delete)
     - cascade=True: Delete location, group, destination, and reassign devices
     """
+    if cascade and current_user.role != UserRole.admin:
+        raise HTTPException(403, "Only administrators can delete a location and its destination")
+    existing = db.get(Location, location_id)
+    old_value = _location_metadata(existing)
+    name = existing.name if existing else None
     try:
         await location_service.delete_location(db, location_id, cascade)
+        AuditService.log(db, action="DELETE", resource_type="locations", user=current_user, request=request,
+                         resource_id=location_id, resource_name=name, old_value=old_value,
+                         new_value={"cascade": cascade})
         return None
     
     except ValueError as e:
+        db.rollback()
+        AuditService.log(db, action="DELETE", resource_type="locations", user=current_user, request=request,
+                         resource_id=location_id, resource_name=name, status="failed")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        db.rollback()
+        AuditService.log(db, action="DELETE", resource_type="locations", user=current_user, request=request,
+                         resource_id=location_id, resource_name=name, status="failed")
         logger.error(f"Error deleting location: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.post("/{location_id}/test-backup")
-async def test_location_backup(
+async def test_location_backup(request: Request, 
     location_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     """
     Test backup for one device in this location
@@ -174,9 +222,13 @@ async def test_location_backup(
             detail=f"Tidak ada device aktif di location '{location.name}'. Silakan assign device terlebih dahulu."
         )
     
+    name = location.name
     # Run backup
     try:
         backup = await run_backup_for_device(db, device)
+        AuditService.log(db, action="TEST_BACKUP", resource_type="locations", user=actor, request=request,
+                         resource_id=location_id, resource_name=name, new_value={"device_id": device.id},
+                         status="failed" if backup.status.value == "failed" else "success")
         
         return {
             "location_id": location_id,
@@ -190,11 +242,14 @@ async def test_location_backup(
         }
     
     except Exception as e:
+        db.rollback()
+        AuditService.log(db, action="TEST_BACKUP", resource_type="locations", user=actor, request=request,
+                         resource_id=location_id, resource_name=name, status="failed")
         logger.error(f"Test backup failed for location {location_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Backup gagal: {str(e)}")
 
 
-@router.get("/{location_id}/devices")
+@router.get("/{location_id}/devices", dependencies=[Depends(get_current_user)])
 async def list_location_devices(
     location_id: int,
     db: Session = Depends(get_db)
@@ -227,10 +282,11 @@ async def list_location_devices(
 
 
 @router.post("/{location_id}/devices")
-async def assign_devices_to_location(
+async def assign_devices_to_location(request: Request, 
     location_id: int,
     device_ids: list[int],
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     """Bulk assign devices to this location's group"""
     location = db.query(Location).filter(Location.id == location_id).first()
@@ -252,6 +308,9 @@ async def assign_devices_to_location(
     # Update device count
     location.device_count = location_service.get_location_device_count(db, location_id)
     db.commit()
+    AuditService.log(db, action="ADD_DEVICES", resource_type="locations", user=actor, request=request,
+                     resource_id=location.id, resource_name=location.name, new_value={"device_ids": [device.id for device in devices], "device_count": len(devices)})
+
     
     return {
         "message": f"{len(devices)} device berhasil di-assign ke location '{location.name}'",

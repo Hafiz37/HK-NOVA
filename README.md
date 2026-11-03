@@ -21,7 +21,7 @@ Network device configuration backup manager with automated scheduling and multi-
 - **Analytics dashboard** — Backup trends, success rates, storage metrics
 - **Notifications** — 80+ services via Apprise (Slack, Discord, Telegram, email)
 - **REST API** — Full JSON API with rate limiting (30 req/min)
-- **Security** — Fernet encrypted credentials, HMAC-SHA256 sessions
+- **Security & Audit Logs** — database-backed users, three RBAC roles, bcrypt passwords, Fernet encrypted device credentials, HMAC-SHA256 sessions, and a comprehensive, tamper-resistant Audit Log system with streaming CSV export and viewer UI (see [docs/AUDIT_LOG.md](docs/AUDIT_LOG.md))
 
 ---
 
@@ -222,7 +222,7 @@ Cron Examples:
 
 **Base URL:** `http://localhost:5005/api/v1`
 
-**Authentication:** HTTP Basic Auth (username/password from .env)
+**Authentication:** HTTP Basic Auth using an active database user and their current password. `AUTH_*` is used only to create the first admin.
 
 **Rate Limit:** 30 requests/minute
 
@@ -318,10 +318,9 @@ sudo systemctl enable hk-nova
 ## Troubleshooting
 
 **Can't login:**
-```bash
-# Check AUTH_PASSWORD in .env
-grep AUTH_PASSWORD .env
-```
+Use the current database password. `AUTH_PASSWORD` only seeds an empty users table.
+An administrator can check account status in **Users**; change your own password in **Profile**.
+Legacy sessions from before the RBAC upgrade require a fresh login.
 
 **Port already in use:**
 ```bash
@@ -550,3 +549,80 @@ MIT License - see [LICENSE](LICENSE) file for details.
 <p align="center">
   <sub>Built with FastAPI, SQLAlchemy, and Bootstrap</sub>
 </p>
+
+## User Management
+
+HK-NOVA authenticates active users from the `users` database table for both the
+web login and HTTP Basic API calls. The header shows your name and role; use
+**Profile** (`/profile`) to change your password.
+
+- **Admin:** full access, including `/users`, user APIs and destination deletion.
+- **Operator:** daily operations, including creating/editing/deleting devices,
+  credentials, schedules, backups, groups and notification channels; may create,
+  edit and test destinations. Cannot manage users or delete destinations.
+- **Viewer:** read-only dashboard, analytics, diagnostics, devices, backup contents,
+  downloads, schedules and resource lists. Cannot run backups/tests/retries, resolve
+  failures, modify resources, or open editing forms. Destination API configuration
+  is omitted for viewers.
+
+Destination deletion through a cascading location deletion also requires admin.
+All roles may change their own password. Role/status changes apply on the next
+request, including to existing sessions. Hidden buttons accompany server-side
+permission checks; directly calling a forbidden route returns HTTP 403.
+
+Admins manage accounts through **Users → Add User / Edit / Delete**. Usernames are
+immutable, unique, and contain 3–50 ASCII letters, digits, underscores or dashes.
+New and changed passwords require at least 8 characters and at most 72 UTF-8 bytes;
+12+ characters are recommended. Passwords are stored only as bcrypt hashes.
+You cannot deactivate, delete or demote yourself, or remove the last active admin.
+Deactivate accounts when access should be suspended; user deletion is permanent.
+
+User API endpoints (admin only) are `GET/POST /api/users` and
+`GET/PUT/DELETE /api/users/{id}`. Create returns 201; delete returns 204; missing
+users return 404; duplicate names and account-protection failures return 400;
+invalid payloads return 422; forbidden access returns 403. Responses never include
+passwords or their hashes. Updates accept `full_name`, `role`, and `is_active` only.
+
+```bash
+# curl prompts for the current admin password.
+curl -u admin http://localhost:5005/api/users
+curl -u admin -X PUT http://localhost:5005/api/users/2 \
+  -H 'Content-Type: application/json' -d '{"role":"operator"}'
+```
+
+### Upgrade and bootstrap
+
+From the project root:
+
+```bash
+source .venv/bin/activate
+pip install -r requirements.txt
+# Back up the configured database before upgrading.
+alembic upgrade head
+./start.sh  # or ./run.sh
+```
+
+Revision `l2m3n4o5p6q7` adds `users`; `m3n4o5p6q7r8` prevents reuse of deleted
+SQLite user IDs so an old session cannot identify a newly created account. On startup, `init_db()` seeds one active admin
+from `AUTH_USERNAME` / `AUTH_PASSWORD` **only when users is empty**. Defaults are
+`admin` / `admin`; set a strong password before the first start and change it via
+Profile afterwards. Restart never resets existing users. Editing `AUTH_*` or using
+legacy environment-password scripts cannot change an existing account.
+
+Existing installations retain their devices, backups and encrypted credentials.
+A code deployment and restart are required; old session cookies are invalidated
+by the new token format. Keep the same `SECRET_KEY` and database during upgrade.
+Alembic reads `DATABASE_URL` from the environment or `.env`. This deployment uses
+SQLite; legacy application migrations still limit full PostgreSQL support.
+See [installation guidance](docs/INSTALL.md#inisialisasi-tabel-users) and
+[security guidance](SECURITY.md).
+
+### RBAC verification
+
+```bash
+python -m pytest tests/test_rbac.py -v
+python -m pytest tests/ -v
+```
+
+HTTP tests use isolated temporary databases. See [RBAC verification notes](docs/RBAC.md)
+for browser checks and implementation limits.

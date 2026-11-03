@@ -285,7 +285,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <div class="card mt-3">
     <div class="card-body">
-        <form method="post" action="{{ '/devices/' ~ device.id ~ '/edit' if device else '/devices/add' }}">
+        {% if can_edit(current_user) %}<form method="post" action="{{ '/devices/' ~ device.id ~ '/edit' if device else '/devices/add' }}">
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label">Hostname</label>
@@ -420,7 +420,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="col-12 text-muted">
                             <i class="bi bi-exclamation-circle"></i>
                             No destinations configured. 
-                            <a href="/destinations/add" target="_blank">Add destinations first</a>.
+                            {% if can_edit(current_user) %}<a href="/destinations/add" target="_blank">Add destinations first</a>{% endif %}.
                         </div>
                         {% endfor %}
                     </div>
@@ -509,7 +509,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </button>
                 <a href="{{ '/devices/' ~ device.id if device else ('/devices/' ~ clone.id if clone else '/devices') }}" class="btn btn-outline-secondary">Cancel</a>
             </div>
-        </form>
+        </form>{% endif %}
     </div>
 </div>
 {% endblock %}

@@ -1,19 +1,32 @@
 <!-- Mobile Bottom Navigation -->
 <nav class="mobile-bottom-nav d-md-none">
-    <a href="/" class="mobile-nav-item {% if request.path == '/' %}active{% endif %}">
+    <a href="/" class="mobile-nav-item {% if request.url.path == '/' %}active{% endif %}">
         <i class="bi bi-speedometer2"></i>
         <span>Dashboard</span>
     </a>
-    <a href="/devices" class="mobile-nav-item {% if request.path.startswith('/devices') %}active{% endif %}">
+    <a href="/devices" class="mobile-nav-item {% if request.url.path.startswith('/devices') %}active{% endif %}">
         <i class="bi bi-router"></i>
         <span>Devices</span>
     </a>
-    <a href="/backups" class="mobile-nav-item {% if request.path.startswith('/backups') %}active{% endif %}">
+    <a href="/backups" class="mobile-nav-item {% if request.url.path.startswith('/backups') %}active{% endif %}">
         <i class="bi bi-archive"></i>
         <span>Backups</span>
     </a>
-    <a href="/jobs" class="mobile-nav-item {% if request.path.startswith('/jobs') %}active{% endif %}">
+    <a href="/jobs" class="mobile-nav-item {% if request.url.path.startswith('/jobs') %}active{% endif %}">
         <i class="bi bi-clock-history"></i>
         <span>Jobs</span>
     </a>
+    {% if current_user and current_user.role.value == 'admin' %}
+    <a href="/users" class="mobile-nav-item {% if request.url.path.startswith('/users') %}active{% endif %}"><i class="bi bi-people"></i><span>Users</span></a>
+    {% else %}
+    <a href="/profile" class="mobile-nav-item {% if request.url.path == '/profile' %}active{% endif %}"><i class="bi bi-person"></i><span>Profile</span></a>
+    {% endif %}
+    {% if current_user %}
+    <form method="post" action="/logout" class="mobile-nav-item m-0">
+        <button type="submit" class="mobile-nav-item border-0 bg-transparent w-100" aria-label="Logout">
+            <i class="bi bi-box-arrow-right"></i>
+            <span>Logout</span>
+        </button>
+    </form>
+    {% endif %}
 </nav>

@@ -1,3 +1,4 @@
+from app.security import get_current_user
 from fastapi import APIRouter, Request, Depends
 from sqlalchemy.orm import Session
 
@@ -6,7 +7,7 @@ from app.database import get_db
 router = APIRouter()
 
 
-@router.get("/analytics")
+@router.get("/analytics", dependencies=[Depends(get_current_user)])
 async def analytics_page(request: Request, db: Session = Depends(get_db)):
     """Analytics and reports dashboard page."""
     return request.app.state.templates.TemplateResponse(

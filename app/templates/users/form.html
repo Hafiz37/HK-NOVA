@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if user else 'Add' }} User - HK-NOVA{% endblock %}
+{% block content %}
+<h2 class="mb-3"><i class="bi bi-person-gear"></i> {{ 'Edit' if user else 'Add' }} User</h2>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<div class="card"><div class="card-body">
+<form method="post" action="{{ '/users/' ~ user.id ~ '/edit' if user else '/users/add' }}">
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label for="username" class="form-label">Username</label>
+            <input id="username" name="username" class="form-control" value="{{ user.username if user else values.get('username', '') }}" {% if user %}readonly{% else %}required minlength="3" maxlength="50" pattern="[A-Za-z0-9_\-]+" autocomplete="username"{% endif %}>
+            <div class="form-text">3–50 letters, numbers, underscores or dashes. Cannot be changed later.</div>
+        </div>
+        <div class="col-md-6">
+            <label for="full_name" class="form-label">Full Name</label>
+            <input id="full_name" name="full_name" class="form-control" maxlength="100" value="{{ values.get('full_name') or '' }}" autocomplete="name">
+        </div>
+        {% if not user %}<div class="col-md-6">
+            <label for="password" class="form-label">Password</label>
+            <input id="password" name="password" type="password" class="form-control" required minlength="8" maxlength="72" autocomplete="new-password">
+            <div class="form-text">At least 8 characters; at most 72 UTF-8 bytes.</div>
+        </div>{% endif %}
+        <div class="col-md-6">
+            <label for="role" class="form-label">Role</label>
+            <select id="role" name="role" class="form-select" required>
+                {% for role in roles %}<option value="{{ role.value }}" {% if values.get('role', 'viewer') == role %}selected{% endif %}>{{ role.value | title }}</option>{% endfor %}
+            </select>
+            <div class="form-text">Viewer: read-only. Operator: daily operations. Admin: full access including users.</div>
+        </div>
+        <div class="col-12"><div class="form-check form-switch">
+            <input id="is_active" name="is_active" type="checkbox" value="true" class="form-check-input" {% if values.get('is_active', true) %}checked{% endif %}>
+            <label for="is_active" class="form-check-label">Active</label>
+        </div></div>
+    </div>
+    {% if user %}<div class="alert alert-info mt-3">Users change their own password on the <a href="/profile">Profile page</a>.</div>{% endif %}
+    <div class="mt-4"><button type="submit" class="btn btn-primary">{{ 'Save Changes' if user else 'Create User' }}</button> <a href="/users" class="btn btn-outline-secondary">Cancel</a></div>
+</form></div></div>
+{% endblock %}

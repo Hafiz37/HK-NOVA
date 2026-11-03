@@ -5,9 +5,9 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="bi bi-router"></i> Devices</h2>
     <div>
-        <a href="/devices/import/oxidized" class="btn btn-info"><i class="bi bi-cloud-download"></i> Import from Oxidized</a>
-        <a href="/devices/test-all" class="btn btn-warning"><i class="bi bi-plug"></i> Test All</a>
-        <a href="/devices/add" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Device</a>
+        {% if can_edit(current_user) %}<a href="/devices/import/oxidized" class="btn btn-info"><i class="bi bi-cloud-download"></i> Import from Oxidized</a>{% endif %}
+        {% if can_edit(current_user) %}<a href="/devices/test-all" class="btn btn-warning"><i class="bi bi-plug"></i> Test All</a>{% endif %}
+        {% if can_edit(current_user) %}<a href="/devices/add" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Device</a>{% endif %}
     </div>
 </div>
 
@@ -17,7 +17,7 @@
         <table class="table table-hover mb-0" id="devices-table" data-enhance="true" data-sortable="true" data-density="true" data-exportable="true">
             <thead>
                 <tr>
-                    <th style="width: 40px;" data-sortable="false"><input type="checkbox" class="form-check-input" id="select-all"></th>
+                    <th style="width: 40px;" data-sortable="false">{% if can_edit(current_user) %}<input type="checkbox" class="form-check-input" id="select-all">{% endif %}</th>
                     <th>Hostname</th>
                     <th>IP Address</th>
                     <th>Type</th>
@@ -30,7 +30,7 @@
             <tbody>
                 {% for device in devices %}
                 <tr>
-                    <td><input type="checkbox" class="form-check-input device-check" value="{{ device.id }}"></td>
+                    <td>{% if can_edit(current_user) %}<input type="checkbox" class="form-check-input device-check" value="{{ device.id }}">{% endif %}</td>
                     <td>
                         <a href="/devices/{{ device.id }}">{{ device.hostname }}</a>
                         {% if device.is_critical %}
@@ -60,21 +60,22 @@
                         {% endif %}
                     </td>
                     <td>
+                        <a href="/devices/{{ device.id }}" class="btn btn-sm btn-outline-light" title="View device" aria-label="View device"><i class="bi bi-eye"></i> View</a>
                         <div class="btn-group btn-group-sm">
-                            <button class="btn btn-outline-info" hx-post="/backups/{{ device.id }}/now" hx-target="#status-{{ device.id }}" hx-swap="innerHTML">
+                            {% if can_edit(current_user) %}<button class="btn btn-outline-info" hx-post="/backups/{{ device.id }}/now" hx-target="#status-{{ device.id }}" hx-swap="innerHTML">
                                 <i class="bi bi-download"></i> Backup
-                            </button>
-                            <button class="btn btn-outline-warning" hx-post="/devices/{{ device.id }}/test" hx-target="#status-{{ device.id }}" hx-swap="innerHTML">
+                            </button>{% endif %}
+                            {% if can_edit(current_user) %}<button class="btn btn-outline-warning" hx-post="/devices/{{ device.id }}/test" hx-target="#status-{{ device.id }}" hx-swap="innerHTML">
                                 <i class="bi bi-plug"></i> Test
-                            </button>
-                            <a href="/devices/{{ device.id }}/edit" class="btn btn-outline-light"><i class="bi bi-pencil"></i></a>
-                            <a href="/devices/{{ device.id }}/clone" class="btn btn-outline-secondary" title="Clone device"><i class="bi bi-copy"></i></a>
+                            </button>{% endif %}
+                            {% if can_edit(current_user) %}<a href="/devices/{{ device.id }}/edit" class="btn btn-outline-light"><i class="bi bi-pencil"></i></a>{% endif %}
+                            {% if can_edit(current_user) %}<a href="/devices/{{ device.id }}/clone" class="btn btn-outline-secondary" title="Clone device"><i class="bi bi-copy"></i></a>{% endif %}
                         </div>
                         <span id="status-{{ device.id }}" class="ms-2"></span>
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="8" class="text-center text-muted py-4">No devices yet. <a href="/devices/add">Add one</a>.</td></tr>
+                <tr><td colspan="8" class="text-center text-muted py-4">No devices yet. {% if can_edit(current_user) %}<a href="/devices/add">Add one</a>{% endif %}.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -82,12 +83,12 @@
 </div>
 {% else %}
 {% from 'components/empty-state.html' import empty_state %}
-{{ empty_state('no-devices', 'No Devices Yet', 'Add your first network device to get started', '/devices/add', 'plus-lg', 'Add Device') }}
+{{ empty_state('no-devices', 'No Devices Yet', 'Add your first network device to get started', '/devices/add' if can_edit(current_user) else '', 'plus-lg', 'Add Device') }}
 {% endif %}
 
 <!-- Batch edit bar -->
 <div id="batch-bar" class="fixed-bottom bg-dark border-top border-secondary p-3" style="display: none;">
-    <form method="post" action="/devices/batch-edit" class="container-fluid d-flex align-items-center gap-3 flex-wrap">
+    {% if can_edit(current_user) %}<form method="post" action="/devices/batch-edit" class="container-fluid d-flex align-items-center gap-3 flex-wrap">
         <input type="hidden" name="device_ids" id="batch-device-ids">
         <strong><span id="batch-count">0</span> selected</strong>
         <select name="credential_id" class="form-select form-select-sm" style="width: auto;">
@@ -105,12 +106,13 @@
         </select>
         <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-pencil-square"></i> Apply</button>
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearSelection()">Cancel</button>
-    </form>
+    </form>{% endif %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script src="/static/js/table-enhancements.js"></script>
+{% if can_edit(current_user) %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const selectAll = document.getElementById('select-all');
@@ -129,6 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
         selectAll.checked = ids.length === all.length && all.length > 0;
     }
 
+    if (!selectAll) return;
     selectAll.addEventListener('change', function() {
         document.querySelectorAll('.device-check').forEach(cb => cb.checked = this.checked);
         updateBatchBar();
@@ -145,4 +148,5 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 });
 </script>
+{% endif %}
 {% endblock %}

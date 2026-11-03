@@ -1,8 +1,11 @@
+from app.security import get_current_user, require_admin
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.modules.audit_service import AuditService
+from app.models.user import User
 from app.models.destination import Destination, DestinationType
 
 router = APIRouter(prefix="/destinations")
@@ -93,7 +96,12 @@ def _merge_config(old_cfg: dict, new_cfg: dict, dest_type: str) -> dict:
     return new_cfg
 
 
-@router.get("/")
+def _destination_metadata(dest):
+    return {"name": dest.name, "dest_type": dest.dest_type.value, "enabled": dest.enabled,
+            "retention_config": dest.retention_config, "config": "***REDACTED***"}
+
+
+@router.get("/", dependencies=[Depends(require_admin)])
 async def list_destinations(request: Request, db: Session = Depends(get_db)):
     destinations = db.query(Destination).order_by(Destination.name).all()
     return request.app.state.templates.TemplateResponse(
@@ -101,7 +109,7 @@ async def list_destinations(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/add")
+@router.get("/add", dependencies=[Depends(require_admin)])
 async def add_destination_form(request: Request):
     return request.app.state.templates.TemplateResponse(
         request,
@@ -117,6 +125,7 @@ async def add_destination_form(request: Request):
 async def add_destination(
     request: Request,
     db: Session = Depends(get_db),
+    actor: User = Depends(require_admin),
 ):
     form = await request.form()
     name = form.get("name", "").strip()
@@ -142,10 +151,12 @@ async def add_destination(
     dest.config_json = config
     db.add(dest)
     db.commit()
+    AuditService.log(db, action="CREATE", resource_type="destinations", user=actor, request=request,
+                     resource_id=dest.id, resource_name=dest.name, new_value=_destination_metadata(dest))
     return RedirectResponse(url="/destinations", status_code=303)
 
 
-@router.get("/{dest_id}/edit")
+@router.get("/{dest_id}/edit", dependencies=[Depends(require_admin)])
 async def edit_destination_form(dest_id: int, request: Request, db: Session = Depends(get_db)):
     dest = db.query(Destination).get(dest_id)
     if not dest:
@@ -165,11 +176,13 @@ async def edit_destination(
     dest_id: int,
     request: Request,
     db: Session = Depends(get_db),
+    actor: User = Depends(require_admin),
 ):
     dest = db.query(Destination).get(dest_id)
     if not dest:
         raise HTTPException(status_code=404, detail="Destination not found")
 
+    old_value = _destination_metadata(dest)
     form = await request.form()
     dest_type = form.get("dest_type", "local")
     description = form.get("description", "").strip() or None
@@ -192,20 +205,27 @@ async def edit_destination(
         "monthly": int(form.get("retention_monthly", 12)),
     }
     db.commit()
+    AuditService.log(db, action="UPDATE", resource_type="destinations", user=actor, request=request,
+                     resource_id=dest.id, resource_name=dest.name, old_value=old_value, new_value=_destination_metadata(dest))
     return RedirectResponse(url="/destinations", status_code=303)
 
 
 @router.post("/{dest_id}/delete")
-async def delete_destination(dest_id: int, db: Session = Depends(get_db)):
+async def delete_destination(request: Request, dest_id: int, db: Session = Depends(get_db),
+    actor: User = Depends(require_admin),
+):
     dest = db.query(Destination).get(dest_id)
     if not dest:
         raise HTTPException(status_code=404, detail="Destination not found")
+    metadata = _destination_metadata(dest)
     db.delete(dest)
     db.commit()
+    AuditService.log(db, action="DELETE", resource_type="destinations", user=actor, request=request,
+                     resource_id=dest.id, resource_name=dest.name, old_value=metadata)
     return RedirectResponse(url="/destinations", status_code=303)
 
 
-@router.get("/{dest_id}/status", response_class=HTMLResponse)
+@router.get("/{dest_id}/status", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
 async def destination_status(dest_id: int, db: Session = Depends(get_db)):
     """HTMX endpoint: returns a small status badge for a destination."""
     dest = db.query(Destination).get(dest_id)
@@ -232,40 +252,58 @@ async def destination_status(dest_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{dest_id}/test")
-async def test_destination(dest_id: int, db: Session = Depends(get_db)):
+async def test_destination(request: Request, dest_id: int, db: Session = Depends(get_db),
+    actor: User = Depends(require_admin),
+):
     """Run a full connectivity + write-permission test and return JSON results."""
     dest = db.query(Destination).get(dest_id)
     if not dest:
         raise HTTPException(status_code=404, detail="Destination not found")
 
-    if dest.dest_type.value == "smb":
-        from app.modules.destinations.smb import SMBDestination
-        backend = SMBDestination()
-        result = await backend.test(dest.config_json or {})
-        return JSONResponse(result)
-    elif dest.dest_type.value == "telegram":
-        from app.modules.destinations.telegram import TelegramDestination
-        backend = TelegramDestination()
-        config = dest.config_json or {}
-        if config.get("bot_token"):
-            try:
-                config["bot_token"] = dest.decrypt_token(config["bot_token"])
-            except Exception:
-                pass
-        result = await backend.test(config)
-        return JSONResponse(result)
-    else:
-        return JSONResponse({"ok": True, "steps": [{"step": "local", "ok": True, "msg": "Local destination — no connectivity check needed"}]})
+    try:
+        if dest.dest_type.value == "smb":
+            from app.modules.destinations.smb import SMBDestination
+            backend = SMBDestination()
+            result = await backend.test(dest.config_json or {})
+            AuditService.log(db, action="TEST", resource_type="destinations", user=actor, request=request,
+                             resource_id=dest.id, resource_name=dest.name, status="success" if result.get("ok") else "failed")
+            return JSONResponse(result)
+        elif dest.dest_type.value == "telegram":
+            from app.modules.destinations.telegram import TelegramDestination
+            backend = TelegramDestination()
+            config = dict(dest.config_json or {})
+            if config.get("bot_token"):
+                try:
+                    config["bot_token"] = dest.decrypt_token(config["bot_token"])
+                except Exception:
+                    pass
+            result = await backend.test(config)
+            AuditService.log(db, action="TEST", resource_type="destinations", user=actor, request=request,
+                             resource_id=dest.id, resource_name=dest.name, status="success" if result.get("ok") else "failed")
+            return JSONResponse(result)
+        else:
+            AuditService.log(db, action="TEST", resource_type="destinations", user=actor, request=request,
+                             resource_id=dest.id, resource_name=dest.name)
+            return JSONResponse({"ok": True, "steps": [{"step": "local", "ok": True, "msg": "Local destination — no connectivity check needed"}]})
+    except Exception:
+        db.rollback()
+        AuditService.log(db, action="TEST", resource_type="destinations", user=actor, request=request,
+                         resource_id=dest.id, resource_name=dest.name, status="failed")
+        raise
 
 
 @router.post("/test-config")
-async def test_telegram_config(request: Request):
+async def test_telegram_config(request: Request, db: Session = Depends(get_db),
+    actor: User = Depends(require_admin),
+):
     """Test Telegram bot token and chat ID without saving to database."""
     form = await request.form()
     bot_token = form.get("bot_token", "").strip()
     chat_id = form.get("chat_id", "").strip()
     
     if not bot_token or not chat_id:
+        AuditService.log(db, action="TEST", resource_type="destinations", user=actor, request=request,
+                         resource_name="unsaved telegram", status="failed")
         return JSONResponse({
             "ok": False,
             "steps": [
@@ -275,5 +313,12 @@ async def test_telegram_config(request: Request):
     
     from app.modules.destinations.telegram import TelegramDestination
     backend = TelegramDestination()
-    result = await backend.test({"bot_token": bot_token, "chat_id": chat_id})
+    try:
+        result = await backend.test({"bot_token": bot_token, "chat_id": chat_id})
+    except Exception:
+        AuditService.log(db, action="TEST", resource_type="destinations", user=actor, request=request,
+                         resource_name="unsaved telegram", status="failed")
+        raise
+    AuditService.log(db, action="TEST", resource_type="destinations", user=actor, request=request,
+                     resource_name="unsaved telegram", status="success" if result.get("ok") else "failed")
     return JSONResponse(result)

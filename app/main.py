@@ -63,12 +63,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("Failed to load monitoring jobs: %s", e)
 
-    # Warn if default credentials are still in use
-    if settings.AUTH_USERNAME == "admin" and settings.AUTH_PASSWORD == "admin":
-        logger.warning(
-            "DEFAULT CREDENTIALS IN USE — set AUTH_USERNAME and AUTH_PASSWORD "
-            "environment variables or in .env before exposing to a network"
-        )
+    # AUTH_* only provisions an empty database; inspect the stored account.
+    from app.database import SessionLocal
+    from app.models.user import User, UserRole
+    from app.security import verify_password
+    with SessionLocal() as db:
+        admin = db.query(User).filter(User.username == "admin", User.role == UserRole.admin).first()
+        if admin and admin.is_active and verify_password("admin", admin.password_hash):
+            logger.warning("DEFAULT ADMIN PASSWORD IN USE — change it on /profile before exposing to a network")
 
     logger.info("HK-NOVA started successfully")
     yield
@@ -194,6 +196,8 @@ app = FastAPI(
     description="Network Device Configuration Backup Manager",
     version=VERSION,
     lifespan=lifespan,
+    dependencies=[Depends(require_auth)],
+    docs_url=None, redoc_url=None, openapi_url=None,
 )
 
 # CORS
@@ -210,47 +214,9 @@ app.add_middleware(
     allow_credentials=True,
 )
 
-# Auth + security headers middleware
+# Security headers apply to successful responses and auth/permission errors
 @app.middleware("http")
-async def auth_and_security_headers(request: Request, call_next):
-    from app.security import verify_session_token, verify_credentials, _COOKIE_NAME
-    from fastapi.responses import RedirectResponse as _RR
-    import base64 as _b64
-
-    path = request.url.path
-
-    # Always allow: login page, static assets, health check
-    public = path in ("/login", "/health") or path.startswith("/static/")
-
-    if not public:
-        authed = False
-
-        # 1. Session cookie
-        token = request.cookies.get(_COOKIE_NAME)
-        if token and verify_session_token(token):
-            authed = True
-
-        # 2. HTTP Basic (API / curl)
-        if not authed:
-            auth_header = request.headers.get("Authorization", "")
-            if auth_header.lower().startswith("basic "):
-                try:
-                    decoded = _b64.b64decode(auth_header[6:]).decode()
-                    u, p = decoded.split(":", 1)
-                    if verify_credentials(u, p):
-                        authed = True
-                except Exception:
-                    pass
-
-        if not authed:
-            if path.startswith("/api/"):
-                from fastapi.responses import JSONResponse
-                return JSONResponse({"detail": "Authentication required"}, status_code=401)
-            next_url = request.url.path
-            if request.url.query:
-                next_url += "?" + request.url.query
-            return _RR(url=f"/login?next={next_url}", status_code=302)
-
+async def security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -258,8 +224,8 @@ async def auth_and_security_headers(request: Request, call_next):
     response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:"
     return response
 
-# Remove old Basic-auth dependency (replaced by middleware above)
-# app.router.dependencies.append(Depends(require_auth))
+# Authentication runs as a dependency, sharing get_db with route handlers.
+# This also makes isolated database overrides apply consistently to auth and CRUD.
 
 # Static files
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
@@ -267,7 +233,38 @@ app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__
 # Jinja2 templates
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 from starlette.templating import Jinja2Templates
-app.state.templates = Jinja2Templates(directory=templates_dir)
+app.state.templates = Jinja2Templates(
+    directory=templates_dir,
+    context_processors=[lambda request: {"current_user": getattr(request.state, "user", None)}],
+)
+from app.security import can_edit, can_delete, can_trigger_backup, can_delete_destination
+app.state.templates.env.globals.update(
+    can_edit=can_edit, can_delete=can_delete,
+    can_trigger_backup=can_trigger_backup, can_delete_destination=can_delete_destination,
+)
+
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exception_handlers import http_exception_handler
+
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(RequestValidationError)
+async def safe_user_validation_error(request: Request, exc: RequestValidationError):
+    # Pydantic's default payload includes the submitted value (possibly a password).
+    if request.url.path.startswith(("/api/users", "/users", "/profile")) or request.url.path == "/login":
+        errors = [{"loc": error["loc"], "msg": error["msg"], "type": error["type"]} for error in exc.errors()]
+        return JSONResponse({"detail": errors}, status_code=422)
+    return await request_validation_exception_handler(request, exc)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def permission_error(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 403 and not request.url.path.startswith("/api/"):
+        return app.state.templates.TemplateResponse(request, "errors/403.html", {"detail": exc.detail}, status_code=403)
+    return await http_exception_handler(request, exc)
+
 
 # Make version available globally in templates
 app.state.templates.env.globals["app_version"] = VERSION
@@ -330,14 +327,40 @@ app.include_router(analytics.router)
 app.include_router(diagnostics.router)
 
 # Import analytics web router
+from app.routers import users
+app.include_router(users.router)
+
+from app.routers import audit_logs
+app.include_router(audit_logs.router)
+
 from app.routers import analytics_web
 app.include_router(analytics_web.router)
+
+
+# Keep documentation protected as it was under the former auth middleware.
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+
+@app.get("/openapi.json", include_in_schema=False)
+def openapi_schema():
+    return JSONResponse(app.openapi())
+
+@app.get("/docs", include_in_schema=False)
+def swagger_docs():
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="HK-NOVA API")
+
+@app.get("/redoc", include_in_schema=False)
+def redoc_docs():
+    return get_redoc_html(openapi_url="/openapi.json", title="HK-NOVA API")
 
 
 # ── Login / Logout routes ─────────────────────────────────────────────
 from fastapi import Form as FastForm
 from fastapi.responses import RedirectResponse as RR
-from app.security import verify_credentials, generate_session_token, _COOKIE_NAME, _SESSION_TTL
+from app.security import authenticate_user, generate_session_token, get_current_user, _COOKIE_NAME, _SESSION_TTL
+from app.models.user import User
+from app.modules.audit_service import AuditService
+from app.database import get_db
+from sqlalchemy.orm import Session
 
 @app.get("/login")
 async def login_page(request: Request, next: str = "/"):
@@ -352,20 +375,27 @@ async def login_submit(
     password: str = FastForm(...),
     remember: str = FastForm(""),
     next: str = FastForm("/"),
+    db: Session = Depends(get_db),
 ):
-    if not verify_credentials(username, password):
+    user = authenticate_user(db, username, password)
+    if user is None:
+        logger.warning("Login failed for username=%r", username)
+        AuditService.log(
+            db, action="LOGIN_FAILED", resource_type="auth", user=None,
+            resource_name=username, request=request, status="failed",
+        )
         return app.state.templates.TemplateResponse(
             request,
             "login.html",
             {"next": next, "error": "Invalid username or password"},
             status_code=401,
         )
-    token = generate_session_token()
+    token = generate_session_token(user.id)
     max_age = _SESSION_TTL if remember == "1" else None
     # Prevent open redirect: must be a relative path, not //evil.com
     from urllib.parse import urlparse
     parsed = urlparse(next)
-    if parsed.scheme or parsed.netloc or not next.startswith("/"):
+    if parsed.scheme or parsed.netloc or not next.startswith("/") or next.startswith("//") or "\\" in next or any(ord(c) < 32 for c in next):
         next = "/"
     response = RR(url=next, status_code=303)
     response.set_cookie(
@@ -373,12 +403,26 @@ async def login_submit(
         value=token,
         max_age=max_age,
         httponly=True,
+        secure=request.url.scheme == "https",
         samesite="lax",
+    )
+    AuditService.log(
+        db, action="LOGIN_SUCCESS", resource_type="auth", user=user,
+        request=request, status="success",
     )
     return response
 
-@app.get("/logout")
-async def logout():
+@app.get("/logout", include_in_schema=False)  # Compatibility for existing bookmarks.
+@app.post("/logout")
+async def logout(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    AuditService.log(
+        db, action="LOGOUT", resource_type="auth", user=current_user,
+        request=request, status="success",
+    )
     response = RR(url="/login", status_code=303)
     response.delete_cookie(_COOKIE_NAME)
     return response

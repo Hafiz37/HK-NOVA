@@ -28,12 +28,12 @@
             <i class="bi bi-download"></i> Download .cfg
         </a>
         {% endif %}
-        <form method="post" action="/backups/{{ backup.id }}/delete" class="d-inline"
+        {% if can_edit(current_user) %}<form method="post" action="/backups/{{ backup.id }}/delete" class="d-inline"
               onsubmit="return confirm('Delete this backup? This will also remove the file from disk.')">
             <button type="submit" class="btn btn-outline-danger ms-1">
                 <i class="bi bi-trash"></i> Delete
             </button>
-        </form>
+        </form>{% endif %}
         <a href="/backups" class="btn btn-outline-secondary ms-1">Back to List</a>
     </div>
 </div>

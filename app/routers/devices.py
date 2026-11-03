@@ -1,3 +1,4 @@
+from app.security import get_current_user, require_operator_or_admin
 import json
 import logging
 
@@ -12,6 +13,8 @@ from app.models.credential import Credential
 from app.models.backup import Backup, BackupStatus
 from app.models.group import Group
 from app.models.destination import Destination
+from app.models.user import User
+from app.modules.audit_service import AuditService, REDACTED
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -27,10 +30,28 @@ ENGINE_TYPES = {
 }
 
 
+# Explicit metadata allowlist: never serialize device relationships/credentials.
+_DEVICE_AUDIT_FIELDS = (
+    "hostname", "ip_address", "device_type", "credential_id", "group",
+    "backup_engine", "port", "proxy_host", "proxy_port", "proxy_credential_id",
+    "notes", "enabled", "is_critical", "monitoring_interval", "destination_ids_override",
+)
+
+
+def _audit_device(db: Session, request: Request, actor: User, action: str, **metadata) -> None:
+    # AuditService already contains persistence failures; this also isolates any
+    # unexpected integration failure without logging exception payloads/secrets.
+    try:
+        AuditService.log(db, action=action, resource_type="devices", user=actor,
+                         request=request, **metadata)
+    except Exception as exc:
+        logger.warning("Device audit could not be recorded (%s)", type(exc).__name__)
+
+
 # ── List & Add (static paths — must come before /{device_id}) ────────
 
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(get_current_user)])
 async def list_devices(request: Request, db: Session = Depends(get_db)):
     devices = db.query(Device).order_by(Device.hostname).all()
     credentials = db.query(Credential).order_by(Credential.name).all()
@@ -49,10 +70,12 @@ async def list_devices(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/batch-edit")
 async def batch_edit_devices(
+    request: Request,
     device_ids: str = Form(""),
     credential_id: str = Form(""),
     group: str = Form(""),
     db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     ids = [int(x) for x in device_ids.split(",") if x.strip().isdigit()]
     if not ids:
@@ -67,10 +90,13 @@ async def batch_edit_devices(
         if group:
             device.group = group
     db.commit()
+    fields_updated = [field for field, selected in (("credential_id", credential_id), ("group", group)) if selected]
+    _audit_device(db, request, actor, "BATCH_EDIT", resource_name=f"{len(devices)} devices",
+                  new_value={"fields_updated": fields_updated, "device_count": len(devices)})
     return RedirectResponse(url="/devices", status_code=303)
 
 
-@router.get("/add")
+@router.get("/add", dependencies=[Depends(require_operator_or_admin)])
 async def add_device_form(request: Request, db: Session = Depends(get_db)):
     credentials = db.query(Credential).order_by(Credential.name).all()
     destinations = db.query(Destination).order_by(
@@ -110,6 +136,7 @@ async def add_device(
     monitoring_interval: int = Form(None),
     destination_ids: list[int] = Form(default=[]),
     db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     if port < 1 or port > 65535:
         raise HTTPException(status_code=400, detail="Port must be between 1 and 65535")
@@ -156,6 +183,9 @@ async def add_device(
     db.add(device)
     db.commit()
     db.refresh(device)
+    _audit_device(db, request, actor, "CREATE", resource_id=device.id, resource_name=device.hostname,
+                  new_value={"hostname": device.hostname, "ip_address": device.ip_address,
+                             "vendor": None, "device_type": device.device_type, "location_id": None})
     
     if device.is_critical:
         try:
@@ -170,7 +200,7 @@ async def add_device(
 # ── Test all connections (static path — before /{device_id}) ─────────
 
 
-@router.get("/test-all")
+@router.get("/test-all", dependencies=[Depends(require_operator_or_admin)])
 async def test_all_page(request: Request, db: Session = Depends(get_db)):
     devices = db.query(Device).filter(Device.enabled == True).order_by(Device.hostname).all()
     return request.app.state.templates.TemplateResponse(
@@ -183,7 +213,7 @@ async def test_all_page(request: Request, db: Session = Depends(get_db)):
 # ── Import from Oxidized (static path — before /{device_id}) ────────
 
 
-@router.get("/import/oxidized")
+@router.get("/import/oxidized", dependencies=[Depends(require_operator_or_admin)])
 async def import_oxidized_form(request: Request, db: Session = Depends(get_db)):
     """Fetch node list from Oxidized and show import form."""
     oxidized_url = get_settings().OXIDIZED_URL.rstrip("/")
@@ -237,23 +267,34 @@ async def import_oxidized_submit(
     credential_id: int = Form(None),
     backup_engine: str = Form("oxidized"),
     db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     """Import selected nodes from Oxidized into the device database."""
     form = await request.form()
 
     imported = 0
     skipped = 0
+    existing = db.query(Device).all()
+    seen_ips = {device.ip_address for device in existing}
+    seen_hosts = {device.hostname for device in existing}
     for key, value in form.multi_items():
         if not key.startswith("node_"):
             continue
         try:
             node = json.loads(value)
         except (json.JSONDecodeError, TypeError):
+            skipped += 1
+            continue
+        if not isinstance(node, dict) or any(
+            not isinstance(node.get(field, ""), str) for field in ("ip", "name", "model", "group")
+            if node.get(field) is not None
+        ):
+            skipped += 1
             continue
 
-        ip = node.get("ip", "").strip()
-        name = node.get("name", "").strip()
-        model = node.get("model", "generic")
+        ip = (node.get("ip") or "").strip()
+        name = (node.get("name") or "").strip()
+        model = node.get("model") or "generic"
         group = node.get("group", "default") or "default"
         # Port from oxidized node data — non-22 indicates a jump-host forwarded port
         try:
@@ -262,12 +303,11 @@ async def import_oxidized_submit(
             port = 22
 
         if not ip and not name:
+            skipped += 1
             continue
 
-        exists = db.query(Device).filter(
-            (Device.ip_address == ip) | (Device.hostname == name)
-        ).first()
-        if exists:
+        ip, name = ip or name, name or ip
+        if ip in seen_ips or name in seen_hosts:
             skipped += 1
             continue
 
@@ -282,10 +322,13 @@ async def import_oxidized_submit(
             notes=f"Imported from Oxidized (model: {model})",
         )
         db.add(device)
+        seen_ips.add(ip)
+        seen_hosts.add(name)
         imported += 1
 
     db.commit()
-    logger.info("Oxidized import: %d imported, %d skipped (already exist)", imported, skipped)
+    _audit_device(db, request, actor, "IMPORT",
+                  new_value={"source": "oxidized", "imported_count": imported, "skipped_count": skipped})
 
     return RedirectResponse(url="/devices", status_code=303)
 
@@ -293,7 +336,7 @@ async def import_oxidized_submit(
 # ── Device detail & edit (dynamic /{device_id} paths — MUST be last) ─
 
 
-@router.get("/{device_id}")
+@router.get("/{device_id}", dependencies=[Depends(get_current_user)])
 async def device_detail(device_id: int, request: Request, db: Session = Depends(get_db)):
     device = db.query(Device).get(device_id)
     if not device:
@@ -318,7 +361,7 @@ async def device_detail(device_id: int, request: Request, db: Session = Depends(
     )
 
 
-@router.get("/{device_id}/clone")
+@router.get("/{device_id}/clone", dependencies=[Depends(require_operator_or_admin)])
 async def clone_device_form(device_id: int, request: Request, db: Session = Depends(get_db)):
     source = db.query(Device).get(device_id)
     if not source:
@@ -348,7 +391,7 @@ async def clone_device_form(device_id: int, request: Request, db: Session = Depe
     )
 
 
-@router.get("/{device_id}/edit")
+@router.get("/{device_id}/edit", dependencies=[Depends(require_operator_or_admin)])
 async def edit_device_form(device_id: int, request: Request, db: Session = Depends(get_db)):
     device = db.query(Device).get(device_id)
     if not device:
@@ -397,6 +440,7 @@ async def edit_device(
     monitoring_interval: int = Form(None),
     destination_ids: list[int] = Form(default=[]),
     db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     device = db.query(Device).get(device_id)
     if not device:
@@ -404,6 +448,7 @@ async def edit_device(
     if port < 1 or port > 65535:
         raise HTTPException(status_code=400, detail="Port must be between 1 and 65535")
     
+    old_values = {field: getattr(device, field) for field in _DEVICE_AUDIT_FIELDS}
     old_is_critical = device.is_critical
     old_monitoring_interval = device.monitoring_interval
     
@@ -445,7 +490,13 @@ async def edit_device(
     device.is_critical = is_critical == "1"
     device.monitoring_interval = monitoring_interval if monitoring_interval and monitoring_interval > 0 else None
     device.destination_ids_override = device_override
+    new_values = {field: getattr(device, field) for field in _DEVICE_AUDIT_FIELDS}
+    changed = [field for field in _DEVICE_AUDIT_FIELDS if old_values[field] != new_values[field]]
+    old_value = {field: REDACTED if field == "notes" else old_values[field] for field in changed}
+    new_value = {field: REDACTED if field == "notes" else new_values[field] for field in changed}
     db.commit()
+    _audit_device(db, request, actor, "UPDATE", resource_id=device.id, resource_name=device.hostname,
+                  old_value=old_value, new_value=new_value)
     
     if (device.is_critical != old_is_critical or 
         device.monitoring_interval != old_monitoring_interval or
@@ -460,31 +511,41 @@ async def edit_device(
 
 
 @router.post("/{device_id}/delete")
-async def delete_device(device_id: int, db: Session = Depends(get_db)):
+async def delete_device(device_id: int, request: Request, db: Session = Depends(get_db),
+                        actor: User = Depends(require_operator_or_admin)):
     device = db.query(Device).get(device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    hostname = device.hostname
     db.delete(device)
     db.commit()
+    _audit_device(db, request, actor, "DELETE", resource_id=device_id, resource_name=hostname)
     return RedirectResponse(url="/devices", status_code=303)
 
 
 @router.post("/{device_id}/test")
-async def test_device_connection(device_id: int, request: Request, db: Session = Depends(get_db)):
+async def test_device_connection(device_id: int, request: Request, db: Session = Depends(get_db),
+                                 actor: User = Depends(require_operator_or_admin)):
     device = db.query(Device).get(device_id)
     if not device:
+        _audit_device(db, request, actor, "TEST_CONNECTION", resource_id=device_id, status="failed")
         return HTMLResponse('<span class="badge bg-danger">Device not found</span>')
+
+    status = "failed"
     if not device.credential:
-        return HTMLResponse('<span class="badge bg-warning">No credential assigned</span>')
-
-    from app.modules.engines import get_engine
-    engine = get_engine(device.backup_engine)
-
-    try:
-        result = await engine.test_connection(device, device.credential)
-        if result:
-            return HTMLResponse('<span class="badge bg-success">Connection OK</span>')
-        else:
-            return HTMLResponse('<span class="badge bg-danger">Connection Failed</span>')
-    except Exception:
-        return HTMLResponse('<span class="badge bg-danger">Connection error</span>')
+        response = HTMLResponse('<span class="badge bg-warning">No credential assigned</span>')
+    else:
+        try:
+            from app.modules.engines import get_engine
+            engine = get_engine(device.backup_engine)
+            result = await engine.test_connection(device, device.credential)
+            if result:
+                status = "success"
+                response = HTMLResponse('<span class="badge bg-success">Connection OK</span>')
+            else:
+                response = HTMLResponse('<span class="badge bg-danger">Connection Failed</span>')
+        except Exception:
+            response = HTMLResponse('<span class="badge bg-danger">Connection error</span>')
+    _audit_device(db, request, actor, "TEST_CONNECTION", resource_id=device_id,
+                  resource_name=device.hostname, status=status)
+    return response

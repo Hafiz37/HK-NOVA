@@ -1,8 +1,16 @@
 # REST API Reference
 
-All API endpoints are under `/api/v1/` and require HTTP Basic Auth.
+Operational API endpoints are under `/api/v1/`; user management is under `/api/users`.
+Both accept HTTP Basic credentials for an active database user (or a signed web session).
 
 ## Authentication
+
+`AUTH_USERNAME` / `AUTH_PASSWORD` only provision the initial admin when users is
+empty. Requests authenticate against the stored account password. Missing/invalid
+credentials return 401; insufficient roles return 403. Viewer requests are read-only;
+operator/admin may mutate operational resources. Only admins manage users or delete
+destinations, including cascading location deletion. Password changes use Profile.
+
 
 ```bash
 AUTH="admin:your-password"
@@ -141,3 +149,26 @@ curl -u "$AUTH" http://localhost:5005/api/v1/jobs/history
 # Get specific run details
 curl -u "$AUTH" http://localhost:5005/api/v1/jobs/runs/1
 ```
+
+## Users (admin only)
+
+- `GET /api/users`: list users.
+- `POST /api/users`: create (`username`, `password`, optional `full_name`, `role`, `is_active`); returns 201.
+- `GET /api/users/{id}`: retrieve one user; 404 if missing.
+- `PUT /api/users/{id}`: partial update of `full_name`, `role`, `is_active`.
+- `DELETE /api/users/{id}`: delete; returns 204.
+
+Username cannot be changed. New usernames allow 3–50 ASCII letters, digits,
+underscores or dashes. Passwords require 8+ characters and at most 72 UTF-8 bytes.
+The default role is viewer. No user response includes plaintext passwords or hashes.
+Duplicate names and self-protection violations return 400; invalid schemas return
+422. Self-deletion/deactivation/demotion and removing the last active admin are blocked.
+
+```bash
+# Prompt for the current admin password rather than storing it in shell history.
+curl -u admin http://localhost:5005/api/users
+curl -u admin -X PUT http://localhost:5005/api/users/2 \
+  -H 'Content-Type: application/json' -d '{"is_active":false}'
+```
+
+Viewer responses from destination list/default-telegram APIs omit `config_json`.

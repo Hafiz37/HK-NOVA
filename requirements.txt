@@ -18,3 +18,4 @@ httpx
 apprise>=1.9
 openpyxl
 reportlab
+bcrypt>=4.0

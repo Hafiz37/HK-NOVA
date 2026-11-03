@@ -1,3 +1,4 @@
+from app.security import get_current_user, require_operator_or_admin
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -29,7 +30,7 @@ def _get_cutoff_date(time_filter: str) -> datetime:
         return now - timedelta(days=7)
 
 
-@router.get("/diagnostics")
+@router.get("/diagnostics", dependencies=[Depends(get_current_user)])
 async def dashboard(
     request: Request,
     time_filter: str = Query("7d", pattern="^(24h|7d|30d)$"),
@@ -149,7 +150,7 @@ async def dashboard(
     )
 
 
-@router.get("/diagnostics/device/{device_id}")
+@router.get("/diagnostics/device/{device_id}", dependencies=[Depends(get_current_user)])
 async def device_failures(
     device_id: int,
     request: Request,
@@ -233,7 +234,7 @@ async def device_failures(
     )
 
 
-@router.post("/diagnostics/device/{device_id}/retry")
+@router.post("/diagnostics/device/{device_id}/retry", dependencies=[Depends(require_operator_or_admin)])
 async def retry_device_backup(
     device_id: int,
     request: Request,
@@ -283,7 +284,7 @@ async def retry_device_backup(
         )
 
 
-@router.post("/diagnostics/failure/{failure_id}/resolve")
+@router.post("/diagnostics/failure/{failure_id}/resolve", dependencies=[Depends(require_operator_or_admin)])
 async def mark_resolved(
     failure_id: int,
     request: Request,
@@ -311,7 +312,7 @@ async def mark_resolved(
     return RedirectResponse(url=referer, status_code=303)
 
 
-@router.get("/api/v1/diagnostics/stats")
+@router.get("/api/v1/diagnostics/stats", dependencies=[Depends(get_current_user)])
 async def get_diagnostic_stats(
     days: int = Query(7, ge=1, le=90),
     db: Session = Depends(get_db),

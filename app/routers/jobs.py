@@ -1,8 +1,11 @@
+from app.security import get_current_user, require_operator_or_admin
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.modules.audit_service import AuditService
+from app.models.user import User
 from app.models.device import Device
 from app.models.job import Schedule, JobRun
 from app.models.destination import Destination
@@ -66,7 +69,12 @@ async def _scheduled_backup_runner(schedule_id: int):
         db.close()
 
 
-@router.get("/")
+def _schedule_metadata(schedule):
+    return {field: getattr(schedule, field) for field in (
+        "name", "cron_expression", "device_ids", "device_group", "backup_engine", "destination_ids", "enabled")}
+
+
+@router.get("/", dependencies=[Depends(get_current_user)])
 async def list_schedules(request: Request, db: Session = Depends(get_db)):
     schedules = db.query(Schedule).order_by(Schedule.name).all()
     for s in schedules:
@@ -76,7 +84,7 @@ async def list_schedules(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/add")
+@router.get("/add", dependencies=[Depends(require_operator_or_admin)])
 async def add_schedule_form(request: Request, db: Session = Depends(get_db)):
     devices = db.query(Device).filter(Device.enabled == True).order_by(Device.hostname).all()
     destinations = db.query(Destination).filter(Destination.enabled == True).all()
@@ -103,6 +111,7 @@ async def add_schedule(
     backup_engine: str = Form(""),
     destination_ids: list[int] = Form(None),
     db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     # Validate cron expression before persisting
     try:
@@ -121,13 +130,15 @@ async def add_schedule(
     )
     db.add(schedule)
     db.commit()
+    AuditService.log(db, action="CREATE", resource_type="schedules", user=actor, request=request,
+                     resource_id=schedule.id, resource_name=schedule.name, new_value=_schedule_metadata(schedule))
 
     add_backup_job(schedule.id, schedule.cron_expression, _scheduled_backup_runner, schedule_id=schedule.id)
 
     return RedirectResponse(url="/jobs", status_code=303)
 
 
-@router.get("/{schedule_id}/edit")
+@router.get("/{schedule_id}/edit", dependencies=[Depends(require_operator_or_admin)])
 async def edit_schedule_form(schedule_id: int, request: Request, db: Session = Depends(get_db)):
     schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
     if not schedule:
@@ -148,7 +159,7 @@ async def edit_schedule_form(schedule_id: int, request: Request, db: Session = D
 
 
 @router.post("/{schedule_id}/edit")
-async def edit_schedule(
+async def edit_schedule(request: Request, 
     schedule_id: int,
     name: str = Form(...),
     cron_expression: str = Form(...),
@@ -158,6 +169,7 @@ async def edit_schedule(
     destination_ids: list[int] = Form(None),
     enabled: bool = Form(True),
     db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     schedule = db.query(Schedule).get(schedule_id)
     if not schedule:
@@ -169,6 +181,7 @@ async def edit_schedule(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    old_value = _schedule_metadata(schedule)
     schedule.name = name
     schedule.cron_expression = cron_expression
     schedule.device_ids = device_ids or []
@@ -177,6 +190,8 @@ async def edit_schedule(
     schedule.destination_ids = destination_ids or []
     schedule.enabled = enabled
     db.commit()
+    AuditService.log(db, action="UPDATE", resource_type="schedules", user=actor, request=request,
+                     resource_id=schedule.id, resource_name=schedule.name, old_value=old_value, new_value=_schedule_metadata(schedule))
 
     if enabled:
         add_backup_job(schedule.id, schedule.cron_expression, _scheduled_backup_runner, schedule_id=schedule.id)
@@ -187,7 +202,9 @@ async def edit_schedule(
 
 
 @router.post("/{schedule_id}/run")
-async def run_schedule_now(schedule_id: int, db: Session = Depends(get_db)):
+async def run_schedule_now(request: Request, schedule_id: int, db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
+):
     """Manually trigger a schedule to run immediately, regardless of enabled state."""
     from app.modules.backup_service import run_backup_job
     import asyncio
@@ -208,6 +225,8 @@ async def run_schedule_now(schedule_id: int, db: Session = Depends(get_db)):
         device_ids = [d.id for d in devices]
 
     if not device_ids:
+        AuditService.log(db, action="RUN", resource_type="schedules", user=actor, request=request,
+                         resource_id=schedule.id, resource_name=schedule.name, status="failed", new_value={"device_count": 0})
         return RedirectResponse(url="/jobs", status_code=303)
 
     from datetime import datetime, timezone
@@ -219,6 +238,8 @@ async def run_schedule_now(schedule_id: int, db: Session = Depends(get_db)):
     destination_ids = schedule.destination_ids
     engine_override = schedule.backup_engine
     sid = schedule.id
+
+    audit_actor = User(id=actor.id, username=actor.username)
 
     async def _run():
         from app.database import SessionLocal
@@ -233,26 +254,42 @@ async def run_schedule_now(schedule_id: int, db: Session = Depends(get_db)):
                 schedule_id=sid,
             )
         except Exception as e:
+            run_db.rollback()
+            AuditService.log(run_db, action="RUN", resource_type="schedules", user=audit_actor, request=request,
+                             resource_id=sid, resource_name=job_name, status="failed",
+                             new_value={"state": "execution_failed"})
             logger.error("Run Now failed for schedule %s: %s", sid, e)
         finally:
             run_db.close()
 
-    asyncio.create_task(_run())
+    try:
+        asyncio.create_task(_run())
+    except Exception:
+        AuditService.log(db, action="RUN", resource_type="schedules", user=actor, request=request,
+                         resource_id=schedule.id, resource_name=schedule.name, status="failed")
+        raise
+    AuditService.log(db, action="RUN", resource_type="schedules", user=actor, request=request,
+                     resource_id=schedule.id, resource_name=schedule.name, new_value={"device_count": len(device_ids), "state": "submitted"})
     return RedirectResponse(url="/jobs", status_code=303)
 
 
 @router.post("/{schedule_id}/delete")
-async def delete_schedule(schedule_id: int, db: Session = Depends(get_db)):
+async def delete_schedule(request: Request, schedule_id: int, db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
+):
     schedule = db.query(Schedule).get(schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
     remove_backup_job(schedule.id)
+    metadata = _schedule_metadata(schedule)
     db.delete(schedule)
     db.commit()
+    AuditService.log(db, action="DELETE", resource_type="schedules", user=actor, request=request,
+                     resource_id=schedule.id, resource_name=schedule.name, old_value=metadata)
     return RedirectResponse(url="/jobs", status_code=303)
 
 
-@router.get("/history")
+@router.get("/history", dependencies=[Depends(get_current_user)])
 async def job_history(
     request: Request,
     page: int = 1,
@@ -290,7 +327,9 @@ async def job_history(
 
 
 @router.post("/history/{run_id}/delete")
-async def delete_job_run(run_id: int, request: Request, db: Session = Depends(get_db)):
+async def delete_job_run(run_id: int, request: Request, db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
+):
     """Delete a job run record and its associated backups (including files)."""
     from app.models.backup import Backup
     from app.routers.backups import _delete_backup_file
@@ -304,8 +343,13 @@ async def delete_job_run(run_id: int, request: Request, db: Session = Depends(ge
         await _delete_backup_file(db, backup)
         db.delete(backup)
 
+    name = run.job_name
+    schedule_id = run.schedule_id
     db.delete(run)
     db.commit()
+    AuditService.log(db, action="DELETE_HISTORY", resource_type="schedules", user=actor, request=request,
+                     resource_id=run_id, resource_name=name,
+                     old_value={"run_id": run_id, "schedule_id": schedule_id, "backup_count": len(backups)})
 
     referer = request.headers.get("referer", "")
     if "/jobs/history" in referer:
@@ -313,7 +357,7 @@ async def delete_job_run(run_id: int, request: Request, db: Session = Depends(ge
     return RedirectResponse(url="/", status_code=303)
 
 
-@router.get("/history/{run_id}")
+@router.get("/history/{run_id}", dependencies=[Depends(get_current_user)])
 async def job_run_detail(run_id: int, request: Request, db: Session = Depends(get_db)):
     run = db.query(JobRun).get(run_id)
     if not run:

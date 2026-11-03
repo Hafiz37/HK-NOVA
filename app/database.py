@@ -38,10 +38,15 @@ def get_db() -> Generator[Session, None, None]:
 
 def init_db() -> None:
     """Create all tables and apply schema migrations."""
+    import app.models  # Register all tables, including users, before creation.
+
     Base.metadata.create_all(bind=engine)
     _apply_migrations()
     _fix_orphaned_credential_refs()
     _check_secret_key_decrypts()
+    from app.bootstrap import ensure_default_admin
+
+    ensure_default_admin()
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +247,38 @@ def _apply_migrations() -> None:
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_failures_device_id_resolved ON backup_failures (device_id, resolved)"))
                 conn.commit()
             mark_applied("v17_backup_failures")
+
+        # ── v18: audit_logs table ─────────────────────────────────────────────
+        if not is_applied("v18_audit_logs"):
+            tables = {r[0] for r in conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table'")
+            ).fetchall()}
+            if "audit_logs" not in tables:
+                logger.info("Migration v18: creating audit_logs table")
+                conn.execute(text("""
+                    CREATE TABLE audit_logs (
+                        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp      DATETIME NOT NULL DEFAULT (datetime('now')),
+                        user_id        INTEGER,
+                        username       VARCHAR(100),
+                        action         VARCHAR(50) NOT NULL,
+                        resource_type  VARCHAR(50) NOT NULL,
+                        resource_id    INTEGER,
+                        resource_name  VARCHAR(255),
+                        old_value      TEXT,
+                        new_value      TEXT,
+                        ip_address     VARCHAR(45),
+                        user_agent     TEXT,
+                        status         VARCHAR(20) NOT NULL DEFAULT 'success',
+                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_timestamp ON audit_logs (timestamp)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_user_id ON audit_logs (user_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_action ON audit_logs (action)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_resource_type ON audit_logs (resource_type)"))
+                conn.commit()
+            mark_applied("v18_audit_logs")
 
         # ── Add future migrations here ────────────────────────────────────────
         # Pattern:

@@ -24,9 +24,9 @@ show_help() {
     echo "Usage: $0 [command]"
     echo ""
     echo "Commands:"
-    echo "  show-password     Show current admin password"
-    echo "  set-password      Change admin password interactively"
-    echo "  reset-password    Generate new random password"
+    echo "  show-password     Show bootstrap credentials (not the current database password)"
+    echo "  set-password      Legacy command; use the Profile page"
+    echo "  reset-password    Legacy command; use the Profile page"
     echo "  status            Show service status"
     echo "  logs              Show service logs"
     echo "  help              Show this help"
@@ -42,7 +42,7 @@ show_password() {
     PASSWORD=$(grep "^AUTH_PASSWORD=" "$ENV_FILE" | cut -d= -f2)
     
     echo ""
-    echo -e "${GREEN}Current Credentials:${NC}"
+    echo -e "${GREEN}Bootstrap Credentials (may no longer match the database):${NC}"
     echo -e "  Username: ${GREEN}$USERNAME${NC}"
     echo -e "  Password: ${GREEN}$PASSWORD${NC}"
     echo ""
@@ -50,95 +50,11 @@ show_password() {
 }
 
 set_password() {
-    if [ ! -f "$ENV_FILE" ]; then
-        fail ".env file not found at $ENV_FILE"
-    fi
-    
-    echo ""
-    echo -e "${GREEN}Change Admin Password${NC}"
-    echo ""
-    
-    read -s -p "Enter new password: " NEW_PASS
-    echo ""
-    read -s -p "Confirm new password: " CONFIRM_PASS
-    echo ""
-    
-    if [ "$NEW_PASS" != "$CONFIRM_PASS" ]; then
-        fail "Passwords do not match!"
-    fi
-    
-    if [ -z "$NEW_PASS" ]; then
-        fail "Password cannot be empty!"
-    fi
-    
-    # Update .env file — use python to safely write value with no shell metachar issues
-    python3 -c "
-import re, sys
-path = sys.argv[1]
-new_pass = sys.argv[2]
-with open(path) as f:
-    content = f.read()
-content = re.sub(r'^AUTH_PASSWORD=.*', 'AUTH_PASSWORD=' + new_pass, content, flags=re.MULTILINE)
-with open(path, 'w') as f:
-    f.write(content)
-" "$ENV_FILE" "$NEW_PASS"
-
-    # Restart service if running
-    if systemctl is-active --quiet hk-nova 2>/dev/null; then
-        info "Restarting service..."
-        systemctl restart hk-nova
-        ok "Service restarted"
-    fi
-
-    ok "Password changed successfully!"
-    echo ""
-    echo -e "New credentials:"
-    echo -e "  Username: ${GREEN}admin${NC}"
-    echo -e "  Password: ${GREEN}$NEW_PASS${NC}"
+    fail "Accounts are stored in the database. Change your password at /profile; editing AUTH_PASSWORD cannot reset an existing account."
 }
 
 reset_password() {
-    if [ ! -f "$ENV_FILE" ]; then
-        fail ".env file not found at $ENV_FILE"
-    fi
-    
-    echo ""
-    read -p "Generate new random password? [y/N]: " CONFIRM
-    
-    if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-        info "Cancelled"
-        exit 0
-    fi
-    
-    NEW_PASS=$(openssl rand -base64 16 | tr -d '=/+' | head -c 20)
-
-    # Update .env file — use python to safely write value with no shell metachar issues
-    python3 -c "
-import re, sys
-path = sys.argv[1]
-new_pass = sys.argv[2]
-with open(path) as f:
-    content = f.read()
-content = re.sub(r'^AUTH_PASSWORD=.*', 'AUTH_PASSWORD=' + new_pass, content, flags=re.MULTILINE)
-with open(path, 'w') as f:
-    f.write(content)
-" "$ENV_FILE" "$NEW_PASS"
-    
-    # Restart service if running
-    if systemctl is-active --quiet hk-nova 2>/dev/null; then
-        info "Restarting service..."
-        systemctl restart hk-nova
-        ok "Service restarted"
-    fi
-    
-    echo ""
-    ok "New password generated!"
-    echo ""
-    echo -e "${GREEN}New Credentials:${NC}"
-    echo -e "  Username: ${GREEN}admin${NC}"
-    echo -e "  Password: ${GREEN}$NEW_PASS${NC}"
-    echo ""
-    warn "Save this password now — it won't be shown again!"
+    fail "Accounts are stored in the database. Change your password at /profile; editing AUTH_PASSWORD cannot reset an existing account."
 }
 
 show_status() {

@@ -2,14 +2,51 @@
 
 ## Security Features
 
-### Authentication
-All endpoints require authentication via cookie-based sessions (web UI) or HTTP Basic Auth (API).
+### Authentication & Authorization
 
-**Default credentials:**
-- Username: `admin`
-- Password: auto-generated during install (or `changeme-strong-password` in Docker)
+Application routes use an active database user, via the `vibenet_session` cookie
+or HTTP Basic credentials. Login and static assets are public. Passwords are
+salted bcrypt hashes; new passwords require 8+ characters and at most 72 UTF-8
+bytes. `AUTH_USERNAME` / `AUTH_PASSWORD` only seed an empty users table (defaults:
+`admin` / `admin`). Installers may choose a stronger initial password. Change the
+stored password in **Profile**, not by editing environment variables.
 
-**Change credentials:** edit `AUTH_USERNAME` and `AUTH_PASSWORD` in `.env` (or `docker-compose.yml`) and restart.
+Session payloads contain `expiry:user_id:nonce`, signed with HMAC-SHA256 using
+`SECRET_KEY`. They expire after 14 days. Remember-me cookies have a 14-day Max-Age;
+otherwise they are browser-session cookies with the same server expiry. Cookies
+are HttpOnly and SameSite=Lax, and Secure when the request is HTTPS. Configure a
+trusted reverse proxy so the application sees the correct HTTPS scheme. Tokens
+are signed, not encrypted; they contain no password or role.
+
+Every protected request reloads the user; deactivation/deletion blocks existing
+sessions, and role changes take effect immediately on the next request. Old
+single-user tokens are rejected. Logout clears the browser cookie. Password
+changes do not revoke already-issued tokens; individual token revocation and
+server-side session inventories remain future work. Use deactivation to block
+all requests from a compromised account while investigating.
+
+- Admin has full access and manages users.
+- Operator performs daily CRUD and backup operations, but cannot manage users or
+  delete destinations (including via cascading location deletion).
+- Viewer reads dashboards, backup contents/downloads, diagnostics and resource
+  lists, without mutations, backup execution or connection tests. Do not grant
+  viewer access to anyone who should not read stored device configurations.
+
+Passwords/hashes are excluded from user API responses. Viewer destination API
+responses omit connection configuration. Admin actions and password changes are
+logged to `hk-nova.audit` using actor/target IDs, without passwords. Self-deletion,
+self-deactivation/self-demotion and removal of the last active admin are blocked.
+
+Use HTTPS for both cookies and HTTP Basic. Assign the least privileged role needed,
+prefer 12+ character passwords, rotate admin passwords according to your policy
+(e.g. quarterly), deactivate departed users promptly, and review roles regularly.
+Set a random 32+ character `SECRET_KEY` and keep secrets outside version control
+in a protected environment or secret vault. Preserve this key across upgrades.
+
+The existing `/api/v1` operational router rate limiter remains enabled. Per-user
+failed-login lockout, MFA/TOTP, SSO/LDAP, individual session revocation and a separate
+audit database table are not implemented by this release. Monitor authentication
+and application access logs using your deployment's logging infrastructure.
 
 ### Credential Encryption
 Device passwords and secrets are encrypted at rest using Fernet symmetric encryption, derived from your `SECRET_KEY`.
@@ -29,7 +66,7 @@ CORS is restricted to origins listed in `CORS_ORIGINS`. See [docs/CONFIGURATION.
 
 ## Security Checklist
 
-- [ ] Changed default `AUTH_PASSWORD` to a strong password
+- [ ] Changed the stored initial admin password via Profile
 - [ ] Set a strong, random `SECRET_KEY` (32+ characters)
 - [ ] Restricted `CORS_ORIGINS` to known IPs/domains only
 - [ ] Enabled HTTPS via reverse proxy or direct SSL
@@ -125,7 +162,7 @@ If you suspect unauthorized access:
 
 1. **Stop the application** — `sudo systemctl stop hk-nova` or `docker compose down`
 2. **Check logs** — `sudo journalctl -u hk-nova` or `docker compose logs`
-3. **Change all credentials** — update `AUTH_PASSWORD` in `.env`
+3. **Contain compromised accounts** — deactivate affected users, review roles and change stored passwords through Profile; editing `AUTH_PASSWORD` does not reset accounts
 4. **Regenerate SECRET_KEY** — this will invalidate all stored encrypted credentials (you will need to re-enter device passwords)
 5. **Review database** — check for unauthorized changes
 6. **Verify backups** — ensure backup files have not been tampered with

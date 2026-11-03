@@ -61,12 +61,13 @@
                         <i class="bi bi-lightning"></i> Quick Actions
                     </h5>
                     <div class="mt-auto">
-                        <a href="/backups/trigger" class="btn btn-light btn-sm mb-1 w-100">
+                        {% if not can_edit(current_user) %}<a href="/backups" class="btn btn-light btn-sm w-100">View Backups</a>{% endif %}
+                        {% if can_edit(current_user) %}<a href="/backups/trigger" class="btn btn-light btn-sm mb-1 w-100">
                             <i class="bi bi-download"></i> Backup Now
-                        </a>
-                        <a href="/devices/add" class="btn btn-light btn-sm w-100">
+                        </a>{% endif %}
+                        {% if can_edit(current_user) %}<a href="/devices/add" class="btn btn-light btn-sm w-100">
                             <i class="bi bi-plus-lg"></i> Add Device
-                        </a>
+                        </a>{% endif %}
                     </div>
                 </div>
                 <div class="stat-card-glow"></div>
@@ -266,9 +267,9 @@
                                 <td>{{ j.devices_success }}/{{ j.devices_total }}</td>
                                 <td>
                                     {% if j.status.value == 'failed' %}
-                                    <form action="/jobs/history/{{ j.id }}/delete" method="post" class="d-inline" onsubmit="return confirm('Delete this failed job run?')">
+                                    {% if can_edit(current_user) %}<form action="/jobs/history/{{ j.id }}/delete" method="post" class="d-inline" onsubmit="return confirm('Delete this failed job run?')">
                                         <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-trash"></i></button>
-                                    </form>
+                                    </form>{% endif %}
                                     {% endif %}
                                 </td>
                             </tr>
@@ -303,7 +304,7 @@
                         <tbody>
                             {% for dest in destinations %}
                             <tr>
-                                <td><a href="/destinations/{{ dest.id }}/edit">{{ dest.name }}</a></td>
+                                <td>{% if can_edit(current_user) %}<a href="/destinations/{{ dest.id }}/edit">{{ dest.name }}</a>{% else %}{{ dest.name }}{% endif %}</td>
                                 <td><span class="badge bg-secondary">{{ dest.dest_type.value }}</span></td>
                                 <td>
                                     {% if dest.enabled %}

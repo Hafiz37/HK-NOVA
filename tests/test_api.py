@@ -9,21 +9,18 @@ from app.main import app
 
 
 @pytest.fixture
-def client():
+def client(web_client):
     """Create a test client."""
-    return TestClient(app)
+    return web_client
 
 
 @pytest.fixture
 def auth_headers():
     """Create auth headers for testing."""
-    from app.config import get_settings
-    settings = get_settings()
     import base64
-    credentials = base64.b64encode(
-        f"{settings.AUTH_USERNAME}:{settings.AUTH_PASSWORD}".encode()
-    ).decode()
+    credentials = base64.b64encode(b"admin:test-password-123").decode()
     return {"Authorization": f"Basic {credentials}"}
+
 
 
 class TestHealthEndpoints:

@@ -123,7 +123,7 @@ class CommandPalette {
                         icon: 'clock-history',
                         title: job.name,
                         subtitle: `Schedule: ${job.cron_expression}`,
-                        url: `/jobs/${job.id}/edit`
+                        url: ['admin', 'operator'].includes(document.body.dataset.userRole) ? `/jobs/${job.id}/edit` : '/jobs/'
                     });
                 });
             }
@@ -143,16 +143,16 @@ class CommandPalette {
     
     getQuickActions(query) {
         const actions = [
-            { type: 'action', icon: 'plus-lg', title: 'Add Device', subtitle: 'Create a new device', url: '/devices/add' },
-            { type: 'action', icon: 'download', title: 'Trigger Backup', subtitle: 'Run backup now', url: '/backups/trigger' },
-            { type: 'action', icon: 'clock', title: 'Add Schedule', subtitle: 'Create new backup schedule', url: '/jobs/add' },
+            { requiresEdit: true, type: 'action', icon: 'plus-lg', title: 'Add Device', subtitle: 'Create a new device', url: '/devices/add' },
+            { requiresEdit: true, type: 'action', icon: 'download', title: 'Trigger Backup', subtitle: 'Run backup now', url: '/backups/trigger' },
+            { requiresEdit: true, type: 'action', icon: 'clock', title: 'Add Schedule', subtitle: 'Create new backup schedule', url: '/jobs/add' },
             { type: 'action', icon: 'gear', title: 'Settings', subtitle: 'Configure destinations', url: '/destinations' }
         ];
         
         const q = query.toLowerCase();
-        return actions.filter(a => 
-            a.title.toLowerCase().includes(q) || 
-            a.subtitle.toLowerCase().includes(q)
+        return actions.filter(a =>
+            (!a.requiresEdit || ['admin', 'operator'].includes(document.body.dataset.userRole)) &&
+            (a.title.toLowerCase().includes(q) || a.subtitle.toLowerCase().includes(q))
         );
     }
     

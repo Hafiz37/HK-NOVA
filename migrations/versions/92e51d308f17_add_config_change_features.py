@@ -17,6 +17,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Earlier installations created this table via metadata.create_all, but the
+    # original Alembic chain never did. Support a genuinely empty database too.
+    if not sa.inspect(op.get_bind()).has_table('notification_channels'):
+        op.create_table(
+            'notification_channels',
+            sa.Column('id', sa.Integer(), primary_key=True),
+            sa.Column('name', sa.String(255), nullable=False, unique=True),
+            sa.Column('apprise_url_encrypted', sa.String(1000), nullable=False),
+            sa.Column('enabled', sa.Boolean(), nullable=True),
+            sa.Column('on_success', sa.Boolean(), nullable=True),
+            sa.Column('on_failure', sa.Boolean(), nullable=True),
+            sa.Column('created_at', sa.DateTime(), nullable=True),
+            sa.Column('updated_at', sa.DateTime(), nullable=True),
+        )
+        op.create_index('ix_notification_channels_id', 'notification_channels', ['id'])
     op.add_column('notification_channels', 
         sa.Column('on_config_change', sa.Boolean(), nullable=False, server_default='1'))
     

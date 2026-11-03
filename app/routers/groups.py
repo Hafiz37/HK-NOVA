@@ -1,8 +1,11 @@
+from app.security import get_current_user, require_operator_or_admin
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.modules.audit_service import AuditService
+from app.models.user import User
 from app.models.group import Group
 from app.models.destination import Destination
 from app.models.notification import NotificationChannel
@@ -10,7 +13,14 @@ from app.models.notification import NotificationChannel
 router = APIRouter(prefix="/groups")
 
 
-@router.get("/")
+def _group_metadata(db, group):
+    from app.models.device import Device
+    return {"name": group.name, "device_count": db.query(Device).filter(Device.group == group.name).count(),
+            "destination_ids": group.destination_ids, "notification_ids": group.notification_ids,
+            "backup_engine": group.backup_engine}
+
+
+@router.get("/", dependencies=[Depends(get_current_user)])
 async def list_groups(request: Request, db: Session = Depends(get_db)):
     groups = db.query(Group).order_by(Group.name).all()
     destinations = db.query(Destination).order_by(Destination.name).all()
@@ -46,6 +56,7 @@ async def add_group(
     description: str = Form(""),
     backup_engine: str = Form(""),
     db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     form = await request.form()
     dest_ids = [int(v) for v in form.getlist("destination_ids")]
@@ -53,18 +64,21 @@ async def add_group(
 
     name = name.strip()
     if not db.query(Group).filter(Group.name == name).first():
-        db.add(Group(
+        group = Group(
             name=name,
             description=description or None,
             destination_ids=dest_ids or None,
             backup_engine=backup_engine or None,
             notification_ids=notif_ids or None,
-        ))
+        )
+        db.add(group)
         db.commit()
+        AuditService.log(db, action="CREATE", resource_type="groups", user=actor, request=request,
+                         resource_id=group.id, resource_name=group.name, new_value=_group_metadata(db, group))
     return RedirectResponse(url="/groups", status_code=303)
 
 
-@router.get("/{group_id}/edit")
+@router.get("/{group_id}/edit", dependencies=[Depends(require_operator_or_admin)])
 async def edit_group_form(group_id: int, request: Request, db: Session = Depends(get_db)):
     group = db.query(Group).get(group_id)
     if not group:
@@ -97,6 +111,7 @@ async def edit_group(
     description: str = Form(""),
     backup_engine: str = Form(""),
     db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
 ):
     group = db.query(Group).get(group_id)
     if not group:
@@ -106,25 +121,33 @@ async def edit_group(
     dest_ids = [int(v) for v in form.getlist("destination_ids")]
     notif_ids = [int(v) for v in form.getlist("notification_ids")]
 
+    old_value = _group_metadata(db, group)
     group.name = name.strip()
     group.description = description or None
     group.destination_ids = dest_ids or None
     group.backup_engine = backup_engine or None
     group.notification_ids = notif_ids or None
     db.commit()
+    AuditService.log(db, action="UPDATE", resource_type="groups", user=actor, request=request,
+                     resource_id=group.id, resource_name=group.name, old_value=old_value, new_value=_group_metadata(db, group))
     return RedirectResponse(url="/groups", status_code=303)
 
 
 @router.post("/{group_id}/delete")
-async def delete_group(group_id: int, db: Session = Depends(get_db)):
+async def delete_group(request: Request, group_id: int, db: Session = Depends(get_db),
+    actor: User = Depends(require_operator_or_admin),
+):
     group = db.query(Group).get(group_id)
     if group:
+        metadata = _group_metadata(db, group)
         db.delete(group)
         db.commit()
+        AuditService.log(db, action="DELETE", resource_type="groups", user=actor, request=request,
+                         resource_id=group.id, resource_name=group.name, old_value=metadata)
     return RedirectResponse(url="/groups", status_code=303)
 
 
-@router.get("/api/groups/{group_name}/destinations")
+@router.get("/api/groups/{group_name}/destinations", dependencies=[Depends(get_current_user)])
 async def get_group_destinations(
     group_name: str,
     db: Session = Depends(get_db)

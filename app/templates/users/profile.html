@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Profile - HK-NOVA{% endblock %}
+{% block content %}
+<h2 class="mb-3"><i class="bi bi-person-circle"></i> Profile</h2>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+{% if success %}<div class="alert alert-success" role="status">{{ success }}</div>{% endif %}
+<div class="row g-4">
+    <div class="col-md-5"><div class="card"><div class="card-header">User Information</div><div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-5">Username</dt><dd class="col-sm-7">{{ current_user.username }}</dd>
+            <dt class="col-sm-5">Full Name</dt><dd class="col-sm-7">{{ current_user.full_name or '-' }}</dd>
+            <dt class="col-sm-5">Role</dt><dd class="col-sm-7"><span class="badge {{ {'admin': 'bg-danger', 'operator': 'bg-warning text-dark', 'viewer': 'bg-primary'}[current_user.role.value] }}">{{ current_user.role.value | title }}</span></dd>
+            <dt class="col-sm-5">Status</dt><dd class="col-sm-7">Active</dd>
+            <dt class="col-sm-5">Member Since</dt><dd class="col-sm-7">{{ current_user.created_at | localtime }}</dd>
+        </dl>
+    </div></div></div>
+    <div class="col-md-7"><div class="card"><div class="card-header">Change Password</div><div class="card-body">
+        <form method="post" action="/profile/password">
+            <div class="mb-3"><label for="current_password" class="form-label">Current Password</label><input id="current_password" name="current_password" type="password" class="form-control" autocomplete="current-password" required></div>
+            <div class="mb-3"><label for="new_password" class="form-label">New Password</label><input id="new_password" name="new_password" type="password" class="form-control" autocomplete="new-password" minlength="8" maxlength="72" required><div class="form-text">At least 8 characters; at most 72 UTF-8 bytes. Prefer 12 or more characters.</div></div>
+            <div class="mb-3"><label for="confirm_password" class="form-label">Confirm Password</label><input id="confirm_password" name="confirm_password" type="password" class="form-control" autocomplete="new-password" minlength="8" maxlength="72" required></div>
+            <button type="submit" class="btn btn-primary">Change Password</button>
+        </form>
+    </div></div></div>
+</div>
+{% endblock %}

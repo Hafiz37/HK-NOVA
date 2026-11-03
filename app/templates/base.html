@@ -8,9 +8,10 @@
     <link href="/static/vendor/bootstrap.min.css" rel="stylesheet">
     <link href="/static/vendor/bootstrap-icons.min.css" rel="stylesheet">
     <link href="/static/css/app.css" rel="stylesheet">
+    <link href="/static/css/mobile.css" rel="stylesheet" media="(max-width: 767.98px)">
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body data-user-role="{{ current_user.role.value if current_user else '' }}">
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom sticky-top">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">
@@ -22,68 +23,89 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav">
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">
+                        <a class="nav-link {% if request.url.path == '/' %}active{% endif %}" href="/">
                             <i class="bi bi-speedometer2"></i> Dashboard
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/devices') %}active{% endif %}" href="/devices">
+                        <a class="nav-link {% if request.url.path.startswith('/devices') %}active{% endif %}" href="/devices">
                             <i class="bi bi-router"></i> Devices
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/backups') %}active{% endif %}" href="/backups">
+                        <a class="nav-link {% if request.url.path.startswith('/backups') %}active{% endif %}" href="/backups">
                             <i class="bi bi-archive"></i> Backups
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path == '/jobs' or request.path.startswith('/jobs/') and 'history' not in request.path %}active{% endif %}" href="/jobs">
+                        <a class="nav-link {% if request.url.path == '/jobs' or request.url.path.startswith('/jobs/') and 'history' not in request.url.path %}active{% endif %}" href="/jobs">
                             <i class="bi bi-clock-history"></i> Schedules
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if '/jobs/history' in request.path %}active{% endif %}" href="/jobs/history">
+                        <a class="nav-link {% if '/jobs/history' in request.url.path %}active{% endif %}" href="/jobs/history">
                             <i class="bi bi-journal-text"></i> Job History
                         </a>
                     </li>
+                    {% if current_user and current_user.role.value == 'admin' %}
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/destinations') %}active{% endif %}" href="/destinations">
+                        <a class="nav-link {% if request.url.path.startswith('/destinations') %}active{% endif %}" href="/destinations">
                             <i class="bi bi-folder2-open"></i> Destinations
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/credentials') %}active{% endif %}" href="/credentials">
+                        <a class="nav-link {% if request.url.path.startswith('/credentials') %}active{% endif %}" href="/credentials">
                             <i class="bi bi-key"></i> Credentials
                         </a>
                     </li>
+                    {% endif %}
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/groups') %}active{% endif %}" href="/groups">
+                        <a class="nav-link {% if request.url.path.startswith('/groups') %}active{% endif %}" href="/groups">
                             <i class="bi bi-collection"></i> Groups
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/notifications') %}active{% endif %}" href="/notifications">
+                        <a class="nav-link {% if request.url.path.startswith('/notifications') %}active{% endif %}" href="/notifications">
                             <i class="bi bi-bell"></i> Notifications
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/analytics') %}active{% endif %}" href="/analytics">
+                        <a class="nav-link {% if request.url.path.startswith('/analytics') %}active{% endif %}" href="/analytics">
                             <i class="bi bi-graph-up-arrow"></i> Analytics
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/diagnostics') %}active{% endif %}" href="/diagnostics">
+                        <a class="nav-link {% if request.url.path.startswith('/diagnostics') %}active{% endif %}" href="/diagnostics">
                             <i class="bi bi-tools"></i> Diagnostics
                         </a>
                     </li>
+                    {% if current_user and current_user.role.value == 'admin' %}
+                    <li class="nav-item"><a class="nav-link {% if request.url.path.startswith('/users') %}active{% endif %}" href="/users"><i class="bi bi-people"></i> Users</a></li>
+                    <li class="nav-item"><a class="nav-link {% if request.url.path.startswith('/audit-logs') %}active{% endif %}" href="/audit-logs"><i class="bi bi-shield-check"></i> Audit Logs</a></li>
+                    {% endif %}
                 </ul>
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link text-danger" href="/logout" title="Sign out">
-                            <i class="bi bi-box-arrow-right"></i>
-                            <span class="d-lg-none ms-2">Logout</span>
-                        </a>
+                    {% if current_user %}
+                    <li class="nav-item dropdown">
+                        <button class="nav-link dropdown-toggle btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="User menu">
+                            <i class="bi bi-person-circle"></i> {{ current_user.full_name or current_user.username }}
+                            <span class="badge {{ {'admin': 'bg-danger', 'operator': 'bg-warning text-dark', 'viewer': 'bg-primary'}[current_user.role.value] }}">{{ current_user.role.value | title }}</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/profile"><i class="bi bi-person"></i> Profile</a></li>
+                            {% if current_user.role.value == 'admin' %}
+                            <li><a class="dropdown-item" href="/users"><i class="bi bi-people"></i> Manage Users</a></li>
+                            <li><a class="dropdown-item" href="/audit-logs"><i class="bi bi-shield-check"></i> Audit Logs</a></li>
+                            {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="post" action="/logout">
+                                    <button type="submit" class="dropdown-item text-danger"><i class="bi bi-box-arrow-right"></i> Logout</button>
+                                </form>
+                            </li>
+                        </ul>
                     </li>
+                    {% endif %}
                 </ul>
             </div>
         </div>

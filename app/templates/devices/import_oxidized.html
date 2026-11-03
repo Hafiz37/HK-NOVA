@@ -17,7 +17,7 @@
 {% endif %}
 
 {% if nodes %}
-<form method="post" action="/devices/import/oxidized">
+{% if can_edit(current_user) %}<form method="post" action="/devices/import/oxidized">
     <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="bi bi-list-check"></i> {{ nodes|length }} nodes found in Oxidized</span>
@@ -122,7 +122,7 @@
         <i class="bi bi-cloud-download"></i> Import Selected Devices
     </button>
     <a href="/devices" class="btn btn-outline-secondary btn-lg">Cancel</a>
-</form>
+</form>{% endif %}
 
 <script>
 function toggleAll(checked) {

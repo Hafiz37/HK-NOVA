@@ -106,7 +106,7 @@
                         {% elif dest.dest_type.value == 'telegram' %}
                         <span class="badge bg-info text-muted"><i class="bi bi-cloud"></i> API</span>
                         {% else %}
-                        <span class="badge bg-secondary text-muted">local</span>
+                        <span class="badge bg-secondary text-muted">{{ 'Not checked' if dest.dest_type.value == 'smb' else 'local' }}</span>
                         {% endif %}
                     </td>
                     <td class="text-end">

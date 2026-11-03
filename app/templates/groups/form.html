@@ -6,7 +6,7 @@
 
 <div class="card mt-3">
     <div class="card-body">
-        <form method="post" action="/groups/{{ group.id }}/edit">
+        {% if can_edit(current_user) %}<form method="post" action="/groups/{{ group.id }}/edit">
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label">Name</label>
@@ -39,7 +39,7 @@
                             </div>
                         </div>
                         {% else %}
-                        <div class="col-12 text-muted">No destinations configured. <a href="/destinations/add">Add one</a>.</div>
+                        <div class="col-12 text-muted">No destinations configured. {% if can_edit(current_user) %}<a href="/destinations/add">Add one</a>{% endif %}.</div>
                         {% endfor %}
                     </div>
                     <div class="form-text">Devices in this group will back up to these destinations by default</div>
@@ -67,7 +67,7 @@
                 <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
                 <a href="/groups" class="btn btn-outline-secondary">Cancel</a>
             </div>
-        </form>
+        </form>{% endif %}
     </div>
 </div>
 {% endblock %}

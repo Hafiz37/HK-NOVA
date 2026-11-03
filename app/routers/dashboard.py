@@ -1,3 +1,4 @@
+from app.security import get_current_user
 from fastapi import APIRouter, Request, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -12,7 +13,7 @@ from app.models.group import Group
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(get_current_user)])
 async def dashboard(request: Request, db: Session = Depends(get_db)):
     device_count = db.query(func.count(Device.id)).scalar()
     enabled_count = db.query(func.count(Device.id)).filter(Device.enabled == True).scalar()

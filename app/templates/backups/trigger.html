@@ -6,7 +6,7 @@
 
 <div class="card mt-3">
     <div class="card-body">
-        <form method="post" action="/backups/trigger">
+        {% if can_edit(current_user) %}<form method="post" action="/backups/trigger">
             <div class="mb-3">
                 <label class="form-label">Select Devices</label>
                 <div class="row g-2">
@@ -51,7 +51,7 @@
 
             <button type="submit" class="btn btn-primary"><i class="bi bi-play-fill"></i> Start Backup</button>
             <a href="/backups" class="btn btn-outline-secondary">Cancel</a>
-        </form>
+        </form>{% endif %}
     </div>
 </div>
 {% endblock %}

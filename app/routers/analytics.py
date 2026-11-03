@@ -1,3 +1,4 @@
+from app.security import get_current_user
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
@@ -31,7 +32,7 @@ def resolve_range(days, start_date=None, end_date=None):
         raise HTTPException(status_code=400, detail="Use YYYY-MM-DD with an ordered range of 1–365 days")
 
 
-@router.get("/api/v1/analytics/backup-trend")
+@router.get("/api/v1/analytics/backup-trend", dependencies=[Depends(get_current_user)])
 async def get_backup_trend(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -80,7 +81,7 @@ async def get_backup_trend(
     }
 
 
-@router.get("/api/v1/analytics/device-status")
+@router.get("/api/v1/analytics/device-status", dependencies=[Depends(get_current_user)])
 async def get_device_status(db: Session = Depends(get_db)):
     """
     Return device online/offline/error distribution
@@ -108,7 +109,7 @@ async def get_device_status(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/api/v1/analytics/group-performance")
+@router.get("/api/v1/analytics/group-performance", dependencies=[Depends(get_current_user)])
 async def get_group_performance(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -165,7 +166,7 @@ async def get_group_performance(
     }
 
 
-@router.get("/api/v1/analytics/storage-usage")
+@router.get("/api/v1/analytics/storage-usage", dependencies=[Depends(get_current_user)])
 async def get_storage_usage(db: Session = Depends(get_db)):
     """
     Return storage usage per destination (estimated from backup file sizes)
@@ -203,7 +204,7 @@ async def get_storage_usage(db: Session = Depends(get_db)):
     return {"data": storage_data}
 
 
-@router.get("/api/v1/analytics/recent-activity")
+@router.get("/api/v1/analytics/recent-activity", dependencies=[Depends(get_current_user)])
 async def get_recent_activity(
     limit: int = Query(default=20, ge=5, le=100),
     db: Session = Depends(get_db)
@@ -248,7 +249,7 @@ async def get_recent_activity(
     return {"data": activity[:limit]}
 
 
-@router.get("/api/v1/analytics/reliability-score")
+@router.get("/api/v1/analytics/reliability-score", dependencies=[Depends(get_current_user)])
 async def get_reliability_score(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -325,7 +326,7 @@ async def get_reliability_score(
     }
 
 
-@router.get("/api/v1/analytics/device-type-distribution")
+@router.get("/api/v1/analytics/device-type-distribution", dependencies=[Depends(get_current_user)])
 async def get_device_type_distribution(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -392,7 +393,7 @@ async def get_device_type_distribution(
     }
 
 
-@router.get("/api/v1/analytics/backup-frequency-by-group")
+@router.get("/api/v1/analytics/backup-frequency-by-group", dependencies=[Depends(get_current_user)])
 async def get_backup_frequency_by_group(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -491,7 +492,7 @@ async def get_backup_frequency_by_group(
     }
 
 
-@router.get("/api/v1/analytics/export-csv")
+@router.get("/api/v1/analytics/export-csv", dependencies=[Depends(get_current_user)])
 async def export_analytics_csv(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -566,7 +567,7 @@ async def export_analytics_csv(
     )
 
 
-@router.get("/api/v1/analytics/export-json")
+@router.get("/api/v1/analytics/export-json", dependencies=[Depends(get_current_user)])
 async def export_analytics_json(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -608,7 +609,7 @@ async def export_analytics_json(
     )
 
 
-@router.get("/api/v1/analytics/export-excel")
+@router.get("/api/v1/analytics/export-excel", dependencies=[Depends(get_current_user)])
 async def export_analytics_excel(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -727,7 +728,7 @@ async def export_analytics_excel(
     )
 
 
-@router.get("/api/v1/analytics/performance-metrics")
+@router.get("/api/v1/analytics/performance-metrics", dependencies=[Depends(get_current_user)])
 async def get_performance_metrics(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -826,7 +827,7 @@ async def get_performance_metrics(
     }
 
 
-@router.get("/api/v1/analytics/anomalies")
+@router.get("/api/v1/analytics/anomalies", dependencies=[Depends(get_current_user)])
 async def detect_anomalies(
     days: int = Query(default=7, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -932,7 +933,7 @@ async def detect_anomalies(
     }
 
 
-@router.get("/api/v1/analytics/backup-heatmap")
+@router.get("/api/v1/analytics/backup-heatmap", dependencies=[Depends(get_current_user)])
 async def get_backup_heatmap(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),
@@ -973,7 +974,7 @@ async def get_backup_heatmap(
     }
 
 
-@router.get("/api/v1/analytics/export-pdf")
+@router.get("/api/v1/analytics/export-pdf", dependencies=[Depends(get_current_user)])
 async def export_analytics_pdf(
     days: int = Query(default=30, ge=1, le=365),
     start_date: Optional[str] = Query(default=None),

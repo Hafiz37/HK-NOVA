@@ -45,23 +45,23 @@
             <p class="text-muted mb-0">Detailed root cause analysis, execution timeline, and auto-fix logs</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
-            <form method="post" action="/diagnostics/device/{{ device.id }}/retry" class="d-inline">
+            {% if can_edit(current_user) %}<form method="post" action="/diagnostics/device/{{ device.id }}/retry" class="d-inline">
                 <button type="submit" class="btn btn-primary">
                     <i class="bi bi-arrow-repeat me-1"></i> Retry Backup Now
                 </button>
-            </form>
-            <a href="/devices/{{ device.id }}/edit" class="btn btn-outline-secondary">
+            </form>{% endif %}
+            {% if can_edit(current_user) %}<a href="/devices/{{ device.id }}/edit" class="btn btn-outline-secondary">
                 <i class="bi bi-pencil me-1"></i> Edit Device Config
-            </a>
+            </a>{% endif %}
             <a href="/destinations" class="btn btn-outline-secondary">
                 <i class="bi bi-folder2-open me-1"></i> Edit Destination Config
             </a>
             {% if unresolved_count > 0 and latest_failure %}
-            <form method="post" action="/diagnostics/failure/{{ latest_failure.id }}/resolve" class="d-inline">
+            {% if can_edit(current_user) %}<form method="post" action="/diagnostics/failure/{{ latest_failure.id }}/resolve" class="d-inline">
                 <button type="submit" class="btn btn-success">
                     <i class="bi bi-check2-all me-1"></i> Mark as Resolved
                 </button>
-            </form>
+            </form>{% endif %}
             {% endif %}
             <button class="btn btn-outline-info" onclick="downloadDiagnosticLog()">
                 <i class="bi bi-download me-1"></i> Download Full Log

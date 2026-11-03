@@ -1,0 +1,49 @@
+{
+  "checks": [
+    {
+      "name": "Admin sees Users and all role badges",
+      "passed": true
+    },
+    {
+      "name": "Admin creates an operator through the form",
+      "passed": true
+    },
+    {
+      "name": "Admin updates the role through the form",
+      "passed": true
+    },
+    {
+      "name": "Admin deletes a user through confirmed form",
+      "passed": true
+    },
+    {
+      "name": "Operator sees device editing actions",
+      "passed": true
+    },
+    {
+      "name": "Operator cannot see Delete Destination",
+      "passed": true
+    },
+    {
+      "name": "Operator receives a styled 403 for user management",
+      "passed": true
+    },
+    {
+      "name": "Viewer sees devices with View only",
+      "passed": true
+    },
+    {
+      "name": "Viewer changes own password",
+      "passed": true
+    },
+    {
+      "name": "Mobile profile fits viewport and has correct navigation",
+      "passed": true
+    },
+    {
+      "name": "Logout clears session access",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

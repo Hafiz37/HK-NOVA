@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Comprehensive Audit Log System**:
+  - `audit_logs` database schema and migration `v18_audit_logs` tracking user and system actions with timestamp, user identity, action, resource type, resource ID/name, old/new diff values, IP address, user agent, and status.
+  - Full audit instrumentation across all HK-NOVA resources: authentication (`auth`), users (`users`), devices (`devices`), credentials (`credentials`), backups (`backups`), destinations (`destinations`), groups (`groups`), schedules (`schedules`), locations (`locations`), and notifications (`notifications`).
+  - Automatic recursive redaction of sensitive credentials, passwords, tokens, API keys, and SSH private keys.
+  - Dedicated Audit Log Viewer UI (`/audit-logs`) with collapsible multi-criteria filter panel (date range, action, resource type, user, search), pagination, and side-by-side JSON change details modal.
+  - Low-memory Streaming CSV export endpoint (`/audit-logs/export`) capable of generating reports for large audit datasets.
+  - Strict role-based access control protecting audit log endpoints (`require_admin`).
+- User model and Alembic revision `l2m3n4o5p6q7` with admin/operator/viewer roles.
+- Initial administrator provisioning from `AUTH_*` on application startup when
+  users is empty, with bcrypt password hashing and no reset on restart.
+- SQLite user ID non-reuse migration to prevent old cookies identifying replacement accounts.
+- Database-backed login and HTTP Basic authentication with user-bound HMAC sessions.
+- Admin user CRUD, self-service profile/password changes and audit logging.
+- Role enforcement and conditional UI across operational routers, including diagnostics
+  mutations and destination deletion through cascading locations.
+- Isolated RBAC tests and migration/upgrade/security documentation.
+
+### Fixed
+- Fresh Alembic installs now create the legacy notification_channels table before
+  adding config-change notification fields. Existing upgraded databases are unchanged.
+
+### Changed
+- `AUTH_*` now only provisions the first account; use Profile for password changes.
+- `start.sh` resolves the project directory relative to itself and stops on setup errors.
+
 ## [1.0.0] - 2026-09-21
 
 ### Initial Release

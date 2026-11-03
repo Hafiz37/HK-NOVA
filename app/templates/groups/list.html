@@ -7,12 +7,13 @@
 </div>
 
 <div class="row g-4">
+    {% if can_edit(current_user) %}
     <!-- Add group form -->
     <div class="col-md-4">
         <div class="card">
             <div class="card-header"><i class="bi bi-plus-circle"></i> Add Group</div>
             <div class="card-body">
-                <form method="post" action="/groups/add">
+                {% if can_edit(current_user) %}<form method="post" action="/groups/add">
                     <div class="mb-3">
                         <label class="form-label">Name</label>
                         <input type="text" name="name" class="form-control" placeholder="e.g. Core Switches" required>
@@ -54,13 +55,14 @@
                         {% endfor %}
                     </div>
                     <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-lg"></i> Add Group</button>
-                </form>
+                </form>{% endif %}
             </div>
         </div>
     </div>
 
+    {% endif %}
     <!-- Groups table -->
-    <div class="col-md-8">
+    <div class="{{ 'col-md-8' if can_edit(current_user) else 'col-12' }}">
         <div class="card">
             <div class="card-header"><i class="bi bi-list-ul"></i> Existing Groups</div>
             <div class="card-body p-0">
@@ -80,9 +82,9 @@
                         {% for g in groups %}
                         <tr>
                             <td>
-                                <a href="/groups/{{ g.id }}/edit" class="text-decoration-none">
+                                {% if can_edit(current_user) %}<a href="/groups/{{ g.id }}/edit" class="text-decoration-none">
                                     <span class="badge bg-secondary fs-6">{{ g.name }}</span>
-                                </a>
+                                </a>{% else %}{{ g.name }}{% endif %}
                             </td>
                             <td class="text-muted">{{ g.description or '—' }}</td>
                             <td>
@@ -107,16 +109,16 @@
                                 {% endfor %}
                             </td>
                             <td class="text-end">
-                                <a href="/groups/{{ g.id }}/edit" class="btn btn-sm btn-outline-light me-1">
+                                {% if can_edit(current_user) %}<a href="/groups/{{ g.id }}/edit" class="btn btn-sm btn-outline-light me-1">
                                     <i class="bi bi-pencil"></i>
-                                </a>
+                                </a>{% endif %}
                                 {% if g.name != 'default' %}
-                                <form method="post" action="/groups/{{ g.id }}/delete" class="d-inline"
+                                {% if can_edit(current_user) %}<form method="post" action="/groups/{{ g.id }}/delete" class="d-inline"
                                       onsubmit="return confirm('Delete group {{ g.name }}? Devices will keep the name but it won\'t appear in dropdowns.')">
                                     <button type="submit" class="btn btn-sm btn-outline-danger">
                                         <i class="bi bi-trash"></i>
                                     </button>
-                                </form>
+                                </form>{% endif %}
                                 {% else %}
                                 <span class="text-muted small">built-in</span>
                                 {% endif %}

@@ -30,12 +30,12 @@ sudo systemctl {start|stop|restart|status} hk-nova
 sudo journalctl -u hk-nova -f  # View logs
 ```
 
+Change account passwords through **Profile** (`/profile`) after login.
+`AUTH_*` only sets the initial admin when the users table is empty.
+
 **Management commands:**
 ```bash
 cd /opt/hk-nova
-./manage.sh show-password     # Show current password
-./manage.sh set-password      # Change password
-./manage.sh reset-password    # Generate new random password
 ./manage.sh status            # Show service status
 ./manage.sh logs              # View logs
 ```
@@ -221,3 +221,40 @@ sudo rm -rf /opt/hk-nova
 sudo userdel hk-nova  # optional
 sudo systemctl daemon-reload
 ```
+
+## Inisialisasi tabel users
+
+1. Atur `DATABASE_URL`, `AUTH_USERNAME`, dan `AUTH_PASSWORD` pada `.env`
+   sebelum startup pertama. Environment proses memiliki prioritas atas `.env`.
+2. Dari root project, aktifkan `.venv`, jalankan `pip install -r requirements.txt`,
+   backup database, lalu jalankan `alembic upgrade head`.
+3. Jalankan `./start.sh` atau `./run.sh`. Keduanya memakai lifespan aplikasi
+   yang memanggil `init_db()` dan provisioning admin. Menjalankan Alembic saja
+   membuat tabel; seeding terjadi pada inisialisasi aplikasi.
+4. Periksa `alembic current`: revision terbaru adalah `m3n4o5p6q7r8`.
+   Log first-run menampilkan `Created initial administrator from AUTH_USERNAME configuration`.
+   Query berikut memeriksa akun tanpa menampilkan hash/password:
+
+   ```sql
+   SELECT id, username, role, is_active, created_at FROM users;
+   ```
+
+Seeding hanya berjalan ketika tabel benar-benar kosong, termasuk jika akun
+existing semuanya nonaktif. Restart tidak mereset akun. Pada instalasi kosong,
+alur startup lama masih menggunakan `metadata.create_all`; jalankan migration
+Alembic sebelum startup pertama agar riwayat revision tercatat sejak awal.
+Database lama tanpa `alembic_version` perlu rekonsiliasi schema sebelum upgrade;
+jangan melakukan `stamp head` tanpa memastikan kesesuaian schema.
+
+Migration users menggunakan tipe lintas SQLite/PostgreSQL. Deployment yang
+diverifikasi untuk perubahan ini memakai SQLite. Dukungan PostgreSQL aplikasi
+secara menyeluruh belum siap: koneksi dan migration legacy masih mengandung
+opsi/SQL khusus SQLite. Jangan menganggap migration users menghilangkan batasan tersebut.
+
+Login web dan HTTP Basic sekarang memakai akun aktif di tabel `users`. Setelah
+upgrade, restart aplikasi dan login kembali: cookie session lama tidak berlaku.
+Jika tabel users sudah berisi akun dari provisioning sebelumnya, akun tersebut
+dipertahankan. Perubahan `.env` tidak mengubah password akun tersebut. Admin dapat
+membuat akun tambahan di `/users` dan mengganti password sendiri di `/profile`.
+Deployment memerlukan restart; data device/backup tidak dihapus oleh migration users.
+Pertahankan `SECRET_KEY` agar credential perangkat tetap dapat didekripsi.
