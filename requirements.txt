@@ -16,3 +16,5 @@ cryptography
 python-dotenv
 httpx
 apprise>=1.9
+openpyxl
+reportlab

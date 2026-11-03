@@ -26,6 +26,19 @@
     justify-content: center;
     font-size: 24px;
 }
+.custom-range-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: #10b981;
+    border-radius: 50%;
+    margin-left: 6px;
+    animation: pulse 2s infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
 @media (max-width: 768px) {
     .analytics-header {
         flex-direction: column;
@@ -43,6 +56,7 @@
     #reliability-score-gauge,
     #backup-heatmap {
         height: 250px !important;
+        min-height: 250px !important;
     }
 }
 @media (max-width: 576px) {
@@ -67,24 +81,26 @@
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="timeRangeDropdown" data-bs-toggle="dropdown">
                 <i class="bi bi-calendar3"></i> <span id="current-range-text">Last 30 Days</span>
             </button>
-            <ul class="dropdown-menu dropdown-menu-end">
+            <ul class="dropdown-menu dropdown-menu-end" style="min-width: 280px;">
                 <li><h6 class="dropdown-header">Quick Ranges</h6></li>
-                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(1, 'Yesterday')">Yesterday</a></li>
-                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(7, 'Last 7 Days')">Last 7 Days</a></li>
-                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(30, 'Last 30 Days')">Last 30 Days</a></li>
-                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(90, 'Last 90 Days')">Last 90 Days</a></li>
+                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(1, 'Yesterday'); return false;">Yesterday</a></li>
+                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(7, 'Last 7 Days'); return false;">Last 7 Days</a></li>
+                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(30, 'Last 30 Days'); return false;">Last 30 Days</a></li>
+                <li><a class="dropdown-item" href="#" onclick="changeTimeRange(90, 'Last 90 Days'); return false;">Last 90 Days</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Custom Range</h6></li>
-                <li class="px-3 py-2">
+                <li class="px-3 py-2" onclick="event.stopPropagation();">
                     <div class="mb-2">
                         <label class="form-label small mb-1">Start Date</label>
-                        <input type="date" class="form-control form-control-sm" id="start-date">
+                        <input type="date" class="form-control form-control-sm" id="start-date" max="">
                     </div>
                     <div class="mb-2">
                         <label class="form-label small mb-1">End Date</label>
-                        <input type="date" class="form-control form-control-sm" id="end-date">
+                        <input type="date" class="form-control form-control-sm" id="end-date" max="">
                     </div>
-                    <button class="btn btn-sm btn-primary w-100" onclick="applyCustomRange()">Apply</button>
+                    <button class="btn btn-sm btn-primary w-100" onclick="applyCustomRange(); return false;">
+                        <i class="bi bi-check-circle"></i> Apply Range
+                    </button>
                 </li>
             </ul>
         </div>
@@ -107,7 +123,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-lg-8">
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -168,7 +184,7 @@
     <div class="col-lg-6">
         <div class="card chart-card h-100">
             <div class="card-header">
-                <i class="bi bi-pie-chart"></i> Success Rate by Device Type
+                <i class="bi bi-pie-chart"></i> Device Type Distribution
             </div>
             <div class="card-body">
                 <div id="device-type-chart" style="width: 100%; height: 350px;">
@@ -179,7 +195,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-lg-6">
         <div class="card chart-card h-100">
             <div class="card-header">
@@ -327,29 +343,39 @@
 <script src="/static/js/charts.js"></script>
 <script>
 let currentDays = 30;
+let customStartDate = null;
+let customEndDate = null;
 
-async function loadAnalytics(days) {
+async function loadAnalytics(days, startDate = null, endDate = null) {
     currentDays = days;
-    
-    loadReliabilityScore(days);
-    loadDevicePerformance(days);
-    loadDeviceTypeChart(days);
-    loadBackupFrequencyChart(days);
-    loadSuccessRateTrend(days);
-    loadPerformanceMetrics(days);
-    loadAnomalies(days);
-    loadBackupHeatmap(days);
+    customStartDate = startDate;
+    customEndDate = endDate;
+
+    loadReliabilityScore(days, startDate, endDate);
+    loadDevicePerformance(days, startDate, endDate);
+    loadDeviceTypeChart(days, startDate, endDate);
+    loadBackupFrequencyChart(days, startDate, endDate);
+    loadSuccessRateTrend(days, startDate, endDate);
+    loadPerformanceMetrics(days, startDate, endDate);
+    loadAnomalies(days, startDate, endDate);
+    loadBackupHeatmap(days, startDate, endDate);
 }
 
-async function loadReliabilityScore(days) {
+async function loadReliabilityScore(days, startDate = null, endDate = null) {
     try {
         showLoading('reliability-score-gauge');
-        const response = await fetch(`/api/v1/analytics/reliability-score?days=${days}`);
-        
+
+        let url = `/api/v1/analytics/reliability-score?days=${days}`;
+        if (startDate && endDate) {
+            url += `&start_date=${startDate}&end_date=${endDate}`;
+        }
+
+        const response = await fetch(url);
+
         if (!response.ok) throw new Error('Failed to load reliability score');
-        
+
         const data = await response.json();
-        
+
         if (window.HKNovaCharts) {
             document.getElementById('reliability-score-gauge').innerHTML = '';
             const options = {
@@ -359,7 +385,7 @@ async function loadReliabilityScore(days) {
                     radialBar: {
                         hollow: { size: '65%' },
                         dataLabels: {
-                            value: { 
+                            value: {
                                 fontSize: '32px',
                                 formatter: (val) => val.toFixed(1) + '%'
                             }
@@ -373,33 +399,39 @@ async function loadReliabilityScore(days) {
                         stops: [0, 100]
                     }
                 },
-                labels: ['Reliability Score']
+                labels: [data.overall_score >= 95 ? 'Excellent' : data.overall_score >= 90 ? 'Good' : data.overall_score >= 80 ? 'Fair' : 'Poor']
             };
-            
+
             const chart = new ApexCharts(document.querySelector("#reliability-score-gauge"), {
                 ...window.HKNovaCharts.chartTheme || {},
-                ...options
+                ...options,
+            responsive: [{ breakpoint: 769, options: { chart: { height: 250 } } }]
             });
             chart.render();
         }
-        
+
     } catch (error) {
         console.error('Error loading reliability score:', error);
         showError('Failed to load reliability score');
-        document.getElementById('reliability-score-gauge').innerHTML = 
+        document.getElementById('reliability-score-gauge').innerHTML =
             '<div class="text-center text-danger py-5"><i class="bi bi-exclamation-triangle"></i> Failed to load</div>';
     }
 }
 
-async function loadDevicePerformance(days) {
+async function loadDevicePerformance(days, startDate = null, endDate = null) {
     try {
-        const response = await fetch(`/api/v1/analytics/reliability-score?days=${days}`);
-        
+        let url = `/api/v1/analytics/reliability-score?days=${days}`;
+        if (startDate && endDate) {
+            url += `&start_date=${startDate}&end_date=${endDate}`;
+        }
+
+        const response = await fetch(url);
+
         if (!response.ok) throw new Error('Failed to load device performance');
-        
+
         const data = await response.json();
-        
-        const topHtml = data.top_performers.length > 0 
+
+        const topHtml = data.top_performers.length > 0
             ? data.top_performers.map(d => `
                 <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
                     <div>
@@ -413,11 +445,11 @@ async function loadDevicePerformance(days) {
                 </div>
             `).join('')
             : '<p class="text-center text-muted py-4">No data available</p>';
-        
+
         document.getElementById('top-performers-list').innerHTML = topHtml;
-        
+
         document.getElementById('problematic-count').textContent = data.problematic_devices.length;
-        
+
         const probHtml = data.problematic_devices.length > 0
             ? data.problematic_devices.map(d => `
                 <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
@@ -432,120 +464,90 @@ async function loadDevicePerformance(days) {
                 </div>
             `).join('')
             : '<p class="text-center text-muted py-4">All devices performing well!</p>';
-        
+
         document.getElementById('problematic-devices-list').innerHTML = probHtml;
-        
+
     } catch (error) {
         console.error('Error loading device performance:', error);
         showError('Failed to load device performance data');
     }
 }
 
-async function loadDeviceTypeChart(days) {
+async function loadDeviceTypeChart(days, startDate = null, endDate = null) {
     try {
         showLoading('device-type-chart');
-        const response = await fetch(`/api/v1/analytics/device-type-distribution?days=${days}`);
-        
+
+        let url = `/api/v1/analytics/device-type-distribution?days=${days}`;
+        if (startDate && endDate) {
+            url += `&start_date=${startDate}&end_date=${endDate}`;
+        }
+
+        const response = await fetch(url);
+
         if (!response.ok) throw new Error('Failed to load device type data');
-        
+
         const data = await response.json();
-        
+
         if (data.data.length === 0) {
-            document.getElementById('device-type-chart').innerHTML = 
+            document.getElementById('device-type-chart').innerHTML =
                 '<div class="text-center text-muted py-5">No data available</div>';
             return;
         }
-        
+
         const categories = data.data.map(d => d.device_type);
         const successRates = data.data.map(d => d.success_rate);
         const deviceCounts = data.data.map(d => d.device_count);
-        
+
         const options = {
-            series: [{
-                name: 'Success Rate (%)',
-                data: successRates
-            }],
-            chart: {
-                type: 'bar',
-                height: 350,
-                events: {
-                    dataPointSelection: (event, chartContext, config) => {
-                        const deviceType = categories[config.dataPointIndex];
-                        showDeviceTypeDetail(deviceType, days);
-                    }
-                }
-            },
-            plotOptions: {
-                bar: {
-                    horizontal: true,
-                    distributed: true,
-                    dataLabels: {
-                        position: 'top'
-                    }
-                }
-            },
-            colors: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'],
-            dataLabels: {
-                enabled: true,
-                formatter: (val) => val.toFixed(1) + '%',
-                offsetX: 0,
-                style: {
-                    fontSize: '12px',
-                    colors: ['#fff']
-                }
-            },
-            xaxis: {
-                categories: categories.map((cat, idx) => `${cat} (${deviceCounts[idx]})`),
-                title: { text: 'Success Rate (%)' },
-                max: 100
-            },
-            yaxis: {
-                title: { text: 'Device Type' }
-            },
-            tooltip: {
-                y: {
-                    formatter: (val, { dataPointIndex }) => {
-                        return `${val.toFixed(1)}% (${deviceCounts[dataPointIndex]} devices) - Click for details`;
-                    }
-                }
-            }
+            series: deviceCounts,
+            labels: categories,
+            chart: { type: 'donut', height: 350 },
+            legend: { position: 'bottom' },
+            tooltip: { y: { formatter: value => `${value} devices` } }
         };
-        
+
         document.getElementById('device-type-chart').innerHTML = '';
         const chart = new ApexCharts(document.querySelector("#device-type-chart"), {
             ...window.HKNovaCharts?.chartTheme || {},
-            ...options
+            ...options,
+            responsive: [{ breakpoint: 769, options: { chart: { height: 250 } } }]
         });
         chart.render();
-        
+
     } catch (error) {
         console.error('Error loading device type chart:', error);
         showError('Failed to load device type chart');
-        document.getElementById('device-type-chart').innerHTML = 
+        document.getElementById('device-type-chart').innerHTML =
             '<div class="text-center text-danger py-5"><i class="bi bi-exclamation-triangle"></i> Failed to load data</div>';
     }
 }
 
-async function loadBackupFrequencyChart(days) {
+async function loadBackupFrequencyChart(days, startDate = null, endDate = null) {
     try {
         showLoading('backup-frequency-chart');
-        const response = await fetch(`/api/v1/analytics/backup-frequency-by-group?days=${days}`);
-        
+
+        let url = `/api/v1/analytics/backup-frequency-by-group?days=${days}`;
+        if (startDate && endDate) {
+            url += `&start_date=${startDate}&end_date=${endDate}`;
+        }
+
+        const response = await fetch(url);
+
         if (!response.ok) throw new Error('Failed to load backup frequency data');
-        
+
         const data = await response.json();
-        
+
         if (data.data.length === 0) {
-            document.getElementById('backup-frequency-chart').innerHTML = 
+            document.getElementById('backup-frequency-chart').innerHTML =
                 '<div class="text-center text-muted py-5">No data available</div>';
             return;
         }
-        
+
         const groups = data.data.map(d => d.group);
         const totalBackups = data.data.map(d => d.total_backups);
         const successBackups = data.data.map(d => d.success_backups);
         const failedBackups = data.data.map(d => d.failed_backups);
-        
+
         const options = {
             series: [
                 { name: 'Success', data: successBackups },
@@ -589,48 +591,56 @@ async function loadBackupFrequencyChart(days) {
                 enabled: false
             }
         };
-        
+
         document.getElementById('backup-frequency-chart').innerHTML = '';
         const chart = new ApexCharts(document.querySelector("#backup-frequency-chart"), {
             ...window.HKNovaCharts?.chartTheme || {},
-            ...options
+            ...options,
+            responsive: [{ breakpoint: 769, options: { chart: { height: 250 } } }]
         });
         chart.render();
-        
+
     } catch (error) {
         console.error('Error loading backup frequency chart:', error);
         showError('Failed to load backup frequency chart');
-        document.getElementById('backup-frequency-chart').innerHTML = 
+        document.getElementById('backup-frequency-chart').innerHTML =
             '<div class="text-center text-danger py-5"><i class="bi bi-exclamation-triangle"></i> Failed to load data</div>';
     }
 }
 
-async function loadSuccessRateTrend(days) {
+async function loadSuccessRateTrend(days, startDate = null, endDate = null) {
     try {
         showLoading('success-rate-trend');
-        const response = await fetch(`/api/v1/analytics/backup-trend?days=${days}`);
-        
+
+        let url = `/api/v1/analytics/backup-trend?days=${days}`;
+        if (startDate && endDate) {
+            url += `&start_date=${startDate}&end_date=${endDate}`;
+        }
+
+        const response = await fetch(url);
+
         if (!response.ok) throw new Error('Failed to load success rate trend');
-        
+
         const data = await response.json();
-        
+
         if (data.data.length === 0) {
-            document.getElementById('success-rate-trend').innerHTML = 
+            document.getElementById('success-rate-trend').innerHTML =
                 '<div class="text-center text-muted py-5">No data available</div>';
             return;
         }
-        
+
         const dates = data.data.map(d => d.date);
         const successRates = data.data.map(d => {
             const total = d.success + d.failed;
             return total > 0 ? (d.success / total * 100).toFixed(1) : 0;
         });
-        
+
         const options = {
             series: [{ name: 'Success Rate (%)', data: successRates }],
             chart: { type: 'area', height: 350 },
+            annotations: { yaxis: [90, 95].map(y => ({ y, borderColor: '#f59e0b', label: { text: `${y}%` } })) },
             xaxis: { categories: dates, type: 'datetime' },
-            yaxis: { 
+            yaxis: {
                 title: { text: 'Success Rate (%)' },
                 min: 0,
                 max: 100
@@ -642,42 +652,48 @@ async function loadSuccessRateTrend(days) {
             },
             colors: ['#10b981']
         };
-        
+
         document.getElementById('success-rate-trend').innerHTML = '';
         const chart = new ApexCharts(document.querySelector("#success-rate-trend"), {
             ...window.HKNovaCharts?.chartTheme || {},
-            ...options
+            ...options,
+            responsive: [{ breakpoint: 769, options: { chart: { height: 250 } } }]
         });
         chart.render();
-        
+
     } catch (error) {
         console.error('Error loading success rate trend:', error);
         showError('Failed to load success rate trend');
-        document.getElementById('success-rate-trend').innerHTML = 
+        document.getElementById('success-rate-trend').innerHTML =
             '<div class="text-center text-danger py-5"><i class="bi bi-exclamation-triangle"></i> Failed to load data</div>';
     }
 }
 
-async function loadPerformanceMetrics(days) {
+async function loadPerformanceMetrics(days, startDate = null, endDate = null) {
     try {
-        const response = await fetch(`/api/v1/analytics/performance-metrics?days=${days}`);
-        
+        let url = `/api/v1/analytics/performance-metrics?days=${days}`;
+        if (startDate && endDate) {
+            url += `&start_date=${startDate}&end_date=${endDate}`;
+        }
+
+        const response = await fetch(url);
+
         if (!response.ok) throw new Error('Failed to load performance metrics');
-        
+
         const data = await response.json();
-        
+
         document.getElementById('avg-duration').textContent = data.avg_duration;
         document.getElementById('avg-duration-detail').textContent = data.duration_detail;
-        
+
         document.getElementById('avg-size').textContent = data.avg_size;
         document.getElementById('avg-size-detail').textContent = data.size_detail;
-        
+
         document.getElementById('peak-hour').textContent = data.peak_hour;
         document.getElementById('peak-hour-detail').textContent = data.peak_hour_detail;
-        
+
         document.getElementById('fastest-device').textContent = data.fastest_device;
         document.getElementById('fastest-device-detail').textContent = data.fastest_device_detail;
-        
+
     } catch (error) {
         console.error('Error loading performance metrics:', error);
         document.getElementById('avg-duration').textContent = 'N/A';
@@ -691,14 +707,19 @@ async function loadPerformanceMetrics(days) {
     }
 }
 
-async function loadAnomalies(days) {
+async function loadAnomalies(days, startDate = null, endDate = null) {
     try {
-        const response = await fetch(`/api/v1/analytics/anomalies?days=${days}`);
-        
+        let url = `/api/v1/analytics/anomalies?days=${days}`;
+        if (startDate && endDate) {
+            url += `&start_date=${startDate}&end_date=${endDate}`;
+        }
+
+        const response = await fetch(url);
+
         if (!response.ok) throw new Error('Failed to load anomalies');
-        
+
         const data = await response.json();
-        
+
         if (data.anomalies && data.anomalies.length > 0) {
             const anomalyHtml = data.anomalies.map(a => `
                 <div class="mb-2">
@@ -706,34 +727,40 @@ async function loadAnomalies(days) {
                     <p class="mb-0">${a.description}</p>
                 </div>
             `).join('<hr class="my-2">');
-            
+
             document.getElementById('anomaly-list').innerHTML = anomalyHtml;
             document.getElementById('anomaly-section').style.display = 'block';
         } else {
             document.getElementById('anomaly-section').style.display = 'none';
         }
-        
+
     } catch (error) {
         console.error('Error loading anomalies:', error);
         document.getElementById('anomaly-section').style.display = 'none';
     }
 }
 
-async function loadBackupHeatmap(days) {
+async function loadBackupHeatmap(days, startDate = null, endDate = null) {
     try {
         showLoading('backup-heatmap');
-        const response = await fetch(`/api/v1/analytics/backup-heatmap?days=${days}`);
-        
+
+        let url = `/api/v1/analytics/backup-heatmap?days=${days}`;
+        if (startDate && endDate) {
+            url += `&start_date=${startDate}&end_date=${endDate}`;
+        }
+
+        const response = await fetch(url);
+
         if (!response.ok) throw new Error('Failed to load heatmap data');
-        
+
         const data = await response.json();
-        
+
         if (!data.data || data.data.length === 0) {
-            document.getElementById('backup-heatmap').innerHTML = 
+            document.getElementById('backup-heatmap').innerHTML =
                 '<div class="text-center text-muted py-5">No data available</div>';
             return;
         }
-        
+
         const options = {
             series: data.data,
             chart: {
@@ -773,24 +800,36 @@ async function loadBackupHeatmap(days) {
                 }
             }
         };
-        
+
         document.getElementById('backup-heatmap').innerHTML = '';
         const chart = new ApexCharts(document.querySelector("#backup-heatmap"), {
             ...window.HKNovaCharts?.chartTheme || {},
-            ...options
+            ...options,
+            responsive: [{ breakpoint: 769, options: { chart: { height: 250 } } }]
         });
         chart.render();
-        
+
     } catch (error) {
         console.error('Error loading backup heatmap:', error);
         showError('Failed to load backup heatmap');
-        document.getElementById('backup-heatmap').innerHTML = 
+        document.getElementById('backup-heatmap').innerHTML =
             '<div class="text-center text-danger py-5"><i class="bi bi-exclamation-triangle"></i> Failed to load data</div>';
     }
 }
 
 function changeTimeRange(days, label) {
     currentDays = days;
+    customStartDate = null;
+    customEndDate = null;
+
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - (days === 1 ? 1 : days - 1));
+    if (days === 1) endDate.setDate(endDate.getDate() - 1);
+
+    document.getElementById('start-date').value = startDate.toISOString().split('T')[0];
+    document.getElementById('end-date').value = endDate.toISOString().split('T')[0];
+
     document.getElementById('current-range-text').textContent = label;
     loadAnalytics(days);
     return false;
@@ -799,53 +838,83 @@ function changeTimeRange(days, label) {
 function applyCustomRange() {
     const startDate = document.getElementById('start-date').value;
     const endDate = document.getElementById('end-date').value;
-    
+
     if (!startDate || !endDate) {
         showError('Please select both start and end dates');
         return;
     }
-    
+
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const diffTime = Math.abs(end - start);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays > 365) {
-        showError('Date range cannot exceed 365 days');
-        return;
-    }
-    
+
     if (start > end) {
         showError('Start date must be before end date');
         return;
     }
-    
+
+    const diffTime = Math.abs(end - start);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    if (diffDays > 365) {
+        showError('Date range cannot exceed 365 days');
+        return;
+    }
+
     currentDays = diffDays;
-    document.getElementById('current-range-text').textContent = `${startDate} to ${endDate}`;
-    loadAnalytics(diffDays);
-    showSuccess(`Custom range applied: ${diffDays} days`);
+    customStartDate = startDate;
+    customEndDate = endDate;
+
+    const bootstrap = window.bootstrap || {};
+    const dropdown = bootstrap.Dropdown?.getInstance(document.getElementById('timeRangeDropdown'));
+    if (dropdown) {
+        dropdown.hide();
+    }
+
+    updateRangeDisplay(startDate, endDate, diffDays, true);
+    loadAnalytics(diffDays, startDate, endDate);
+    showSuccess(`Custom range applied: ${diffDays} day${diffDays > 1 ? 's' : ''}`);
+}
+
+function updateRangeDisplay(startDate, endDate, days, isCustom) {
+    const rangeText = document.getElementById('current-range-text');
+
+    if (isCustom) {
+        rangeText.innerHTML = `${startDate} to ${endDate} <span class="custom-range-indicator"></span>`;
+    } else {
+        rangeText.textContent = `Last ${days} Day${days > 1 ? 's' : ''}`;
+    }
 }
 
 function refreshAnalytics() {
-    loadAnalytics(currentDays);
+    loadAnalytics(currentDays, customStartDate, customEndDate);
     showSuccess('Analytics data refreshed');
 }
 
 function exportReport(format) {
+    let url = '';
+
     if (format === 'csv') {
-        window.location.href = `/api/v1/analytics/export-csv?days=${currentDays}`;
+        url = `/api/v1/analytics/export-csv?days=${currentDays}`;
         showSuccess('Exporting CSV report...');
     } else if (format === 'json') {
-        window.location.href = `/api/v1/analytics/export-json?days=${currentDays}`;
+        url = `/api/v1/analytics/export-json?days=${currentDays}`;
         showSuccess('Exporting JSON report...');
     } else if (format === 'excel') {
-        window.location.href = `/api/v1/analytics/export-excel?days=${currentDays}`;
+        url = `/api/v1/analytics/export-excel?days=${currentDays}`;
         showSuccess('Exporting Excel report...');
     } else if (format === 'pdf') {
-        showError('PDF export coming soon!');
+        url = `/api/v1/analytics/export-pdf?days=${currentDays}`;
+        showSuccess('Exporting PDF report...');
     } else {
         showError('Unknown format');
+        return;
     }
+
+    if (customStartDate && customEndDate) {
+        url += `&start_date=${customStartDate}&end_date=${customEndDate}`;
+    }
+
+    window.location.href = url;
 }
 
 function showLoading(elementId) {
@@ -864,9 +933,9 @@ function showToast(message, type = 'info') {
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
-    
+
     toastContainer.appendChild(toast);
-    
+
     setTimeout(() => {
         toast.classList.remove('show');
         setTimeout(() => toast.remove(), 150);
@@ -897,13 +966,50 @@ function showGroupDetail(group, days) {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadAnalytics(30);
-    
+
     const today = new Date().toISOString().split('T')[0];
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    
-    document.getElementById('start-date').value = thirtyDaysAgo;
-    document.getElementById('end-date').value = today;
-    document.getElementById('end-date').max = today;
+    const thirtyDaysAgo = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const startDateInput = document.getElementById('start-date');
+    const endDateInput = document.getElementById('end-date');
+
+    startDateInput.value = thirtyDaysAgo;
+    startDateInput.max = today;
+    startDateInput.min = oneYearAgo;
+
+    endDateInput.value = today;
+    endDateInput.max = today;
+    endDateInput.min = oneYearAgo;
+
+    startDateInput.addEventListener('change', function() {
+        endDateInput.min = this.value;
+
+        if (endDateInput.value && new Date(endDateInput.value) < new Date(this.value)) {
+            endDateInput.value = this.value;
+        }
+
+        const maxDate = new Date(this.value);
+        maxDate.setDate(maxDate.getDate() + 365);
+        const maxDateStr = maxDate.toISOString().split('T')[0];
+        const todayStr = new Date().toISOString().split('T')[0];
+        endDateInput.max = maxDateStr < todayStr ? maxDateStr : todayStr;
+    });
+
+    endDateInput.addEventListener('change', function() {
+        if (startDateInput.value && new Date(this.value) < new Date(startDateInput.value)) {
+            showError('End date cannot be before start date');
+            this.value = startDateInput.value;
+        }
+
+        const diffDays = Math.ceil((new Date(this.value) - new Date(startDateInput.value)) / (1000 * 60 * 60 * 24)) + 1;
+        if (diffDays > 365) {
+            showError('Date range cannot exceed 365 days');
+            const maxDate = new Date(startDateInput.value);
+            maxDate.setDate(maxDate.getDate() + 364);
+            this.value = maxDate.toISOString().split('T')[0];
+        }
+    });
 });
 </script>
 {% endblock %}
