@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="1.596" timestamp="2026-11-03T12:17:26.719620+07:00" hostname="gopal-ichiro-PORTEGE-R30-C"><testcase classname="tests.test_backup_failure_flow" name="test_full_backup_failure_flow" time="0.565" /></testsuite></testsuites>

@@ -1,0 +1,18 @@
+$ /home/gopal-ichiro/Documents/magang/hk-nova/.venv/bin/python -m pytest tests/test_auto_fix.py -v --tb=short -s --junitxml=/home/gopal-ichiro/Documents/magang/hk-nova/artifacts/diagnostics-2026-11-03/test_auto_fix.xml
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/gopal-ichiro/Documents/magang/hk-nova/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/gopal-ichiro/Documents/magang/hk-nova
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 5 items
+
+tests/test_auto_fix.py::TestAutoFixStrategies::test_network_timeout_increase_strategy PASSED
+tests/test_auto_fix.py::TestAutoFixStrategies::test_extract_retry_after_and_auto_fix_rate_limit PASSED
+tests/test_auto_fix.py::TestAutoFixStrategies::test_git_pull_strategy PASSED
+tests/test_auto_fix.py::TestAutoFixStrategies::test_smb_dns_resolution_strategy PASSED
+tests/test_auto_fix.py::TestAutoFixStrategies::test_apply_auto_fix_dispatcher PASSED
+
+- generated xml file: /home/gopal-ichiro/Documents/magang/hk-nova/artifacts/diagnostics-2026-11-03/test_auto_fix.xml -
+============================== 5 passed in 0.25s ===============================

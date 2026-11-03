@@ -1,0 +1,46 @@
+$ /home/gopal-ichiro/Documents/magang/hk-nova/.venv/bin/python -m pytest tests/test_diagnostic_analyzer.py tests/test_auto_fix.py tests/test_retry_logic.py tests/test_backup_failure_flow.py -v --tb=short -s --no-header -q --junitxml=/home/gopal-ichiro/Documents/magang/hk-nova/artifacts/diagnostics-2026-11-03/combined.xml
+============================= test session starts ==============================
+collecting ... collected 25 items
+
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_all_network_timeout_analysis PASSED
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_git_auth_failure_analysis PASSED
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_telegram_rate_limit_analysis PASSED
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_smb_permission_denied_analysis PASSED
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_mixed_failures_analysis PASSED
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_device_fetch_missing_credential PASSED
+tests/test_auto_fix.py::TestAutoFixStrategies::test_network_timeout_increase_strategy PASSED
+tests/test_auto_fix.py::TestAutoFixStrategies::test_extract_retry_after_and_auto_fix_rate_limit PASSED
+tests/test_auto_fix.py::TestAutoFixStrategies::test_git_pull_strategy PASSED
+tests/test_auto_fix.py::TestAutoFixStrategies::test_smb_dns_resolution_strategy PASSED
+tests/test_auto_fix.py::TestAutoFixStrategies::test_apply_auto_fix_dispatcher PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_transient_network_timeout PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_transient_connection_refused PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_transient_rate_limit PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_transient_smb_temporary PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_permanent_auth_failure PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_permanent_permission_denied PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_permanent_disk_full PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_permanent_invalid_config PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_permanent_invalid_params PASSED
+tests/test_retry_logic.py::TestBackoffCalculation::test_exponential_backoff_delays PASSED
+tests/test_retry_logic.py::TestBackoffCalculation::test_rate_limit_with_retry_after PASSED
+tests/test_retry_logic.py::TestDestinationRetryExecution::test_retry_with_transient_error_exhausts_retries PASSED
+tests/test_retry_logic.py::TestDestinationRetryExecution::test_no_retry_with_permanent_error PASSED
+tests/test_backup_failure_flow.py::test_full_backup_failure_flow PASSED
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /home/gopal-ichiro/Documents/magang/hk-nova/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /home/gopal-ichiro/Documents/magang/hk-nova/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+app/schemas/location.py:45
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/schemas/location.py:45: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class LocationRead(LocationBase):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/gopal-ichiro/Documents/magang/hk-nova/artifacts/diagnostics-2026-11-03/combined.xml -
+======================== 25 passed, 3 warnings in 1.75s ========================

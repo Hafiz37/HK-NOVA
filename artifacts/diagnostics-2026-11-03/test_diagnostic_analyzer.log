@@ -1,0 +1,19 @@
+$ /home/gopal-ichiro/Documents/magang/hk-nova/.venv/bin/python -m pytest tests/test_diagnostic_analyzer.py -v --tb=short -s --junitxml=/home/gopal-ichiro/Documents/magang/hk-nova/artifacts/diagnostics-2026-11-03/test_diagnostic_analyzer.xml
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/gopal-ichiro/Documents/magang/hk-nova/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/gopal-ichiro/Documents/magang/hk-nova
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 6 items
+
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_all_network_timeout_analysis PASSED
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_git_auth_failure_analysis PASSED
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_telegram_rate_limit_analysis PASSED
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_smb_permission_denied_analysis PASSED
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_mixed_failures_analysis PASSED
+tests/test_diagnostic_analyzer.py::TestDiagnosticAnalyzer::test_device_fetch_missing_credential PASSED
+
+- generated xml file: /home/gopal-ichiro/Documents/magang/hk-nova/artifacts/diagnostics-2026-11-03/test_diagnostic_analyzer.xml -
+============================== 6 passed in 0.04s ===============================

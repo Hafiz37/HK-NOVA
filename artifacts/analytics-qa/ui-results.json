@@ -1,0 +1,134 @@
+[
+  {
+    "id": "UI-DEFAULT",
+    "scenario": "Default Last 30 Days dan semua grafik dimuat",
+    "status": "PASS",
+    "notes": "{\"responses\":[{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-frequency-by-group?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/device-type-distribution?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-trend?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/performance-metrics?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/anomalies?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-heatmap?days=30\",\"status\":200}],\"errors\":[]}"
+  },
+  {
+    "id": "UI-GRADE",
+    "scenario": "Gauge persentase dan grade Excellent/Good/Fair/Poor",
+    "status": "PASS",
+    "notes": "Poor\n77.8%"
+  },
+  {
+    "id": "UI-DONUT",
+    "scenario": "Device Type Distribution berbentuk donut",
+    "status": "PASS",
+    "notes": "Actual chart SVG: 0 bar series"
+  },
+  {
+    "id": "UI-THRESHOLD",
+    "scenario": "Trend memiliki threshold 90% dan 95%",
+    "status": "PASS",
+    "notes": "Jumlah garis annotation: 2"
+  },
+  {
+    "id": "UI-ANOM",
+    "scenario": "Banner terlihat pada fixture lonjakan kegagalan",
+    "status": "PASS",
+    "notes": " Sudden Success Rate Drop\n\nSuccess rate dropped from 77.8% to 33.3% in the last 24 hours\n\n Repeated Failures: qa-device-28\n\n6 consecutive failures in the last 24 hours"
+  },
+  {
+    "id": "UI-RANGE-Yesterday",
+    "scenario": "Klik Yesterday: label, fetching, console",
+    "status": "PASS",
+    "notes": "{\"responses\":[{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=1\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=1\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/performance-metrics?days=1\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-frequency-by-group?days=1\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/device-type-distribution?days=1\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-trend?days=1\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/anomalies?days=1\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-heatmap?days=1\",\"status\":200}],\"errors\":[]}"
+  },
+  {
+    "id": "UI-RANGE-Last-7-Days",
+    "scenario": "Klik Last 7 Days: label, fetching, console",
+    "status": "PASS",
+    "notes": "{\"responses\":[{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=7\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=7\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/performance-metrics?days=7\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-frequency-by-group?days=7\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-trend?days=7\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/device-type-distribution?days=7\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/anomalies?days=7\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-heatmap?days=7\",\"status\":200}],\"errors\":[]}"
+  },
+  {
+    "id": "UI-RANGE-Last-30-Days",
+    "scenario": "Klik Last 30 Days: label, fetching, console",
+    "status": "PASS",
+    "notes": "{\"responses\":[{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/performance-metrics?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-frequency-by-group?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/device-type-distribution?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-trend?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/anomalies?days=30\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-heatmap?days=30\",\"status\":200}],\"errors\":[]}"
+  },
+  {
+    "id": "UI-RANGE-Last-90-Days",
+    "scenario": "Klik Last 90 Days: label, fetching, console",
+    "status": "PASS",
+    "notes": "{\"responses\":[{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-trend?days=90\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=90\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/performance-metrics?days=90\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/device-type-distribution?days=90\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=90\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-frequency-by-group?days=90\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-heatmap?days=90\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/anomalies?days=90\",\"status\":200}],\"errors\":[]}"
+  },
+  {
+    "id": "UI-CUSTOM",
+    "scenario": "Apply custom valid dan pulsing dot",
+    "status": "PASS",
+    "notes": "{\"label\":\"2026-10-01 to 2026-10-07 \",\"animation\":\"pulse\",\"responses\":[{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-trend?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-frequency-by-group?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/device-type-distribution?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/performance-metrics?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/anomalies?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-heatmap?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200}]}"
+  },
+  {
+    "id": "UI-REFRESH",
+    "scenario": "Refresh fetch ulang tanpa reload",
+    "status": "PASS",
+    "notes": "{\"navBefore\":1,\"navigations\":1,\"responses\":[{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/performance-metrics?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-trend?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-frequency-by-group?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/device-type-distribution?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/anomalies?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-heatmap?days=7&start_date=2026-10-01&end_date=2026-10-07\",\"status\":200}]}"
+  },
+  {
+    "id": "UI-EXPORT-CSV",
+    "scenario": "Unduh CSV dari tombol UI",
+    "status": "PASS",
+    "notes": "hk-nova-analytics-20261103.csv"
+  },
+  {
+    "id": "UI-EXPORT-Excel",
+    "scenario": "Unduh Excel dari tombol UI",
+    "status": "PASS",
+    "notes": "hk-nova-analytics-20261103.xlsx"
+  },
+  {
+    "id": "UI-EXPORT-JSON",
+    "scenario": "Unduh JSON dari tombol UI",
+    "status": "PASS",
+    "notes": "hk-nova-analytics-20261103.json"
+  },
+  {
+    "id": "UI-EXPORT-PDF",
+    "scenario": "Unduh PDF dari tombol UI",
+    "status": "PASS",
+    "notes": "hk-nova-analytics-20261103.pdf"
+  },
+  {
+    "id": "UI-SAMEDAY",
+    "scenario": "Custom tanggal sama: 1 hari penuh",
+    "status": "PASS",
+    "notes": "[{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=1&start_date=2026-10-01&end_date=2026-10-01\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/reliability-score?days=1&start_date=2026-10-01&end_date=2026-10-01\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/device-type-distribution?days=1&start_date=2026-10-01&end_date=2026-10-01\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-frequency-by-group?days=1&start_date=2026-10-01&end_date=2026-10-01\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-trend?days=1&start_date=2026-10-01&end_date=2026-10-01\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/anomalies?days=1&start_date=2026-10-01&end_date=2026-10-01\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/performance-metrics?days=1&start_date=2026-10-01&end_date=2026-10-01\",\"status\":200},{\"url\":\"http://127.0.0.1:5017/api/v1/analytics/backup-heatmap?days=1&start_date=2026-10-01&end_date=2026-10-01\",\"status\":200}]"
+  },
+  {
+    "id": "UI-REVERSE",
+    "scenario": "Start > End ditolak",
+    "status": "PASS",
+    "notes": "Custom range applied: 1 day\nStart date must be before end date"
+  },
+  {
+    "id": "UI-OVER365",
+    "scenario": "Rentang >365 ditolak UI",
+    "status": "PASS",
+    "notes": "Custom range applied: 1 day\nStart date must be before end date\nDate range cannot exceed 365 days"
+  },
+  {
+    "id": "UI-MOBILE-768",
+    "scenario": "Viewport 768: tinggi chart 250px tanpa overflow",
+    "status": "PASS",
+    "notes": "{\"viewport\":768,\"scrollWidth\":768,\"charts\":[{\"id\":\"reliability-score-gauge\",\"container\":250,\"svg\":228.6875},{\"id\":\"device-type-chart\",\"container\":250,\"svg\":217.6875},{\"id\":\"backup-frequency-chart\",\"container\":250,\"svg\":250},{\"id\":\"success-rate-trend\",\"container\":250,\"svg\":250},{\"id\":\"backup-heatmap\",\"container\":250,\"svg\":250}]}"
+  },
+  {
+    "id": "UI-MOBILE-576",
+    "scenario": "Viewport 576: tinggi chart 250px tanpa overflow",
+    "status": "PASS",
+    "notes": "{\"viewport\":576,\"scrollWidth\":576,\"charts\":[{\"id\":\"reliability-score-gauge\",\"container\":250,\"svg\":228.6875},{\"id\":\"device-type-chart\",\"container\":250,\"svg\":217.6875},{\"id\":\"backup-frequency-chart\",\"container\":250,\"svg\":250},{\"id\":\"success-rate-trend\",\"container\":250,\"svg\":250},{\"id\":\"backup-heatmap\",\"container\":250,\"svg\":250}]}"
+  },
+  {
+    "id": "UI-MOBILE-375",
+    "scenario": "Viewport 375: tinggi chart 250px tanpa overflow",
+    "status": "PASS",
+    "notes": "{\"viewport\":375,\"scrollWidth\":375,\"charts\":[{\"id\":\"reliability-score-gauge\",\"container\":250,\"svg\":228.6875},{\"id\":\"device-type-chart\",\"container\":250,\"svg\":217.6875},{\"id\":\"backup-frequency-chart\",\"container\":250,\"svg\":250},{\"id\":\"success-rate-trend\",\"container\":250,\"svg\":250},{\"id\":\"backup-heatmap\",\"container\":250,\"svg\":250}]}"
+  },
+  {
+    "id": "UI-ZERO",
+    "scenario": "Zero data: console bersih dan empty states rapi",
+    "status": "PASS",
+    "notes": "{\"errors\":[],\"zero\":{\"prob\":\"All devices performing well!\",\"count\":\"0\",\"top\":\"No data available\",\"metric\":\"N/A\",\"anomaly\":\"none\"}}"
+  }
+]

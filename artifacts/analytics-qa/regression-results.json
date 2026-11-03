@@ -1,0 +1,542 @@
+[
+  {
+    "check": "backup-trend days=1",
+    "pass": true
+  },
+  {
+    "check": "device-status days=1",
+    "pass": true
+  },
+  {
+    "check": "group-performance days=1",
+    "pass": true
+  },
+  {
+    "check": "storage-usage days=1",
+    "pass": true
+  },
+  {
+    "check": "recent-activity days=1",
+    "pass": true
+  },
+  {
+    "check": "reliability-score days=1",
+    "pass": true
+  },
+  {
+    "check": "device-type-distribution days=1",
+    "pass": true
+  },
+  {
+    "check": "backup-frequency-by-group days=1",
+    "pass": true
+  },
+  {
+    "check": "export-csv days=1",
+    "pass": true
+  },
+  {
+    "check": "export-json days=1",
+    "pass": true
+  },
+  {
+    "check": "export-excel days=1",
+    "pass": true
+  },
+  {
+    "check": "performance-metrics days=1",
+    "pass": true
+  },
+  {
+    "check": "anomalies days=1",
+    "pass": true
+  },
+  {
+    "check": "backup-heatmap days=1",
+    "pass": true
+  },
+  {
+    "check": "export-pdf days=1",
+    "pass": true
+  },
+  {
+    "check": "backup-trend days=7",
+    "pass": true
+  },
+  {
+    "check": "device-status days=7",
+    "pass": true
+  },
+  {
+    "check": "group-performance days=7",
+    "pass": true
+  },
+  {
+    "check": "storage-usage days=7",
+    "pass": true
+  },
+  {
+    "check": "recent-activity days=7",
+    "pass": true
+  },
+  {
+    "check": "reliability-score days=7",
+    "pass": true
+  },
+  {
+    "check": "device-type-distribution days=7",
+    "pass": true
+  },
+  {
+    "check": "backup-frequency-by-group days=7",
+    "pass": true
+  },
+  {
+    "check": "export-csv days=7",
+    "pass": true
+  },
+  {
+    "check": "export-json days=7",
+    "pass": true
+  },
+  {
+    "check": "export-excel days=7",
+    "pass": true
+  },
+  {
+    "check": "performance-metrics days=7",
+    "pass": true
+  },
+  {
+    "check": "anomalies days=7",
+    "pass": true
+  },
+  {
+    "check": "backup-heatmap days=7",
+    "pass": true
+  },
+  {
+    "check": "export-pdf days=7",
+    "pass": true
+  },
+  {
+    "check": "backup-trend days=30",
+    "pass": true
+  },
+  {
+    "check": "device-status days=30",
+    "pass": true
+  },
+  {
+    "check": "group-performance days=30",
+    "pass": true
+  },
+  {
+    "check": "storage-usage days=30",
+    "pass": true
+  },
+  {
+    "check": "recent-activity days=30",
+    "pass": true
+  },
+  {
+    "check": "reliability-score days=30",
+    "pass": true
+  },
+  {
+    "check": "device-type-distribution days=30",
+    "pass": true
+  },
+  {
+    "check": "backup-frequency-by-group days=30",
+    "pass": true
+  },
+  {
+    "check": "export-csv days=30",
+    "pass": true
+  },
+  {
+    "check": "export-json days=30",
+    "pass": true
+  },
+  {
+    "check": "export-excel days=30",
+    "pass": true
+  },
+  {
+    "check": "performance-metrics days=30",
+    "pass": true
+  },
+  {
+    "check": "anomalies days=30",
+    "pass": true
+  },
+  {
+    "check": "backup-heatmap days=30",
+    "pass": true
+  },
+  {
+    "check": "export-pdf days=30",
+    "pass": true
+  },
+  {
+    "check": "backup-trend days=90",
+    "pass": true
+  },
+  {
+    "check": "device-status days=90",
+    "pass": true
+  },
+  {
+    "check": "group-performance days=90",
+    "pass": true
+  },
+  {
+    "check": "storage-usage days=90",
+    "pass": true
+  },
+  {
+    "check": "recent-activity days=90",
+    "pass": true
+  },
+  {
+    "check": "reliability-score days=90",
+    "pass": true
+  },
+  {
+    "check": "device-type-distribution days=90",
+    "pass": true
+  },
+  {
+    "check": "backup-frequency-by-group days=90",
+    "pass": true
+  },
+  {
+    "check": "export-csv days=90",
+    "pass": true
+  },
+  {
+    "check": "export-json days=90",
+    "pass": true
+  },
+  {
+    "check": "export-excel days=90",
+    "pass": true
+  },
+  {
+    "check": "performance-metrics days=90",
+    "pass": true
+  },
+  {
+    "check": "anomalies days=90",
+    "pass": true
+  },
+  {
+    "check": "backup-heatmap days=90",
+    "pass": true
+  },
+  {
+    "check": "export-pdf days=90",
+    "pass": true
+  },
+  {
+    "check": "backup-trend days=365",
+    "pass": true
+  },
+  {
+    "check": "device-status days=365",
+    "pass": true
+  },
+  {
+    "check": "group-performance days=365",
+    "pass": true
+  },
+  {
+    "check": "storage-usage days=365",
+    "pass": true
+  },
+  {
+    "check": "recent-activity days=365",
+    "pass": true
+  },
+  {
+    "check": "reliability-score days=365",
+    "pass": true
+  },
+  {
+    "check": "device-type-distribution days=365",
+    "pass": true
+  },
+  {
+    "check": "backup-frequency-by-group days=365",
+    "pass": true
+  },
+  {
+    "check": "export-csv days=365",
+    "pass": true
+  },
+  {
+    "check": "export-json days=365",
+    "pass": true
+  },
+  {
+    "check": "export-excel days=365",
+    "pass": true
+  },
+  {
+    "check": "performance-metrics days=365",
+    "pass": true
+  },
+  {
+    "check": "anomalies days=365",
+    "pass": true
+  },
+  {
+    "check": "backup-heatmap days=365",
+    "pass": true
+  },
+  {
+    "check": "export-pdf days=365",
+    "pass": true
+  },
+  {
+    "check": "backup-trend invalid",
+    "pass": true
+  },
+  {
+    "check": "backup-trend reversed",
+    "pass": true
+  },
+  {
+    "check": "backup-trend too long",
+    "pass": true
+  },
+  {
+    "check": "group-performance invalid",
+    "pass": true
+  },
+  {
+    "check": "group-performance reversed",
+    "pass": true
+  },
+  {
+    "check": "group-performance too long",
+    "pass": true
+  },
+  {
+    "check": "reliability-score invalid",
+    "pass": true
+  },
+  {
+    "check": "reliability-score reversed",
+    "pass": true
+  },
+  {
+    "check": "reliability-score too long",
+    "pass": true
+  },
+  {
+    "check": "device-type-distribution invalid",
+    "pass": true
+  },
+  {
+    "check": "device-type-distribution reversed",
+    "pass": true
+  },
+  {
+    "check": "device-type-distribution too long",
+    "pass": true
+  },
+  {
+    "check": "backup-frequency-by-group invalid",
+    "pass": true
+  },
+  {
+    "check": "backup-frequency-by-group reversed",
+    "pass": true
+  },
+  {
+    "check": "backup-frequency-by-group too long",
+    "pass": true
+  },
+  {
+    "check": "export-csv invalid",
+    "pass": true
+  },
+  {
+    "check": "export-csv reversed",
+    "pass": true
+  },
+  {
+    "check": "export-csv too long",
+    "pass": true
+  },
+  {
+    "check": "export-json invalid",
+    "pass": true
+  },
+  {
+    "check": "export-json reversed",
+    "pass": true
+  },
+  {
+    "check": "export-json too long",
+    "pass": true
+  },
+  {
+    "check": "export-excel invalid",
+    "pass": true
+  },
+  {
+    "check": "export-excel reversed",
+    "pass": true
+  },
+  {
+    "check": "export-excel too long",
+    "pass": true
+  },
+  {
+    "check": "performance-metrics invalid",
+    "pass": true
+  },
+  {
+    "check": "performance-metrics reversed",
+    "pass": true
+  },
+  {
+    "check": "performance-metrics too long",
+    "pass": true
+  },
+  {
+    "check": "anomalies invalid",
+    "pass": true
+  },
+  {
+    "check": "anomalies reversed",
+    "pass": true
+  },
+  {
+    "check": "anomalies too long",
+    "pass": true
+  },
+  {
+    "check": "backup-heatmap invalid",
+    "pass": true
+  },
+  {
+    "check": "backup-heatmap reversed",
+    "pass": true
+  },
+  {
+    "check": "backup-heatmap too long",
+    "pass": true
+  },
+  {
+    "check": "export-pdf invalid",
+    "pass": true
+  },
+  {
+    "check": "export-pdf reversed",
+    "pass": true
+  },
+  {
+    "check": "export-pdf too long",
+    "pass": true
+  },
+  {
+    "check": "bounded totals",
+    "pass": true
+  },
+  {
+    "check": "all problematic",
+    "pass": true
+  },
+  {
+    "check": "trend buckets 1",
+    "pass": true
+  },
+  {
+    "check": "trend buckets 7",
+    "pass": true
+  },
+  {
+    "check": "trend buckets 30",
+    "pass": true
+  },
+  {
+    "check": "trend buckets 90",
+    "pass": true
+  },
+  {
+    "check": "future anomaly",
+    "pass": true
+  },
+  {
+    "check": "missing timing honest",
+    "pass": true
+  },
+  {
+    "check": "fastest timing",
+    "pass": true
+  },
+  {
+    "check": "empty backup-trend",
+    "pass": true
+  },
+  {
+    "check": "empty device-status",
+    "pass": true
+  },
+  {
+    "check": "empty group-performance",
+    "pass": true
+  },
+  {
+    "check": "empty storage-usage",
+    "pass": true
+  },
+  {
+    "check": "empty recent-activity",
+    "pass": true
+  },
+  {
+    "check": "empty reliability-score",
+    "pass": true
+  },
+  {
+    "check": "empty device-type-distribution",
+    "pass": true
+  },
+  {
+    "check": "empty backup-frequency-by-group",
+    "pass": true
+  },
+  {
+    "check": "empty export-csv",
+    "pass": true
+  },
+  {
+    "check": "empty export-json",
+    "pass": true
+  },
+  {
+    "check": "empty export-excel",
+    "pass": true
+  },
+  {
+    "check": "empty performance-metrics",
+    "pass": true
+  },
+  {
+    "check": "empty anomalies",
+    "pass": true
+  },
+  {
+    "check": "empty backup-heatmap",
+    "pass": true
+  },
+  {
+    "check": "empty export-pdf",
+    "pass": true
+  }
+]

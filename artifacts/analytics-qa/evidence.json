@@ -1,0 +1,1513 @@
+{
+  "historical": {
+    "reliability": {
+      "overall_score": 57.14,
+      "total_backups": 28,
+      "success_backups": 16,
+      "period": "30 days",
+      "device_scores": [
+        {
+          "device_id": 1,
+          "hostname": "qa-device-01",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 2,
+          "hostname": "qa-device-02",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 3,
+          "hostname": "qa-device-03",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 4,
+          "hostname": "qa-device-04",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 5,
+          "hostname": "qa-device-05",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 6,
+          "hostname": "qa-device-06",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 7,
+          "hostname": "qa-device-07",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 8,
+          "hostname": "qa-device-08",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 9,
+          "hostname": "qa-device-09",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 10,
+          "hostname": "qa-device-10",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 11,
+          "hostname": "qa-device-11",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 12,
+          "hostname": "qa-device-12",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 13,
+          "hostname": "qa-device-13",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 14,
+          "hostname": "qa-device-14",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 15,
+          "hostname": "qa-device-15",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 16,
+          "hostname": "qa-device-16",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 17,
+          "hostname": "qa-device-17",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 18,
+          "hostname": "qa-device-18",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 19,
+          "hostname": "qa-device-19",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 20,
+          "hostname": "qa-device-20",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 21,
+          "hostname": "qa-device-21",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 22,
+          "hostname": "qa-device-22",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 23,
+          "hostname": "qa-device-23",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 24,
+          "hostname": "qa-device-24",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 25,
+          "hostname": "qa-device-25",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 26,
+          "hostname": "qa-device-26",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 27,
+          "hostname": "qa-device-27",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 28,
+          "hostname": "qa-device-28",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        }
+      ],
+      "top_performers": [
+        {
+          "device_id": 1,
+          "hostname": "qa-device-01",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 2,
+          "hostname": "qa-device-02",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 3,
+          "hostname": "qa-device-03",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 4,
+          "hostname": "qa-device-04",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 5,
+          "hostname": "qa-device-05",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 6,
+          "hostname": "qa-device-06",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 7,
+          "hostname": "qa-device-07",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 8,
+          "hostname": "qa-device-08",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 9,
+          "hostname": "qa-device-09",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 10,
+          "hostname": "qa-device-10",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 11,
+          "hostname": "qa-device-11",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 12,
+          "hostname": "qa-device-12",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 13,
+          "hostname": "qa-device-13",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 14,
+          "hostname": "qa-device-14",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        },
+        {
+          "device_id": 15,
+          "hostname": "qa-device-15",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 100.0,
+          "total_backups": 1,
+          "success_backups": 1
+        }
+      ],
+      "problematic_devices": [
+        {
+          "device_id": 17,
+          "hostname": "qa-device-17",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 18,
+          "hostname": "qa-device-18",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 19,
+          "hostname": "qa-device-19",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 20,
+          "hostname": "qa-device-20",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 21,
+          "hostname": "qa-device-21",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 22,
+          "hostname": "qa-device-22",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 23,
+          "hostname": "qa-device-23",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 24,
+          "hostname": "qa-device-24",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 25,
+          "hostname": "qa-device-25",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 26,
+          "hostname": "qa-device-26",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 27,
+          "hostname": "qa-device-27",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        },
+        {
+          "device_id": 28,
+          "hostname": "qa-device-28",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0.0,
+          "total_backups": 1,
+          "success_backups": 0
+        }
+      ]
+    },
+    "trend": {
+      "data": [
+        {
+          "date": "2026-10-01",
+          "success": 16,
+          "failed": 12
+        }
+      ],
+      "period": "1 days"
+    }
+  },
+  "metrics": {
+    "avg_duration": "2.0m",
+    "duration_detail": "Based on 1 job runs",
+    "avg_size": "2.0 MB",
+    "size_detail": "21 backups analyzed",
+    "peak_hour": "12:00",
+    "peak_hour_detail": "21 backups at this hour",
+    "fastest_device": "N/A",
+    "fastest_device_detail": "No single-device job timing available"
+  },
+  "anomalies": {
+    "anomalies": [
+      {
+        "type": "success_rate_drop",
+        "severity": "high",
+        "icon": "arrow-down-circle",
+        "title": "Sudden Success Rate Drop",
+        "description": "Success rate dropped from 77.8% to 33.3% in the last 24 hours"
+      },
+      {
+        "type": "repeated_failures",
+        "severity": "high",
+        "icon": "x-circle",
+        "title": "Repeated Failures: qa-device-28",
+        "description": "6 consecutive failures in the last 24 hours"
+      }
+    ],
+    "total_found": 2,
+    "period": "30 days"
+  },
+  "future": {
+    "reliability-score": {
+      "overall_score": 0,
+      "total_backups": 0,
+      "success_backups": 0,
+      "period": "30 days",
+      "device_scores": [
+        {
+          "device_id": 1,
+          "hostname": "qa-device-01",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 2,
+          "hostname": "qa-device-02",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 3,
+          "hostname": "qa-device-03",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 4,
+          "hostname": "qa-device-04",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 5,
+          "hostname": "qa-device-05",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 6,
+          "hostname": "qa-device-06",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 7,
+          "hostname": "qa-device-07",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 8,
+          "hostname": "qa-device-08",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 9,
+          "hostname": "qa-device-09",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 10,
+          "hostname": "qa-device-10",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 11,
+          "hostname": "qa-device-11",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 12,
+          "hostname": "qa-device-12",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 13,
+          "hostname": "qa-device-13",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 14,
+          "hostname": "qa-device-14",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 15,
+          "hostname": "qa-device-15",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 16,
+          "hostname": "qa-device-16",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 17,
+          "hostname": "qa-device-17",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 18,
+          "hostname": "qa-device-18",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 19,
+          "hostname": "qa-device-19",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 20,
+          "hostname": "qa-device-20",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 21,
+          "hostname": "qa-device-21",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 22,
+          "hostname": "qa-device-22",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 23,
+          "hostname": "qa-device-23",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 24,
+          "hostname": "qa-device-24",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 25,
+          "hostname": "qa-device-25",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 26,
+          "hostname": "qa-device-26",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 27,
+          "hostname": "qa-device-27",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 28,
+          "hostname": "qa-device-28",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        }
+      ],
+      "top_performers": [
+        {
+          "device_id": 1,
+          "hostname": "qa-device-01",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 2,
+          "hostname": "qa-device-02",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 3,
+          "hostname": "qa-device-03",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 4,
+          "hostname": "qa-device-04",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 5,
+          "hostname": "qa-device-05",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 6,
+          "hostname": "qa-device-06",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 7,
+          "hostname": "qa-device-07",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 8,
+          "hostname": "qa-device-08",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 9,
+          "hostname": "qa-device-09",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 10,
+          "hostname": "qa-device-10",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 11,
+          "hostname": "qa-device-11",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 12,
+          "hostname": "qa-device-12",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 13,
+          "hostname": "qa-device-13",
+          "device_type": "mikrotik_routeros",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 14,
+          "hostname": "qa-device-14",
+          "device_type": "pfsense",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        },
+        {
+          "device_id": 15,
+          "hostname": "qa-device-15",
+          "device_type": "cisco_ios",
+          "group": "QA",
+          "score": 0,
+          "total_backups": 0,
+          "success_backups": 0
+        }
+      ],
+      "problematic_devices": []
+    },
+    "backup-trend": {
+      "data": [
+        {
+          "date": "2099-01-01",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "date": "2099-01-02",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "date": "2099-01-03",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "date": "2099-01-04",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "date": "2099-01-05",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "date": "2099-01-06",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "date": "2099-01-07",
+          "success": 0,
+          "failed": 0
+        }
+      ],
+      "period": "7 days"
+    },
+    "backup-frequency-by-group": {
+      "data": [
+        {
+          "group": "QA",
+          "device_count": 28,
+          "total_backups": 0,
+          "success_backups": 0,
+          "failed_backups": 0,
+          "avg_per_device": 0.0
+        }
+      ],
+      "period": "30 days"
+    },
+    "backup-heatmap": {
+      "data": [
+        {
+          "name": "Sunday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Monday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Tuesday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Wednesday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Thursday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Friday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Saturday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "hours": [
+        "00:00",
+        "01:00",
+        "02:00",
+        "03:00",
+        "04:00",
+        "05:00",
+        "06:00",
+        "07:00",
+        "08:00",
+        "09:00",
+        "10:00",
+        "11:00",
+        "12:00",
+        "13:00",
+        "14:00",
+        "15:00",
+        "16:00",
+        "17:00",
+        "18:00",
+        "19:00",
+        "20:00",
+        "21:00",
+        "22:00",
+        "23:00"
+      ],
+      "period": "30 days"
+    },
+    "performance-metrics": {
+      "avg_duration": "N/A",
+      "duration_detail": "No data",
+      "avg_size": "N/A",
+      "size_detail": "No data",
+      "peak_hour": "N/A",
+      "peak_hour_detail": "No data",
+      "fastest_device": "N/A",
+      "fastest_device_detail": "No data"
+    },
+    "anomalies": {
+      "anomalies": [],
+      "total_found": 0,
+      "period": "30 days"
+    }
+  },
+  "empty": {
+    "reliability-score": {
+      "overall_score": 0,
+      "total_backups": 0,
+      "success_backups": 0,
+      "period": "30 days",
+      "device_scores": [],
+      "top_performers": [],
+      "problematic_devices": []
+    },
+    "performance-metrics": {
+      "avg_duration": "N/A",
+      "duration_detail": "No data",
+      "avg_size": "N/A",
+      "size_detail": "No data",
+      "peak_hour": "N/A",
+      "peak_hour_detail": "No data",
+      "fastest_device": "N/A",
+      "fastest_device_detail": "No data"
+    },
+    "anomalies": {
+      "anomalies": [],
+      "total_found": 0,
+      "period": "7 days"
+    },
+    "backup-heatmap": {
+      "data": [
+        {
+          "name": "Sunday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Monday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Tuesday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Wednesday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Thursday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Friday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "Saturday",
+          "data": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "hours": [
+        "00:00",
+        "01:00",
+        "02:00",
+        "03:00",
+        "04:00",
+        "05:00",
+        "06:00",
+        "07:00",
+        "08:00",
+        "09:00",
+        "10:00",
+        "11:00",
+        "12:00",
+        "13:00",
+        "14:00",
+        "15:00",
+        "16:00",
+        "17:00",
+        "18:00",
+        "19:00",
+        "20:00",
+        "21:00",
+        "22:00",
+        "23:00"
+      ],
+      "period": "30 days"
+    }
+  }
+}

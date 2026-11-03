@@ -1,0 +1,206 @@
+[
+  {
+    "id": "SEC-01",
+    "scenario": "Autentikasi seluruh endpoint API",
+    "status": "PASS",
+    "notes": "{'backup-trend': 401, 'device-status': 401, 'group-performance': 401, 'storage-usage': 401, 'recent-activity': 401, 'reliability-score': 401, 'device-type-distribution': 401, 'backup-frequency-by-group': 401, 'export-csv': 401, 'export-json': 401, 'export-excel': 401, 'performance-metrics': 401, 'anomalies': 401, 'backup-heatmap': 401, 'export-pdf': 401}"
+  },
+  {
+    "id": "SEC-02",
+    "scenario": "Autentikasi halaman web",
+    "status": "PASS",
+    "notes": "302 /login?next=/analytics"
+  },
+  {
+    "id": "API-R1",
+    "scenario": "API quick range 1 hari",
+    "status": "FAIL",
+    "notes": "{'reliability-score': 422, 'backup-trend': 422, 'device-type-distribution': 422, 'backup-frequency-by-group': 422, 'performance-metrics': 422, 'anomalies': 200, 'backup-heatmap': 422}"
+  },
+  {
+    "id": "API-R7",
+    "scenario": "API quick range 7 hari",
+    "status": "PASS",
+    "notes": "{'reliability-score': 200, 'backup-trend': 200, 'device-type-distribution': 200, 'backup-frequency-by-group': 200, 'performance-metrics': 200, 'anomalies': 200, 'backup-heatmap': 200}"
+  },
+  {
+    "id": "API-R30",
+    "scenario": "API quick range 30 hari",
+    "status": "PASS",
+    "notes": "{'reliability-score': 200, 'backup-trend': 200, 'device-type-distribution': 200, 'backup-frequency-by-group': 200, 'performance-metrics': 200, 'anomalies': 200, 'backup-heatmap': 200}"
+  },
+  {
+    "id": "API-R90",
+    "scenario": "API quick range 90 hari",
+    "status": "FAIL",
+    "notes": "{'reliability-score': 200, 'backup-trend': 200, 'device-type-distribution': 200, 'backup-frequency-by-group': 200, 'performance-metrics': 200, 'anomalies': 422, 'backup-heatmap': 200}"
+  },
+  {
+    "id": "INT-01",
+    "scenario": "Batas end_date inklusif; backup setelah akhir dikecualikan",
+    "status": "FAIL",
+    "notes": "Expected 28 backup; actual 56; trend {'data': [{'date': '2026-10-01', 'success': 16, 'failed': 12}], 'period': '1 days'}"
+  },
+  {
+    "id": "INT-02",
+    "scenario": "Agregasi reliability sesuai fixture",
+    "status": "FAIL",
+    "notes": "Expected 57.14%; actual 66.07%"
+  },
+  {
+    "id": "INT-03",
+    "scenario": "Trend satu tanggal mencakup 24 jam",
+    "status": "PASS",
+    "notes": "{'data': [{'date': '2026-10-01', 'success': 16, 'failed': 12}], 'period': '1 days'}"
+  },
+  {
+    "id": "CUSTOM-1",
+    "scenario": "Custom range dengan days=1",
+    "status": "FAIL",
+    "notes": "HTTP 422: {\"detail\":[{\"type\":\"greater_than_equal\",\"loc\":[\"query\",\"days\"],\"msg\":\"Input should be greater than or equal to 7\",\"input\":\"1\",\"ctx\":{\"ge\":7}}]}"
+  },
+  {
+    "id": "CUSTOM-6",
+    "scenario": "Custom range dengan days=6",
+    "status": "FAIL",
+    "notes": "HTTP 422: {\"detail\":[{\"type\":\"greater_than_equal\",\"loc\":[\"query\",\"days\"],\"msg\":\"Input should be greater than or equal to 7\",\"input\":\"6\",\"ctx\":{\"ge\":7}}]}"
+  },
+  {
+    "id": "CUSTOM-91",
+    "scenario": "Custom range dengan days=91",
+    "status": "FAIL",
+    "notes": "HTTP 422: {\"detail\":[{\"type\":\"less_than_equal\",\"loc\":[\"query\",\"days\"],\"msg\":\"Input should be less than or equal to 90\",\"input\":\"91\",\"ctx\":{\"le\":90}}]}"
+  },
+  {
+    "id": "CUSTOM-365",
+    "scenario": "Custom range dengan days=365",
+    "status": "FAIL",
+    "notes": "HTTP 422: {\"detail\":[{\"type\":\"less_than_equal\",\"loc\":[\"query\",\"days\"],\"msg\":\"Input should be less than or equal to 90\",\"input\":\"365\",\"ctx\":{\"le\":90}}]}"
+  },
+  {
+    "id": "VALID-reverse",
+    "scenario": "Validasi API reverse",
+    "status": "FAIL",
+    "notes": "HTTP 200; period=-5 days; rows=0"
+  },
+  {
+    "id": "VALID-over365",
+    "scenario": "Validasi API over365",
+    "status": "FAIL",
+    "notes": "HTTP 200; period=1005 days; rows=1005"
+  },
+  {
+    "id": "EDGE-01",
+    "scenario": "Format tanggal invalid: 400 atau fallback aman",
+    "status": "PASS",
+    "notes": "{'backup-trend': 200, 'device-status': 200, 'group-performance': 200, 'storage-usage': 200, 'recent-activity': 200, 'reliability-score': 200, 'device-type-distribution': 200, 'backup-frequency-by-group': 200, 'export-csv': 200, 'export-json': 200, 'export-excel': 200, 'performance-metrics': 200, 'anomalies': 200, 'backup-heatmap': 200, 'export-pdf': 200}; fallback diam-diam untuk parameter invalid"
+  },
+  {
+    "id": "CHART-01",
+    "scenario": "Heatmap 7x24 dan hitungan periode",
+    "status": "FAIL",
+    "notes": "Shape 7x24; sum=56 expected 28"
+  },
+  {
+    "id": "CHART-02",
+    "scenario": "Backup per group sesuai periode",
+    "status": "FAIL",
+    "notes": "{'data': [{'group': 'QA', 'device_count': 28, 'total_backups': 56, 'success_backups': 37, 'failed_backups': 19, 'avg_per_device': 2.0}], 'period': '30 days'}"
+  },
+  {
+    "id": "CHART-03",
+    "scenario": "Distribusi tipe: jumlah perangkat dan backup",
+    "status": "FAIL",
+    "notes": "{'data': [{'device_type': 'pfsense', 'device_count': 9, 'total_backups': 16, 'success_backups': 12, 'success_rate': 75.0}, {'device_type': 'cisco_ios', 'device_count': 9, 'total_backups': 16, 'success_backups': 12, 'success_rate': 75.0}, {'device_type': 'mikrotik_routeros', 'device_count': 10, 'total_backups': 24, 'success_backups': 13, 'success_rate': 54.2}], 'period': '30 days'}"
+  },
+  {
+    "id": "LIST-01",
+    "scenario": "Top performer descending, maksimal 15",
+    "status": "PASS",
+    "notes": "10 entries; API cap 10 dan hanya score >=95, bukan 15 terbaik keseluruhan"
+  },
+  {
+    "id": "LIST-02",
+    "scenario": "Semua problematic devices terdaftar",
+    "status": "FAIL",
+    "notes": "Actual 10; expected 12; API truncate 10"
+  },
+  {
+    "id": "KPI-01",
+    "scenario": "Format duration, size, peak hour",
+    "status": "PASS",
+    "notes": "{'avg_duration': '2.0m', 'duration_detail': 'Based on 1 job runs', 'avg_size': '2.0 MB', 'size_detail': '21 backups analyzed', 'peak_hour': '12:00', 'peak_hour_detail': '21 backups at this hour', 'fastest_device': 'qa-device-01', 'fastest_device_detail': 'Avg 1.0 MB'}"
+  },
+  {
+    "id": "KPI-02",
+    "scenario": "Fastest Device berdasarkan kecepatan backup",
+    "status": "FAIL",
+    "notes": "Actual qa-device-01: Avg 1.0 MB; implementasi memilih ukuran file terkecil, tidak durasi perangkat."
+  },
+  {
+    "id": "ANOM-01",
+    "scenario": "Deteksi lonjakan kegagalan",
+    "status": "PASS",
+    "notes": "{'anomalies': [{'type': 'success_rate_drop', 'severity': 'high', 'icon': 'arrow-down-circle', 'title': 'Sudden Success Rate Drop', 'description': 'Success rate dropped from 77.8% to 33.3% in the last 24 hours'}, {'type': 'repeated_failures', 'severity': 'high', 'icon': 'x-circle', 'title': 'Repeated Failures: qa-device-28', 'description': '6 consecutive failures in the last 24 hours'}], 'total_found': 2, 'period': '30 days'}"
+  },
+  {
+    "id": "EXP-csv",
+    "scenario": "Header dan struktur export csv",
+    "status": "PASS",
+    "notes": "HTTP 200; text/csv; charset=utf-8; 28 rows, 9 columns"
+  },
+  {
+    "id": "EXP-FILTER-csv",
+    "scenario": "Filter tanggal export csv",
+    "status": "FAIL",
+    "notes": "Expected total 28; actual 56"
+  },
+  {
+    "id": "EXP-excel",
+    "scenario": "Header dan struktur export excel",
+    "status": "PASS",
+    "notes": "HTTP 200; application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; ['Summary', 'By Device']"
+  },
+  {
+    "id": "EXP-FILTER-excel",
+    "scenario": "Filter tanggal export excel",
+    "status": "FAIL",
+    "notes": "Expected total 28; actual 56"
+  },
+  {
+    "id": "EXP-json",
+    "scenario": "Header dan struktur export json",
+    "status": "PASS",
+    "notes": "HTTP 200; application/json; JSON parsed"
+  },
+  {
+    "id": "EXP-FILTER-json",
+    "scenario": "Filter tanggal export json",
+    "status": "FAIL",
+    "notes": "Expected total 28; actual 56"
+  },
+  {
+    "id": "EXP-pdf",
+    "scenario": "Header dan struktur export pdf",
+    "status": "PASS",
+    "notes": "HTTP 200; application/pdf; PDF magic; rendering inspected separately"
+  },
+  {
+    "id": "EXP-FILTER-pdf",
+    "scenario": "Filter tanggal export pdf",
+    "status": "FAIL",
+    "notes": "Expected total 28; actual 56 (PDF count verified via text extraction)"
+  },
+  {
+    "id": "EDGE-02",
+    "scenario": "Tanggal masa depan tanpa data/anomali",
+    "status": "FAIL",
+    "notes": "Reliability 0; anomalies={'anomalies': [{'type': 'repeated_failures', 'severity': 'high', 'icon': 'x-circle', 'title': 'Repeated Failures: qa-device-28', 'description': '6 consecutive failures in the last 24 hours'}], 'total_found': 1, 'period': '30 days'}"
+  },
+  {
+    "id": "EDGE-03",
+    "scenario": "Database kosong dan division by zero seluruh API",
+    "status": "PASS",
+    "notes": "{'backup-trend': 200, 'device-status': 200, 'group-performance': 200, 'storage-usage': 200, 'recent-activity': 200, 'reliability-score': 200, 'device-type-distribution': 200, 'backup-frequency-by-group': 200, 'export-csv': 200, 'export-json': 200, 'export-excel': 200, 'performance-metrics': 200, 'anomalies': 200, 'backup-heatmap': 200, 'export-pdf': 200}"
+  }
+]

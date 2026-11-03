@@ -1,0 +1,499 @@
+{
+  "notes": {
+    "decision": "NO-GO — belum layak rilis",
+    "scope": "Pengujian 3 November 2026, working tree berbasis commit 7e36b53 (termasuk perubahan pengguna yang belum di-commit). FastAPI asli + middleware autentikasi, SQLite in-memory, Chrome headless, ApexCharts/Bootstrap aset lokal. Waktu API dibekukan 2026-11-03 12:00 UTC untuk hasil deterministik. Lifespan/scheduler sengaja dinonaktifkan; tidak ada koneksi backup ke perangkat riil atau perubahan database produksi.",
+    "fixture": "28 perangkat / 3 tipe / 1 grup. Target 1 Oktober: 28 backup = 16 sukses + 12 gagal (57,14%). Ada backup sebelum dan setelah batas, 21 sukses dalam 7 hari terakhir, serta 6 kegagalan dalam 24 jam terakhir. Fixture tambahan: database kosong, hanya sukses, dan keempat status backup.",
+    "limitations": "Ini pengujian sistem lokal dengan data sintetis, bukan validasi statistik database produksi. Cakupan browser Chrome saja; Firefox/Safari, load test, serta scheduler/engine perangkat di luar pengujian ini. PASS pada transport/filter UI tidak menyatakan akurasi agregasi; akurasi diuji pada baris INT/CHART/EXP-FILTER. Skor keberhasilan skenario bukan persentase kesiapan rilis.",
+    "bugs": [
+      {
+        "id": "B01",
+        "priority": "P1",
+        "title": "end_date diabaikan oleh agregasi dan seluruh ekspor",
+        "detail": "Reproduksi: GET /api/v1/analytics/reliability-score?days=30&start_date=2026-10-01&end_date=2026-10-01. Expected 28 / 57,14%; actual 56 / 66,07%. CSV/XLSX/JSON/PDF mengikuti 56 sementara trend 28. Gunakan parser range bersama dengan batas >= start dan < end+1 hari pada semua query.",
+        "source": "app/routers/analytics.py:270"
+      },
+      {
+        "id": "B02",
+        "priority": "P1",
+        "title": "Kontrak rentang UI dan API bertentangan",
+        "detail": "Yesterday dan custom 1–6 hari gagal 422; custom 91–365 hari juga gagal. Anomali pada Last 90 Days gagal karena maksimal 30. UI menampilkan sukses custom walau request gagal. Selaraskan validasi days dan tanggal; Yesterday harus tanggal kalender kemarin.",
+        "source": "app/routers/analytics.py:18"
+      },
+      {
+        "id": "B03",
+        "priority": "P1",
+        "title": "Tanggal terbalik dan >365 hari tidak divalidasi server",
+        "detail": "Dengan days=30, range terbalik menghasilkan HTTP 200 / period -5 days; 2024-01-01 sampai 2026-10-01 menghasilkan 1005 bucket. Validasi harus dilakukan setelah parsing tanggal, sebelum query database.",
+        "source": "app/routers/analytics.py:41"
+      },
+      {
+        "id": "B04",
+        "priority": "P1",
+        "title": "Problematic devices dan badge tidak lengkap",
+        "detail": "Fixture mempunyai 12 perangkat bermasalah tetapi API memotong menjadi 10; badge UI mengambil panjang array yang terpotong. Kembalikan total terpisah dan daftar lengkap/pagination.",
+        "source": "app/routers/analytics.py:330"
+      },
+      {
+        "id": "B05",
+        "priority": "P1",
+        "title": "Failed count mencampur unchanged dan in_progress",
+        "detail": "Fixture 1 success, 1 failed, 1 unchanged, 1 in_progress menghasilkan failed=3 di CSV. Reliability 25% sedangkan trend 50%. Tetapkan semantik status yang sama; hitung failed berdasarkan enum failed.",
+        "source": "app/routers/analytics.py:563"
+      },
+      {
+        "id": "B06",
+        "priority": "P2",
+        "title": "Bucket trend berlebih dan tidak mengikuti hari kalender",
+        "detail": "days=7/30/90 menghasilkan 8/31/91 bucket. Perulangan dimulai dari jam UTC saat request, bukan 00:00, sehingga label tanggal tidak mewakili hari penuh.",
+        "source": "app/routers/analytics.py:41"
+      },
+      {
+        "id": "B07",
+        "priority": "P2",
+        "title": "Anomali tidak mengikuti periode laporan",
+        "detail": "Query masa depan 2099 tetap mengembalikan repeated failures dari 24 jam terakhir. Pisahkan monitoring real-time dari anomali periode terpilih, atau batasi semua query pada range yang dipilih.",
+        "source": "app/routers/analytics.py:976"
+      },
+      {
+        "id": "B08",
+        "priority": "P2",
+        "title": "Visualisasi belum sesuai spesifikasi",
+        "detail": "Gauge menampilkan persentase tanpa grade. Device Type memakai bar success rate, bukan donut proporsi perangkat. Trend tidak memiliki annotation 90% dan 95%. Threshold grade perlu ditetapkan dalam kontrak produk.",
+        "source": "app/templates/analytics/dashboard.html:381"
+      },
+      {
+        "id": "B09",
+        "priority": "P2",
+        "title": "Fastest Device dihitung dari ukuran file",
+        "detail": "KPI memilih device dengan rata-rata ukuran terkecil dan menampilkan MB. Tidak mengukur durasi backup per perangkat. Avg Backup Duration sendiri berasal dari durasi job, sehingga label perlu dijelaskan atau perhitungan diubah.",
+        "source": "app/routers/analytics.py:831"
+      },
+      {
+        "id": "B10",
+        "priority": "P2",
+        "title": "PDF tabel lanjutan kehilangan header",
+        "detail": "A4 dan warna header benar; semua baris fixture tercetak. Tabel Problematic berlanjut ke halaman kedua tanpa judul kolom. Tambahkan repeatRows=1 dan uji hostname/group panjang; saat ini nama dipotong 25/15 karakter.",
+        "source": "app/routers/analytics.py:1248"
+      },
+      {
+        "id": "B11",
+        "priority": "P2",
+        "title": "Tinggi chart mobile tidak mengikuti 250px",
+        "detail": "Viewport 768/576/375 tidak overflow horizontal, tetapi SVG chart tetap 350px dan container 365px; gauge sekitar 258,7px. Atur responsive ApexCharts dan min-height container, bukan hanya CSS height.",
+        "source": "app/templates/analytics/dashboard.html:58"
+      },
+      {
+        "id": "B12",
+        "priority": "P3",
+        "title": "Console initial load mengandung favicon 404",
+        "detail": "Delapan fetch Analytics default berhasil HTTP 200, tanpa exception JS, tetapi /favicon.ico mengembalikan 404. Karena kriteria console bersih, skenario UI-DEFAULT dinilai FAIL; ini bukan kegagalan API Analytics.",
+        "source": "app/templates/base.html"
+      }
+    ],
+    "summary": "67 skenario/check: 28 PASS, 39 FAIL. Tidak ada skenario tercatat yang ditandai PASS tanpa eksekusi atau inspeksi bukti; KPI-02 menyertakan inspeksi implementasi. Beberapa FAIL berasal dari akar masalah yang sama."
+  },
+  "results": [
+    {
+      "id": "SEC-01",
+      "scenario": "Autentikasi seluruh endpoint API",
+      "status": "PASS",
+      "notes": "Seluruh 15 endpoint Analytics menolak anonymous dengan HTTP 401."
+    },
+    {
+      "id": "SEC-02",
+      "scenario": "Autentikasi halaman web",
+      "status": "PASS",
+      "notes": "302 /login?next=/analytics"
+    },
+    {
+      "id": "API-R1",
+      "scenario": "API quick range 1 hari",
+      "status": "FAIL",
+      "notes": "{'reliability-score': 422, 'backup-trend': 422, 'device-type-distribution': 422, 'backup-frequency-by-group': 422, 'performance-metrics': 422, 'anomalies': 200, 'backup-heatmap': 422}"
+    },
+    {
+      "id": "API-R7",
+      "scenario": "API quick range 7 hari",
+      "status": "PASS",
+      "notes": "{'reliability-score': 200, 'backup-trend': 200, 'device-type-distribution': 200, 'backup-frequency-by-group': 200, 'performance-metrics': 200, 'anomalies': 200, 'backup-heatmap': 200}"
+    },
+    {
+      "id": "API-R30",
+      "scenario": "API quick range 30 hari",
+      "status": "PASS",
+      "notes": "{'reliability-score': 200, 'backup-trend': 200, 'device-type-distribution': 200, 'backup-frequency-by-group': 200, 'performance-metrics': 200, 'anomalies': 200, 'backup-heatmap': 200}"
+    },
+    {
+      "id": "API-R90",
+      "scenario": "API quick range 90 hari",
+      "status": "FAIL",
+      "notes": "{'reliability-score': 200, 'backup-trend': 200, 'device-type-distribution': 200, 'backup-frequency-by-group': 200, 'performance-metrics': 200, 'anomalies': 422, 'backup-heatmap': 200}"
+    },
+    {
+      "id": "INT-01",
+      "scenario": "Batas end_date inklusif; backup setelah akhir dikecualikan",
+      "status": "FAIL",
+      "notes": "Expected 28 backup; actual 56; trend {'data': [{'date': '2026-10-01', 'success': 16, 'failed': 12}], 'period': '1 days'}"
+    },
+    {
+      "id": "INT-02",
+      "scenario": "Agregasi reliability sesuai fixture",
+      "status": "FAIL",
+      "notes": "Expected 57.14%; actual 66.07%"
+    },
+    {
+      "id": "INT-03",
+      "scenario": "Trend satu tanggal mencakup 24 jam",
+      "status": "PASS",
+      "notes": "{'data': [{'date': '2026-10-01', 'success': 16, 'failed': 12}], 'period': '1 days'}"
+    },
+    {
+      "id": "CUSTOM-1",
+      "scenario": "Custom range dengan days=1",
+      "status": "FAIL",
+      "notes": "HTTP 422: {\"detail\":[{\"type\":\"greater_than_equal\",\"loc\":[\"query\",\"days\"],\"msg\":\"Input should be greater than or equal to 7\",\"input\":\"1\",\"ctx\":{\"ge\":7}}]}"
+    },
+    {
+      "id": "CUSTOM-6",
+      "scenario": "Custom range dengan days=6",
+      "status": "FAIL",
+      "notes": "HTTP 422: {\"detail\":[{\"type\":\"greater_than_equal\",\"loc\":[\"query\",\"days\"],\"msg\":\"Input should be greater than or equal to 7\",\"input\":\"6\",\"ctx\":{\"ge\":7}}]}"
+    },
+    {
+      "id": "CUSTOM-91",
+      "scenario": "Custom range dengan days=91",
+      "status": "FAIL",
+      "notes": "HTTP 422: {\"detail\":[{\"type\":\"less_than_equal\",\"loc\":[\"query\",\"days\"],\"msg\":\"Input should be less than or equal to 90\",\"input\":\"91\",\"ctx\":{\"le\":90}}]}"
+    },
+    {
+      "id": "CUSTOM-365",
+      "scenario": "Custom range dengan days=365",
+      "status": "FAIL",
+      "notes": "HTTP 422: {\"detail\":[{\"type\":\"less_than_equal\",\"loc\":[\"query\",\"days\"],\"msg\":\"Input should be less than or equal to 90\",\"input\":\"365\",\"ctx\":{\"le\":90}}]}"
+    },
+    {
+      "id": "VALID-reverse",
+      "scenario": "Validasi API reverse",
+      "status": "FAIL",
+      "notes": "HTTP 200; period=-5 days; rows=0"
+    },
+    {
+      "id": "VALID-over365",
+      "scenario": "Validasi API over365",
+      "status": "FAIL",
+      "notes": "HTTP 200; period=1005 days; rows=1005"
+    },
+    {
+      "id": "EDGE-01",
+      "scenario": "Format tanggal invalid: 400 atau fallback aman",
+      "status": "PASS",
+      "notes": "Seluruh 15 endpoint tidak crash; endpoint berparameter tanggal memakai fallback HTTP 200. Invalid format diuji 01/10/2026 dan not-date. Fallback tidak diberi peringatan."
+    },
+    {
+      "id": "CHART-01",
+      "scenario": "Heatmap 7x24 dan hitungan periode",
+      "status": "FAIL",
+      "notes": "Shape 7x24; sum=56 expected 28"
+    },
+    {
+      "id": "CHART-02",
+      "scenario": "Backup per group sesuai periode",
+      "status": "FAIL",
+      "notes": "{'data': [{'group': 'QA', 'device_count': 28, 'total_backups': 56, 'success_backups': 37, 'failed_backups': 19, 'avg_per_device': 2.0}], 'period': '30 days'}"
+    },
+    {
+      "id": "CHART-03",
+      "scenario": "Distribusi tipe: jumlah perangkat dan backup",
+      "status": "FAIL",
+      "notes": "{'data': [{'device_type': 'pfsense', 'device_count': 9, 'total_backups': 16, 'success_backups': 12, 'success_rate': 75.0}, {'device_type': 'cisco_ios', 'device_count': 9, 'total_backups': 16, 'success_backups': 12, 'success_rate': 75.0}, {'device_type': 'mikrotik_routeros', 'device_count': 10, 'total_backups': 24, 'success_backups': 13, 'success_rate': 54.2}], 'period': '30 days'}"
+    },
+    {
+      "id": "LIST-01",
+      "scenario": "Top performer descending, maksimal 15",
+      "status": "PASS",
+      "notes": "10 entries; API cap 10 dan hanya score >=95, bukan 15 terbaik keseluruhan"
+    },
+    {
+      "id": "LIST-02",
+      "scenario": "Semua problematic devices terdaftar",
+      "status": "FAIL",
+      "notes": "Actual 10; expected 12; API truncate 10"
+    },
+    {
+      "id": "KPI-01",
+      "scenario": "Format duration, size, peak hour",
+      "status": "PASS",
+      "notes": "{'avg_duration': '2.0m', 'duration_detail': 'Based on 1 job runs', 'avg_size': '2.0 MB', 'size_detail': '21 backups analyzed', 'peak_hour': '12:00', 'peak_hour_detail': '21 backups at this hour', 'fastest_device': 'qa-device-01', 'fastest_device_detail': 'Avg 1.0 MB'}"
+    },
+    {
+      "id": "KPI-02",
+      "scenario": "Fastest Device berdasarkan kecepatan backup",
+      "status": "FAIL",
+      "notes": "Actual qa-device-01: Avg 1.0 MB; implementasi memilih ukuran file terkecil, tidak durasi perangkat."
+    },
+    {
+      "id": "ANOM-01",
+      "scenario": "Deteksi lonjakan kegagalan",
+      "status": "PASS",
+      "notes": "{'anomalies': [{'type': 'success_rate_drop', 'severity': 'high', 'icon': 'arrow-down-circle', 'title': 'Sudden Success Rate Drop', 'description': 'Success rate dropped from 77.8% to 33.3% in the last 24 hours'}, {'type': 'repeated_failures', 'severity': 'high', 'icon': 'x-circle', 'title': 'Repeated Failures: qa-device-28', 'description': '6 consecutive failures in the last 24 hours'}], 'total_found': 2, 'period': '30 days'}"
+    },
+    {
+      "id": "EXP-csv",
+      "scenario": "Header dan struktur export csv",
+      "status": "PASS",
+      "notes": "HTTP 200; text/csv; charset=utf-8; 28 rows, 9 columns"
+    },
+    {
+      "id": "EXP-FILTER-csv",
+      "scenario": "Filter tanggal export csv",
+      "status": "FAIL",
+      "notes": "Expected total 28; actual 56"
+    },
+    {
+      "id": "EXP-excel",
+      "scenario": "Header dan struktur export excel",
+      "status": "PASS",
+      "notes": "HTTP 200; application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; ['Summary', 'By Device']"
+    },
+    {
+      "id": "EXP-FILTER-excel",
+      "scenario": "Filter tanggal export excel",
+      "status": "FAIL",
+      "notes": "Expected total 28; actual 56"
+    },
+    {
+      "id": "EXP-json",
+      "scenario": "Header dan struktur export json",
+      "status": "PASS",
+      "notes": "HTTP 200; application/json; JSON parsed"
+    },
+    {
+      "id": "EXP-FILTER-json",
+      "scenario": "Filter tanggal export json",
+      "status": "FAIL",
+      "notes": "Expected total 28; actual 56"
+    },
+    {
+      "id": "EXP-pdf",
+      "scenario": "Header dan struktur export pdf",
+      "status": "PASS",
+      "notes": "HTTP 200; application/pdf; PDF magic; rendering inspected separately"
+    },
+    {
+      "id": "EXP-FILTER-pdf",
+      "scenario": "Filter tanggal export pdf",
+      "status": "FAIL",
+      "notes": "Expected total 28; teks PDF dan render terverifikasi menunjukkan Total Backups 56."
+    },
+    {
+      "id": "EDGE-02",
+      "scenario": "Tanggal masa depan tanpa data/anomali",
+      "status": "FAIL",
+      "notes": "Reliability 0; anomalies={'anomalies': [{'type': 'repeated_failures', 'severity': 'high', 'icon': 'x-circle', 'title': 'Repeated Failures: qa-device-28', 'description': '6 consecutive failures in the last 24 hours'}], 'total_found': 1, 'period': '30 days'}"
+    },
+    {
+      "id": "EDGE-03",
+      "scenario": "Database kosong dan division by zero seluruh API",
+      "status": "PASS",
+      "notes": "Seluruh 15 endpoint termasuk empat ekspor memberi HTTP 200 pada database kosong; tidak ada ZeroDivisionError."
+    },
+    {
+      "id": "TREND-7",
+      "scenario": "Quick range 7 hari: jumlah bucket harian",
+      "status": "FAIL",
+      "notes": "Expected 7; actual 8; period=8 days; window dimulai pukul 12:00, bukan midnight"
+    },
+    {
+      "id": "TREND-30",
+      "scenario": "Quick range 30 hari: jumlah bucket harian",
+      "status": "FAIL",
+      "notes": "Expected 30; actual 31; period=31 days; window dimulai pukul 12:00, bukan midnight"
+    },
+    {
+      "id": "TREND-90",
+      "scenario": "Quick range 90 hari: jumlah bucket harian",
+      "status": "FAIL",
+      "notes": "Expected 90; actual 91; period=91 days; window dimulai pukul 12:00, bukan midnight"
+    },
+    {
+      "id": "EXP-DAYS-csv",
+      "scenario": "Export csv dengan days=1/7/30/90/365",
+      "status": "FAIL",
+      "notes": "{'1': 422, '7': 200, '30': 200, '90': 200, '365': 422}"
+    },
+    {
+      "id": "EXP-DAYS-excel",
+      "scenario": "Export excel dengan days=1/7/30/90/365",
+      "status": "FAIL",
+      "notes": "{'1': 422, '7': 200, '30': 200, '90': 200, '365': 422}"
+    },
+    {
+      "id": "EXP-DAYS-json",
+      "scenario": "Export json dengan days=1/7/30/90/365",
+      "status": "FAIL",
+      "notes": "{'1': 422, '7': 200, '30': 200, '90': 200, '365': 422}"
+    },
+    {
+      "id": "EXP-DAYS-pdf",
+      "scenario": "Export pdf dengan days=1/7/30/90/365",
+      "status": "FAIL",
+      "notes": "{'1': 422, '7': 200, '30': 200, '90': 200, '365': 422}"
+    },
+    {
+      "id": "ANOM-NORMAL",
+      "scenario": "Anomali normal: data sukses tanpa kegagalan",
+      "status": "PASS",
+      "notes": "{'anomalies': [], 'total_found': 0, 'period': '7 days'}"
+    },
+    {
+      "id": "STATUS-01",
+      "scenario": "Status unchanged/in_progress tidak dihitung sebagai failed",
+      "status": "FAIL",
+      "notes": "Fixture 1 success, 1 failed, 1 unchanged, 1 in_progress. CSV failed=3, reliability=25.0%; trend menghitung hanya success/failed (50%)."
+    },
+    {
+      "id": "PDF-A4",
+      "scenario": "PDF A4, seluruh section dan warna header",
+      "status": "PASS",
+      "notes": "pdfinfo: 595.276 x 841.89 pts, 2 halaman; inspeksi PNG: Summary biru, Top Performers hijau, Problematic merah, 15 top + 12 problematic tercetak."
+    },
+    {
+      "id": "PDF-PAGING",
+      "scenario": "PDF tabel multi-page tetap memiliki header kolom",
+      "status": "FAIL",
+      "notes": "Halaman kedua melanjutkan baris qa-device-20 s.d. 28 tanpa header kolom; repeatRows belum dipasang."
+    },
+    {
+      "id": "UI-DEFAULT",
+      "scenario": "Default Last 30 Days dan semua grafik dimuat",
+      "status": "FAIL",
+      "notes": "Label default benar; 8 fetch Analytics HTTP 200. FAIL hanya karena console resource /favicon.ico HTTP 404; tidak ada pageerror JavaScript."
+    },
+    {
+      "id": "UI-GRADE",
+      "scenario": "Gauge persentase dan grade Excellent/Good/Fair/Poor",
+      "status": "FAIL",
+      "notes": "Reliability Score\n77.8%"
+    },
+    {
+      "id": "UI-DONUT",
+      "scenario": "Device Type Distribution berbentuk donut",
+      "status": "FAIL",
+      "notes": "Actual chart SVG: 1 bar series"
+    },
+    {
+      "id": "UI-THRESHOLD",
+      "scenario": "Trend memiliki threshold 90% dan 95%",
+      "status": "FAIL",
+      "notes": "Jumlah garis annotation: 0"
+    },
+    {
+      "id": "UI-ANOM",
+      "scenario": "Banner terlihat pada fixture lonjakan kegagalan",
+      "status": "PASS",
+      "notes": " Sudden Success Rate Drop\n\nSuccess rate dropped from 77.8% to 33.3% in the last 24 hours\n\n Repeated Failures: qa-device-28\n\n6 consecutive failures in the last 24 hours"
+    },
+    {
+      "id": "UI-RANGE-Yesterday",
+      "scenario": "Klik Yesterday: label, fetching, console",
+      "status": "FAIL",
+      "notes": "Label berubah dan 8 fetch dipicu. reliability-score?days=1 → 422; device-type-distribution?days=1 → 422; backup-frequency-by-group?days=1 → 422; backup-trend?days=1 → 422; reliability-score?days=1 → 422; performance-metrics?days=1 → 422; backup-heatmap?days=1 → 422"
+    },
+    {
+      "id": "UI-RANGE-Last-7-Days",
+      "scenario": "Klik Last 7 Days: label, fetching, console",
+      "status": "PASS",
+      "notes": "Label berubah dan 8 fetch dipicu. Semua HTTP 200 dan console bersih. Akurasi kalender diuji terpisah (TREND)."
+    },
+    {
+      "id": "UI-RANGE-Last-30-Days",
+      "scenario": "Klik Last 30 Days: label, fetching, console",
+      "status": "PASS",
+      "notes": "Label berubah dan 8 fetch dipicu. Semua HTTP 200 dan console bersih. Akurasi kalender diuji terpisah (TREND)."
+    },
+    {
+      "id": "UI-RANGE-Last-90-Days",
+      "scenario": "Klik Last 90 Days: label, fetching, console",
+      "status": "FAIL",
+      "notes": "Label berubah dan 8 fetch dipicu. anomalies?days=90 → 422"
+    },
+    {
+      "id": "UI-CUSTOM",
+      "scenario": "Apply custom valid dan pulsing dot",
+      "status": "PASS",
+      "notes": "1–7 Oktober: label tanggal berubah, pulsing dot animation=pulse muncul, 8 fetch HTTP 200. Ini PASS kontrol UI; akurasi angka FAIL pada INT-01."
+    },
+    {
+      "id": "UI-REFRESH",
+      "scenario": "Refresh fetch ulang tanpa reload",
+      "status": "PASS",
+      "notes": "8 fetch baru memakai days=7 dan tanggal custom. Navigasi tetap 1; halaman tidak reload."
+    },
+    {
+      "id": "UI-EXPORT-CSV",
+      "scenario": "Unduh CSV dari tombol UI",
+      "status": "PASS",
+      "notes": "hk-nova-analytics-20261103.csv"
+    },
+    {
+      "id": "UI-EXPORT-Excel",
+      "scenario": "Unduh Excel dari tombol UI",
+      "status": "PASS",
+      "notes": "hk-nova-analytics-20261103.xlsx"
+    },
+    {
+      "id": "UI-EXPORT-JSON",
+      "scenario": "Unduh JSON dari tombol UI",
+      "status": "PASS",
+      "notes": "hk-nova-analytics-20261103.json"
+    },
+    {
+      "id": "UI-EXPORT-PDF",
+      "scenario": "Unduh PDF dari tombol UI",
+      "status": "PASS",
+      "notes": "hk-nova-analytics-20261103.pdf"
+    },
+    {
+      "id": "UI-SAMEDAY",
+      "scenario": "Custom tanggal sama: 1 hari penuh",
+      "status": "FAIL",
+      "notes": "Apply Range mengirim days=1; 7 dari 8 fetch HTTP 422, hanya anomalies HTTP 200. Toast sukses custom tetap muncul."
+    },
+    {
+      "id": "UI-REVERSE",
+      "scenario": "Start > End ditolak",
+      "status": "PASS",
+      "notes": "Memanggil applyCustomRange dengan Start > End memunculkan Start date must be before end date; tidak ada fetch baru. Pengujian guard memakai pengisian DOM terkontrol."
+    },
+    {
+      "id": "UI-OVER365",
+      "scenario": "Rentang >365 ditolak UI",
+      "status": "PASS",
+      "notes": "Memanggil applyCustomRange dengan rentang >365 memunculkan Date range cannot exceed 365 days; tidak ada fetch baru. API langsung tetap tidak membatasi (VALID-over365)."
+    },
+    {
+      "id": "UI-MOBILE-768",
+      "scenario": "Viewport 768: tinggi chart 250px tanpa overflow",
+      "status": "FAIL",
+      "notes": "Viewport/scrollWidth sama 768px: tidak horizontal overflow. SVG 4 chart tetap 350px (container 365px); gauge 258,7px. Expected 250px."
+    },
+    {
+      "id": "UI-MOBILE-576",
+      "scenario": "Viewport 576: tinggi chart 250px tanpa overflow",
+      "status": "FAIL",
+      "notes": "Viewport/scrollWidth sama 576px: tidak horizontal overflow. SVG 4 chart tetap 350px (container 365px); gauge 258,7px. Expected 250px."
+    },
+    {
+      "id": "UI-MOBILE-375",
+      "scenario": "Viewport 375: tinggi chart 250px tanpa overflow",
+      "status": "FAIL",
+      "notes": "Viewport/scrollWidth sama 375px: tidak horizontal overflow. SVG 4 chart tetap 350px (container 365px); gauge 258,7px. Expected 250px."
+    },
+    {
+      "id": "UI-ZERO",
+      "scenario": "Zero data: console bersih dan empty states rapi",
+      "status": "PASS",
+      "notes": "Reload database kosong: console bersih, top No data available, problematic All devices performing well!, badge 0, KPI N/A, banner anomali hidden."
+    }
+  ]
+}

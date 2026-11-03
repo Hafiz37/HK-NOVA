@@ -1,0 +1,26 @@
+$ /home/gopal-ichiro/Documents/magang/hk-nova/.venv/bin/python -m pytest tests/test_retry_logic.py -v --tb=short -s --junitxml=/home/gopal-ichiro/Documents/magang/hk-nova/artifacts/diagnostics-2026-11-03/test_retry_logic.xml
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/gopal-ichiro/Documents/magang/hk-nova/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/gopal-ichiro/Documents/magang/hk-nova
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 13 items
+
+tests/test_retry_logic.py::TestErrorClassification::test_transient_network_timeout PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_transient_connection_refused PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_transient_rate_limit PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_transient_smb_temporary PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_permanent_auth_failure PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_permanent_permission_denied PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_permanent_disk_full PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_permanent_invalid_config PASSED
+tests/test_retry_logic.py::TestErrorClassification::test_permanent_invalid_params PASSED
+tests/test_retry_logic.py::TestBackoffCalculation::test_exponential_backoff_delays PASSED
+tests/test_retry_logic.py::TestBackoffCalculation::test_rate_limit_with_retry_after PASSED
+tests/test_retry_logic.py::TestDestinationRetryExecution::test_retry_with_transient_error_exhausts_retries PASSED
+tests/test_retry_logic.py::TestDestinationRetryExecution::test_no_retry_with_permanent_error PASSED
+
+- generated xml file: /home/gopal-ichiro/Documents/magang/hk-nova/artifacts/diagnostics-2026-11-03/test_retry_logic.xml -
+============================== 13 passed in 0.68s ==============================

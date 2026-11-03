@@ -1,0 +1,26 @@
+[
+  {
+    "name": "test_diagnostic_analyzer",
+    "exit_code": 0
+  },
+  {
+    "name": "test_auto_fix",
+    "exit_code": 0
+  },
+  {
+    "name": "test_retry_logic",
+    "exit_code": 0
+  },
+  {
+    "name": "test_backup_failure_flow",
+    "exit_code": 0
+  },
+  {
+    "name": "combined",
+    "exit_code": 0
+  },
+  {
+    "name": "coverage_requested",
+    "exit_code": 0
+  }
+]

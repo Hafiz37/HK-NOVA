@@ -1,0 +1,84 @@
+                       HK-NOVA Analytics Report
+Period: 2026-10-01 to 2026-10-01
+Generated: 2026-11-03 12:00:00 UTC
+
+
+
+
+Executive Summary
+              Metric                                            Value
+
+              Overall Reliability Score                         66.07%
+              Total Devices                                     28
+              Total Backups                                     56
+              Successful Backups                                37
+              Failed Backups                                    19
+
+
+
+
+Top Performing Devices
+               Hostname                    Type         Group   Total   Success   Failed   Rate %
+
+               qa-device-02               pfsense        QA      8         8        0      100.0%
+
+               qa-device-03               cisco_ios      QA      8         8        0      100.0%
+
+               qa-device-04           mikrotik_router    QA      1         1        0      100.0%
+
+               qa-device-05               pfsense        QA      1         1        0      100.0%
+
+               qa-device-06               cisco_ios      QA      1         1        0      100.0%
+
+               qa-device-07           mikrotik_router    QA      1         1        0      100.0%
+
+               qa-device-08               pfsense        QA      1         1        0      100.0%
+
+               qa-device-09               cisco_ios      QA      1         1        0      100.0%
+
+               qa-device-10           mikrotik_router    QA      1         1        0      100.0%
+
+               qa-device-11               pfsense        QA      1         1        0      100.0%
+
+               qa-device-12               cisco_ios      QA      1         1        0      100.0%
+
+               qa-device-13           mikrotik_router    QA      1         1        0      100.0%
+
+               qa-device-14               pfsense        QA      1         1        0      100.0%
+
+               qa-device-15               cisco_ios      QA      1         1        0      100.0%
+
+               qa-device-16           mikrotik_router    QA      1         1        0      100.0%
+
+
+
+
+Problematic Devices (Success Rate < 80%)
+               Hostname                    Type         Group   Total   Success   Failed   Rate %
+
+               qa-device-17               pfsense        QA      1         0        1       0.0%
+
+               qa-device-18               cisco_ios      QA      1         0        1       0.0%
+
+               qa-device-19           mikrotik_router    QA      1         0        1       0.0%
+                qa-device-20             pfsense          QA   1   0   1   0.0%
+
+                qa-device-21            cisco_ios         QA   1   0   1   0.0%
+
+                qa-device-22          mikrotik_router     QA   1   0   1   0.0%
+
+                qa-device-23             pfsense          QA   1   0   1   0.0%
+
+                qa-device-24            cisco_ios         QA   1   0   1   0.0%
+
+                qa-device-25          mikrotik_router     QA   1   0   1   0.0%
+
+                qa-device-26             pfsense          QA   1   0   1   0.0%
+
+                qa-device-27            cisco_ios         QA   1   0   1   0.0%
+
+                qa-device-28          mikrotik_router     QA   7   0   7   0.0%
+
+
+Note: Report shows top 15 performers. Total devices: 28
+

@@ -1,0 +1,68 @@
+=== LAPORAN PENGUJIAN MENU DIAGNOSTICS — HK-NOVA ===
+Tanggal : 3 November 2026 (Asia/Jakarta)
+Tester  : Codex — agen pengujian otomatis
+
+--- HASIL PER FILE ---
+[test_diagnostic_analyzer.py]
+  PASSED / FAILED / ERROR: 6 / 0 / 0 dari 6 tests; durasi 0.043 detik
+[test_auto_fix.py]
+  PASSED / FAILED / ERROR: 5 / 0 / 0 dari 5 tests; durasi 0.252 detik
+[test_retry_logic.py]
+  PASSED / FAILED / ERROR: 13 / 0 / 0 dari 13 tests; durasi 0.686 detik
+[test_backup_failure_flow.py]
+  PASSED / FAILED / ERROR: 1 / 0 / 0 dari 1 tests; durasi 1.596 detik
+
+--- TOTAL ---
+PASSED  : 25 tests unik
+FAILED  : 0 tests
+ERRORS  : 0 tests
+SKIPPED : 0 tests
+COVERAGE: 75.99% (288/379 statements; tampilan terminal 76%)
+Jenis coverage: statement, bukan branch coverage.
+
+--- COVERAGE PER MODUL ---
+app/modules/auto_fix.py: 65.77% (73/111); baris belum teruji: 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 35, 36, 65, 66, 67, 68, 96, 106, 124, 129, 130, 131, 145, 150, 155, 156, 171, 189, 194, 199, 200, 202, 203, 205
+app/modules/diagnostic_analyzer.py: 78.85% (41/52); baris belum teruji: 40, 41, 42, 43, 87, 88, 102, 103, 118, 222, 240
+app/modules/retry_service.py: 88.89% (48/54); baris belum teruji: 142, 151, 154, 226, 227, 228
+app/routers/diagnostics.py: 77.78% (126/162); baris belum teruji: 25, 27, 98, 100, 102, 104, 106, 122, 123, 143, 161, 186, 187, 216, 217, 243, 244, 245, 247, 248, 249, 251, 258, 260, 261, 268, 273, 274, 275, 276, 280, 295, 310, 311, 365, 366
+
+--- DETAIL KEGAGALAN ---
+Tidak ada assertion test yang gagal pada eksekusi lengkap.
+
+--- PEMERIKSAAN LINGKUNGAN ---
+Working directory: /home/gopal-ichiro/Documents/magang/hk-nova
+Python sistem: 3.12.3 (memenuhi >=3.11).
+python3 -m pytest --version: /usr/bin/python3: No module named pytest
+Import dependency Python sistem: ModuleNotFoundError: No module named fastapi
+Virtual environment proyek: Python 3.12.3, pytest 9.1.1, pytest-asyncio 1.4.0; fastapi, sqlalchemy, httpx dan pytest_asyncio berhasil diimpor.
+pytest-cov 7.1.0 dan coverage 7.17.0 dipasang ke .venv; percobaan awal terkendala DNS sandbox, pemasangan di luar sandbox berhasil.
+Keempat file test tersedia. pyproject.toml: asyncio_mode=auto, testpaths=[tests].
+
+--- METODE DAN PENYESUAIAN ---
+Test dijalankan per file secara berurutan, kemudian gabungan, lalu coverage sesuai permintaan. Semua eksekusi lengkap exit code 0.
+Runner: run_tests.py. Log lengkap, perintah, dan JUnit XML tersedia dalam folder laporan.
+Setiap eksekusi memakai database SQLite file sementara yang baru, BACKUP_DIR dan SSH_KEY_DIR sementara, serta credential admin/admin khusus test. Database aplikasi pengguna tidak menjadi target.
+Skema disiapkan melalui init_db() dan destination default melalui _ensure_default_destination(), karena TestClient pada test tidak memakai context manager sehingga lifespan tidak dijalankan.
+SQLite file sementara dipakai agar session aplikasi dan TestClient berbagi database tanpa mengubah engine/pool aplikasi.
+Eksekusi sandbox awal dihentikan saat teardown asyncio tertahan setelah test Git; faulthandler menunjukkan asyncio.runners.close / selectors.select. Pengulangan di luar sandbox selesai seluruhnya.
+Perintah coverage asli memakai --cov=app/modules/... dan --cov=app/routers/diagnostics menghasilkan:
+  CoverageWarning: Module app/modules/diagnostic_analyzer was never imported.
+  CoverageWarning: No data was collected.
+  WARNING: Failed to generate report: No data to report.
+Pengukuran diulang dengan app.modules.diagnostic_analyzer, app.modules.auto_fix, app.modules.retry_service dan app.routers.diagnostics. HTML berhasil dibuat di htmlcov_diagnostics/index.html.
+Tidak ada perubahan source aplikasi atau file test.
+
+--- CATATAN CAKUPAN ---
+Jumlah aktual: 6 + 5 + 13 + 1 = 25 test; instruksi menyebut retry 11 dan total 24, sehingga angka laporan mengikuti koleksi pytest.
+Test integrasi berisi 22 pernyataan assert, bukan 9; semuanya lulus.
+Integrasi memeriksa retry, notifikasi mock, BackupFailure/RCA, dashboard, detail device, statistik API dan mark-resolved sampai verifikasi DB.
+Batasan: backup.status menerima success maupun failed; kelulusan tidak membuktikan emergency fallback berhasil menulis file. Backend destination dan engine dimock.
+Retry manual via endpoint tidak diuji oleh fungsi integrasi; yang diuji adalah mark-resolved.
+Coverage belum penuh. Hasil ini mendukung verifikasi manual, bukan jaminan semua jalur atau layanan eksternal bekerja.
+
+--- WARNINGS ---
+3 peringatan deprecation pada eksekusi integrasi/gabungan: Starlette TestClient menggunakan httpx, alias anyio.abc.BlockingPortal, dan class-based Config Pydantic di app/schemas/location.py:45.
+
+--- KESIMPULAN ---
+[x] Semua test lulus → Fitur Diagnostics siap untuk verifikasi manual dalam cakupan suite ini.
+[ ] Ada test gagal → Tidak ada modul yang dinyatakan gagal oleh suite.
