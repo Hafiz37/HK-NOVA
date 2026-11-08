@@ -1,0 +1,59 @@
+sequenceDiagram
+    actor NOC as NOC
+    participant FE as Frontend
+    participant BE as Backend
+    participant DB as Database
+    participant TG as Telegram API
+
+    Note over NOC,TG: HKN-018 & HKN-019: Analisis Diff dan Restore Backup
+
+    rect rgb(255, 245, 230)
+        Note right of NOC: HKN-018: Analisis Diff Perubahan
+        NOC->>FE: Pilih 2 versi konfigurasi<br/>dari history
+        activate FE
+        FE->>BE: GET /api/versions/diff?v1={id}&v2={id}
+        activate BE
+        BE->>DB: Query backup records<br/>(config_text versi 1 & 2)
+        activate DB
+        DB-->>BE: Return kedua konfigurasi
+        deactivate DB
+        BE->>BE: Generate diff (Python difflib)<br/>Line-by-line comparison
+        Note over BE: Diff Engine module
+        FE-->>NOC: Tampilkan diff viewer:<br/>+ Added lines (hijau)<br/>- Removed lines (merah)<br/>~ Modified lines
+        deactivate BE
+        deactivate FE
+    end
+
+    rect rgb(240, 255, 240)
+        Note right of NOC: HKN-019: Restore Backup dari Telegram
+        NOC->>FE: Cari file backup<br/>(filter: tanggal, perangkat)
+        activate FE
+        FE->>BE: GET /api/backups/search?filters={...}
+        activate BE
+        BE->>TG: Query list file di channel
+        activate TG
+        TG-->>BE: Return list backup files
+        deactivate TG
+        FE-->>NOC: Tampilkan list backup tersedia
+        deactivate BE
+        deactivate FE
+        
+        NOC->>FE: Pilih file untuk restore
+        activate FE
+        FE->>BE: POST /api/backups/restore/{file_id}
+        activate BE
+        BE->>TG: Download file dari channel
+        activate TG
+        TG-->>BE: Return file content
+        deactivate TG
+        
+        alt File Compressed (gzip)
+            BE->>BE: Decompress file
+        end
+        
+        BE->>BE: Simpan ke local storage (./backups)
+        Note over BE: Filesystem operation
+        FE-->>NOC: File restore berhasil<br/>(path: /restore/...)
+        deactivate BE
+        deactivate FE
+    end

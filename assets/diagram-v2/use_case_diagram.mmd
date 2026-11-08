@@ -1,0 +1,53 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'32px', 'primaryColor':'#ffffff', 'primaryTextColor':'#000000', 'primaryBorderColor':'#000000', 'lineColor':'#000000', 'secondaryColor':'#f5f5f5', 'tertiaryColor':'#ffffff', 'stroke-width':'4px'}}}%%
+flowchart LR
+    %% Ringkasan use case: 14 kelompok mencakup 16 fungsi tabel V2.
+    Viewer["«actor»<br/>mitra (viewer)"]
+    Operator["«actor»<br/>operator noc (operator)"]
+    Admin["«actor»<br/>Manager NOC (admin)"]
+    Operator -.->|mewarisi akses| Viewer
+    Admin -.->|mewarisi akses| Operator
+
+    subgraph HKN["Platform HK-NOVA"]
+        direction TB
+        UC01(["Melakukan autentikasi login<br/>HKN-001"])
+        UC02(["Memantau status dan analitik backup<br/>HKN-002, HKN-011"])
+        UC03(["Mengelola perangkat dan kelompok perangkat<br/>HKN-003, HKN-005"])
+        UC04(["Mengelola kredensial perangkat<br/>HKN-004"])
+        UC05(["Mengelola destination storage backup<br/>HKN-006"])
+        UC06(["Menjadwalkan backup otomatis<br/>HKN-007"])
+        UC07(["Mengelola backup konfigurasi<br/>HKN-008"])
+        UC11(["Melihat riwayat, mengunduh backup,<br/>dan membandingkan versi konfigurasi<br/>HKN-008, HKN-009, HKN-015"])
+        UC08(["Menangani kegagalan backup<br/>HKN-012"])
+        UC09(["Mengelola pengguna dan hak akses<br/>HKN-013"])
+        UC10(["Melihat audit log<br/>HKN-014"])
+        UC12(["Mengelola backup multi-channel Telegram<br/>HKN-016"])
+        UC13(["Melihat diagnosis kegagalan backup<br/>HKN-012"])
+        UC14(["Mengelola notifikasi backup<br/>HKN-010"])
+    end
+
+    Viewer --- UC01
+    Viewer --- UC02
+    Viewer --- UC11
+    Viewer --- UC13
+
+    Operator --- UC03
+    Operator --- UC12
+    Operator --- UC06
+    Operator --- UC07
+    Operator --- UC08
+    Operator --- UC14
+
+    Admin --- UC04
+    Admin --- UC05
+    Admin --- UC09
+    Admin --- UC10
+
+    %% UC06 mencakup eksekusi jadwal, bukan sekadar menyimpan pengaturan.
+    UC06 -.->|«include»| UC07
+    %% Ekstensi berlaku pada penanganan kegagalan ketika backup gagal.
+    UC08 -.->|«extend»: backup gagal| UC07
+
+    classDef actor fill:#f5f5f5,stroke:#000000,stroke-width:4px,color:#000000
+    classDef usecase fill:#ffffff,stroke:#000000,stroke-width:4px,color:#000000
+    class Viewer,Operator,Admin actor
+    class UC01,UC02,UC03,UC04,UC05,UC06,UC07,UC08,UC09,UC10,UC11,UC12,UC13,UC14 usecase

@@ -1,0 +1,141 @@
+erDiagram
+    Device ||--o{ Backup : "has"
+    Device }o--|| Credential : "main_credential"
+    Device }o--o| Location : "located_at"
+    Device }o--o| Credential : "proxy_credential"
+    
+    Backup }o--|| Device : "from"
+    Backup }o--o| JobRun : "tracked_by"
+    
+    Schedule ||--o{ JobRun : "executes"
+    Schedule }o--o{ Destination : "uses"
+    
+    Location }o--o| Destination : "telegram_dest"
+    Location }o--o| Group : "has_group"
+    
+    Group }o--o{ NotificationChannel : "via_JSON_array"
+    
+    Device {
+        int id PK
+        string hostname UK
+        string ip_address
+        string device_type
+        int credential_id FK
+        int location_id FK
+        string backup_engine
+        int port
+        string proxy_host
+        int proxy_port
+        int proxy_credential_id FK
+        json monitoring_config
+        json destination_override
+        datetime created_at
+        datetime updated_at
+    }
+    
+    Credential {
+        int id PK
+        string name UK
+        string username
+        string password_encrypted
+        string enable_secret_encrypted
+        string ssh_key_path
+        string group
+        datetime created_at
+        datetime updated_at
+    }
+    
+    Backup {
+        int id PK
+        int device_id FK
+        datetime timestamp
+        text config_text
+        string config_hash
+        string destination_type
+        string destination_path
+        int file_size
+        enum status
+        string retention_tier
+        boolean is_pruned
+        datetime pruned_at
+        datetime expires_at
+        text error_message
+        int job_run_id FK
+    }
+    
+    Schedule {
+        int id PK
+        string name UK
+        string cron_expression
+        json device_ids
+        string device_group
+        string backup_engine
+        json destination_ids
+        boolean enabled
+        datetime last_run_at
+        datetime next_run_at
+        datetime created_at
+        datetime updated_at
+    }
+    
+    JobRun {
+        int id PK
+        string job_name
+        int schedule_id FK
+        datetime started_at
+        datetime completed_at
+        enum status
+        int devices_total
+        int devices_success
+        int devices_failed
+        text error_log
+    }
+    
+    Destination {
+        int id PK
+        string name UK
+        enum dest_type
+        json config_json
+        json retention_config
+        string description
+        string file_extension
+        boolean enabled
+        boolean is_central_monitoring
+        datetime created_at
+        datetime updated_at
+    }
+    
+    Group {
+        int id PK
+        string name UK
+        string description
+        json destination_ids
+        string backup_engine
+        json notification_ids
+        datetime created_at
+    }
+    
+    Location {
+        int id PK
+        string name UK
+        text description
+        text notes
+        int telegram_destination_id FK
+        int group_id FK
+        boolean enabled
+        int device_count
+        datetime created_at
+        datetime updated_at
+    }
+    
+    NotificationChannel {
+        int id PK
+        string name UK
+        string apprise_url_encrypted
+        boolean enabled
+        boolean on_success
+        boolean on_failure
+        boolean on_config_change
+        datetime created_at
+        datetime updated_at
+    }

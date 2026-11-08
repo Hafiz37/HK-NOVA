@@ -1,0 +1,72 @@
+graph TB
+    %% Actors
+    NOC[("NOC<br/>(Network Operations Center)")]
+    System[("System<br/>(Scheduler)")]
+
+    %% NOC Use Cases
+    HKN001((HKN-001<br/>Melakukan autentikasi login))
+    HKN002((HKN-002<br/>Menambah data perangkat jaringan))
+    HKN003((HKN-003<br/>Mengelola kredensial SSH perangkat))
+    HKN004((HKN-004<br/>Mengelompokkan perangkat per mitra))
+    HKN005((HKN-005<br/>Menguji koneksi SSH ke perangkat))
+    HKN006((HKN-006<br/>Mengelola destination storage backup))
+    HKN007((HKN-007<br/>Mengelola konfigurasi bot Telegram))
+    HKN008((HKN-008<br/>Mengatur channel Telegram per mitra))
+    HKN009((HKN-009<br/>Mengatur channel monitoring pusat))
+    HKN010((HKN-010<br/>Menjadwalkan backup otomatis perangkat))
+    HKN016((HKN-016<br/>Menampilkan dashboard status backup))
+    HKN017((HKN-017<br/>Melihat history log backup dan audit trail))
+    HKN018((HKN-018<br/>Menampilkan diff perubahan antar versi))
+    HKN019((HKN-019<br/>Melakukan restore backup dari Telegram))
+
+    %% System Use Cases
+    HKN011((HKN-011<br/>Melakukan backup konfigurasi via SSH))
+    HKN012((HKN-012<br/>Mendeteksi perubahan konfigurasi))
+    HKN013((HKN-013<br/>Menyimpan versi konfigurasi dengan timestamp))
+    HKN014((HKN-014<br/>Mengunggah backup ke channel Telegram sesuai mitra))
+    HKN015((HKN-015<br/>Mengirim notifikasi status backup))
+    HKN020((HKN-020<br/>Menampilkan alert backup gagal dan retry mechanism))
+
+    %% Actor to Use Case Relationships - NOC
+    NOC --> HKN001
+    NOC --> HKN002
+    NOC --> HKN003
+    NOC --> HKN004
+    NOC --> HKN005
+    NOC --> HKN006
+    NOC --> HKN007
+    NOC --> HKN008
+    NOC --> HKN009
+    NOC --> HKN010
+    NOC --> HKN016
+    NOC --> HKN017
+    NOC --> HKN018
+    NOC --> HKN019
+    NOC --> HKN020
+
+    %% Actor to Use Case Relationships - System
+    System --> HKN011
+    System --> HKN012
+    System --> HKN013
+    System --> HKN014
+    System --> HKN015
+    System --> HKN020
+
+    %% Trigger Relationship
+    HKN010 -->|trigger by schedule| HKN011
+
+    %% Include Relationships - Sequential (Berantai)
+    HKN011 -.->|include| HKN012
+    HKN012 -.->|include| HKN013
+    HKN013 -.->|include| HKN014
+    HKN014 -.->|include| HKN015
+
+    %% Extend Relationships (conditional)
+    HKN011 -.->|extend if failed| HKN020
+
+    %% Styling
+    classDef actorStyle fill:#e1f5ff,stroke:#01579b,stroke-width:3px,color:#000
+    classDef usecaseStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#000
+    
+    class NOC,System actorStyle
+    class HKN001,HKN002,HKN003,HKN004,HKN005,HKN006,HKN007,HKN008,HKN009,HKN010,HKN011,HKN012,HKN013,HKN014,HKN015,HKN016,HKN017,HKN018,HKN019,HKN020 usecaseStyle

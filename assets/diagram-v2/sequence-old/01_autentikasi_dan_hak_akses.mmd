@@ -1,0 +1,48 @@
+sequenceDiagram
+    actor Pengguna as Pengguna (semua role)
+    participant Antarmuka as Antarmuka Web
+    participant Server as Server (FastAPI)
+    participant DB as Database
+
+    Note over Pengguna,DB: HKN-001 — Autentikasi Login
+
+    Pengguna->>Antarmuka: Memasukkan username dan password
+    Antarmuka->>Server: POST /login
+    Server->>DB: Kueri data pengguna
+    DB-->>Server: Data pengguna
+    Server->>Server: Verifikasi bcrypt dan periksa is_active
+
+    alt Kredensial valid dan akun aktif
+        Server->>Server: Buat session token
+        Server-->>Antarmuka: Set cookie sesi; redirect ke dashboard
+        Antarmuka-->>Pengguna: Tampilkan dashboard sesuai role
+    else Kredensial salah atau akun tidak aktif
+        Server-->>Antarmuka: Redirect ke /login
+        Antarmuka-->>Pengguna: Tampilkan pesan error
+    end
+
+    Note over Pengguna,DB: HKN-013 — Pengelolaan Pengguna dan Hak Akses (khusus Admin)
+
+    Pengguna->>Antarmuka: Memilih tambah/ubah/hapus pengguna
+    Antarmuka->>Server: POST /users
+    Server->>Server: Periksa session token dan role (require_admin)
+
+    alt Role bukan admin
+        Server-->>Antarmuka: HTTP 403 Forbidden
+        Antarmuka-->>Pengguna: Tampilkan halaman akses ditolak
+    else Role admin
+        Server->>DB: Tambah/ubah/hapus akun dan catat audit log
+        DB-->>Server: Konfirmasi
+        Server-->>Antarmuka: Redirect ke daftar pengguna
+        Antarmuka-->>Pengguna: Tampilkan daftar pengguna yang diperbarui
+    end
+
+    Note over Pengguna,DB: HKN-014 — Melihat Audit Log (khusus Admin)
+
+    Pengguna->>Antarmuka: Membuka menu audit log
+    Antarmuka->>Server: GET /audit-logs
+    Server->>Server: Periksa role (require_admin)
+    Server->>DB: Kueri AuditLog dengan filter
+    DB-->>Server: Daftar catatan audit
+    Server-->>Antarmuka: Render halaman audit log
+    Antarmuka-->>Pengguna: Tampilkan daftar aktivitas pengguna

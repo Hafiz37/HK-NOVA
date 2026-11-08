@@ -1,0 +1,28 @@
+sequenceDiagram
+    actor NOC as NOC (Network Operations Center)
+    participant FE as Frontend
+    participant BE as Backend
+    participant DB as Database
+
+    Note over NOC,DB: HKN-001: Melakukan Autentikasi Login
+
+    NOC->>FE: Input username & password
+    activate FE
+    FE->>BE: POST /api/auth/login
+    activate BE
+    BE->>DB: Query validasi kredensial
+    activate DB
+    DB-->>BE: Return data user
+    deactivate DB
+    
+    alt Kredensial Valid
+        BE-->>FE: Return token & user info
+        deactivate BE
+        FE-->>NOC: Redirect ke Dashboard
+        deactivate FE
+    else Kredensial Invalid
+        BE-->>FE: Return error message
+        deactivate BE
+        FE-->>NOC: Tampilkan pesan error
+        deactivate FE
+    end

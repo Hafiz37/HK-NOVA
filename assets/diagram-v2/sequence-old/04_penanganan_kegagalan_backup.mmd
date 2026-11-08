@@ -1,0 +1,82 @@
+sequenceDiagram
+    participant Server as Server (FastAPI)
+    participant Destination as Destination
+    participant Diagnosis as DiagnosticAnalyzer
+    participant Notifikasi as Apprise / Notifikasi
+    participant DB as Database
+    actor Pengguna as Pengguna (Admin / Operator)
+    participant Antarmuka as Antarmuka Web
+
+    Note over Server,DB: HKN-012, HKN-008 — Penanganan Kegagalan Otomatis
+
+    Server->>Destination: Simpan konfigurasi ke destination
+    Destination-->>Server: Exception (error sementara atau permanen)
+    Server->>Server: Klasifikasi error: transient atau permanent
+
+    alt Error sementara dan percobaan belum mencapai batas
+        loop Percobaan ulang dengan backoff
+            Server->>Server: Hitung jeda; terapkan auto-fix
+            Server->>Destination: Percobaan ulang simpan
+            alt Percobaan berhasil
+                Destination-->>Server: Path atau message_id
+                Note over Server: Keluar dari loop
+            else Masih gagal
+                Destination-->>Server: Exception
+                Server->>Server: Tambah hitungan percobaan
+            end
+        end
+    else Error permanen
+        Note over Server: Tidak dilakukan percobaan ulang
+    end
+
+    Server->>DB: Catat BackupFailure (error_type, error_category, retry_count)
+    DB-->>Server: Failure tersimpan
+
+    opt Semua destination gagal
+        Server->>Server: Coba simpan ke Local Storage sebagai fallback
+        alt Fallback lokal berhasil
+            Note over Server: Backup ditandai success dengan catatan fallback
+        else Fallback lokal juga gagal
+            Note over Server: Backup ditandai failed sepenuhnya
+        end
+    end
+
+    Server->>Diagnosis: analyze_backup_failure(device, backup, failures)
+    Diagnosis-->>Server: Laporan diagnosis (primary_cause, solution_steps)
+    Server->>DB: Simpan root_cause_analysis dan suggested_solution
+    DB-->>Server: Tersimpan
+    Server->>Notifikasi: Kirim notifikasi diagnostik kegagalan
+    Notifikasi-->>Server: Terkirim atau gagal
+
+    Note over Server,DB: Eksekusi backup selesai tanpa menunggu tindakan pengguna
+
+    Note over Pengguna,DB: HKN-012 — Penanganan Manual: Melihat Diagnosis, Retry, atau Tandai Selesai
+
+    opt Pengguna membuka halaman diagnosis
+        Pengguna->>Antarmuka: Membuka menu diagnosis
+        Antarmuka->>Server: GET /diagnostics/device/{id}
+        Server->>DB: Ambil BackupFailure dan laporan diagnosis
+        DB-->>Server: Data kegagalan dan analisis
+        Server-->>Antarmuka: Render halaman detail kegagalan
+        Antarmuka-->>Pengguna: Tampilkan error, riwayat, dan rekomendasi solusi
+
+        alt Pengguna memilih retry manual
+            Pengguna->>Antarmuka: Menekan tombol Retry
+            Antarmuka->>Server: POST /diagnostics/device/{id}/retry
+            Server->>Server: Periksa session token dan role
+            Server->>Server: Jalankan run_backup_for_device
+            Note over Server: Proses backup berjalan seperti pada Diagram 03
+            Server->>DB: Jika backup sukses, tandai BackupFailure sebagai resolved
+            DB-->>Server: Status diperbarui
+            Server-->>Antarmuka: Status hasil retry
+            Antarmuka-->>Pengguna: Tampilkan hasil
+        else Pengguna memilih tandai masalah selesai
+            Pengguna->>Antarmuka: Menekan tombol Tandai Selesai
+            Antarmuka->>Server: POST /diagnostics/failure/{id}/resolve
+            Server->>Server: Periksa session token dan role
+            Server->>DB: Set BackupFailure.resolved = True dan catat resolved_at
+            DB-->>Server: Konfirmasi
+            Server-->>Antarmuka: Konfirmasi penyelesaian
+            Antarmuka-->>Pengguna: Masalah ditandai selesai
+        end
+    end

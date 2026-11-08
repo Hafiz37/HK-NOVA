@@ -1,0 +1,39 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'21px', 'actorBkg':'#ffffff', 'actorBorder':'#000000', 'actorTextColor':'#000000', 'actorLineColor':'#000000', 'signalColor':'#000000', 'signalTextColor':'#000000', 'labelBoxBkgColor':'#f5f5f5', 'labelBoxBorderColor':'#000000', 'labelTextColor':'#000000', 'loopTextColor':'#000000', 'noteBorderColor':'#000000', 'noteBkgColor':'#ffffff', 'noteTextColor':'#000000', 'activationBorderColor':'#000000', 'activationBkgColor':'#f5f5f5', 'sequenceNumberColor':'#000000', 'stroke-width':'4px'}}}%%
+sequenceDiagram
+    actor Admin as Admin
+    participant Antarmuka as Antarmuka Web
+    participant Server as Server (FastAPI)
+    participant Enkripsi as Enkripsi (Fernet)
+    participant DB as Database
+
+    Note over Admin,DB: HKN-006 — Pengelolaan Destination Storage (khusus Admin)
+
+    Admin->>+Antarmuka: Memilih tambah/ubah/uji/hapus destination
+    Antarmuka->>+Server: POST /destinations (require_admin)
+    Server->>Server: Periksa role (require_admin)
+
+    alt Role bukan admin
+        Server-->>Antarmuka: HTTP 403 Forbidden
+        Antarmuka-->>Admin: Tampilkan halaman akses ditolak
+    else Role admin
+        Server->>+DB: Simpan konfigurasi destination (Local/Git/SMB/Telegram) dan catat audit log
+        DB-->>-Server: Konfirmasi
+        Server-->>Antarmuka: Redirect atau tampilkan hasil uji
+        Antarmuka-->>Admin: Konfirmasi simpan atau hasil uji koneksi
+    end
+    deactivate Server
+    deactivate Antarmuka
+
+    Note over Admin,DB: HKN-010, HKN-016 — Konfigurasi Notifikasi dan Channel Telegram
+
+    Admin->>+Antarmuka: Mengatur saluran notifikasi atau pemetaan channel Telegram
+    Antarmuka->>+Server: POST /notifications atau /locations/{id}/edit (require_operator_or_admin)
+    Server->>Server: Periksa session token dan role
+    Server->>+Enkripsi: Enkripsi URL Apprise atau bot token
+    Enkripsi-->>-Server: Ciphertext
+    Server->>+DB: Simpan NotificationChannel atau pemetaan Location.telegram_destination_id
+    DB-->>-Server: Konfigurasi tersimpan
+    Server-->>Antarmuka: Redirect ke daftar konfigurasi
+    Antarmuka-->>Admin: Tampilkan konfigurasi notifikasi dan channel yang aktif
+    deactivate Server
+    deactivate Antarmuka

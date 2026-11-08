@@ -1,0 +1,91 @@
+sequenceDiagram
+    actor Operator as Operator / Admin
+    participant Antarmuka as Antarmuka Web
+    participant Scheduler as APScheduler
+    participant Server as Server (FastAPI)
+    participant Perangkat as Perangkat Jaringan
+    participant Destination as Destination (Local/Git/SMB/Telegram)
+    participant DB as Database
+
+    Note over Operator,DB: HKN-007, HKN-008 — Pemicu Backup (Jadwal atau Manual)
+
+    alt Pemicu jadwal aktif
+        Scheduler->>Server: Memanggil _scheduled_backup_runner(schedule_id)
+        Server->>DB: Ambil Schedule dan device_ids
+        DB-->>Server: Data jadwal, device_ids, destination_ids
+        Server->>DB: Simpan JobRun dengan status running
+        DB-->>Server: job_run tersimpan
+    else Permintaan backup manual
+        Operator->>Antarmuka: Menekan Backup Sekarang
+        Antarmuka->>Server: POST /backups/trigger (require_operator_or_admin)
+        Server->>Server: Periksa session token dan role
+        Server->>DB: Catat audit TRIGGER
+        DB-->>Server: Audit tersimpan
+    end
+
+    Note over Server,DB: HKN-008 — Pengambilan Konfigurasi melalui SSH
+
+    Server->>DB: Ambil Device, Credential, dan destination_ids
+    DB-->>Server: Data perangkat, kredensial terenkripsi, destination_ids
+    Server->>Server: Dekripsi kredensial; pilih engine
+    Server->>Perangkat: Buka koneksi SSH dan jalankan fetch_config
+
+    alt Pengambilan konfigurasi berhasil
+        Perangkat-->>Server: Teks konfigurasi atau hasil biner
+
+        Note over Server,DB: HKN-015 — Versioning dan Perbandingan SHA-256
+
+        Server->>Server: Hitung SHA-256 dari konfigurasi
+        Server->>DB: Kueri backup sukses terakhir
+        DB-->>Server: Hash sebelumnya
+        Server->>Server: Bandingkan hash; tandai config_changed
+
+        Note over Server,Destination: HKN-008, HKN-016 — Penyimpanan ke Destination
+
+        loop Setiap destination aktif
+            Server->>Destination: Simpan konfigurasi
+
+            alt Penyimpanan berhasil
+                Destination-->>Server: Path atau message_id
+            else Error sementara
+                Destination-->>Server: Exception (timeout, rate_limit)
+                Server->>Server: Hitung backoff; tunggu jeda
+                Server->>Destination: Percobaan ulang simpan
+                Destination-->>Server: Hasil percobaan ulang
+            else Error permanen
+                Destination-->>Server: Exception (auth_failure, permission_denied)
+                Server->>DB: Catat BackupFailure
+                DB-->>Server: Failure tersimpan
+            end
+        end
+
+        opt Semua destination gagal
+            Server->>Server: Jalankan fallback lokal
+        end
+
+        Server->>DB: Simpan Backup (hash, timestamp, config_text, status)
+        DB-->>Server: Backup tersimpan
+
+        Note over Server,DB: HKN-009, HKN-010, HKN-015 — Notifikasi
+
+        opt Konfigurasi berubah
+            Server->>Server: Kirim notifikasi perubahan konfigurasi
+        end
+
+    else Pengambilan konfigurasi gagal
+        Perangkat-->>Server: Exception (koneksi ditolak, timeout, auth gagal)
+        Server->>DB: Simpan Backup dengan status failed; catat BackupFailure
+        DB-->>Server: Tersimpan
+        Server->>Server: Kirim notifikasi kegagalan diagnostik
+    end
+
+    Server->>DB: Perbarui JobRun (devices_success, devices_failed, status)
+    DB-->>Server: JobRun diperbarui
+    Server->>Server: Kirim notifikasi job
+
+    alt Pemicu jadwal
+        Note over Server: Eksekusi background selesai
+    else Permintaan manual
+        Server-->>Antarmuka: Redirect ke halaman backup
+        Antarmuka-->>Operator: Tampilkan status hasil backup
+    end

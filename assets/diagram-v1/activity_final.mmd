@@ -1,0 +1,165 @@
+%%{init: {'flowchart': {'curve': 'basis'}}}%%
+flowchart TD
+    Start([Mulai]) --> SetupPhase[PHASE 1: SETUP]
+    
+    %% ========================================
+    %% SWIMLANE: USER/NOC
+    %% ========================================
+    subgraph USER["NOC/USER"]
+        direction LR
+        
+        %% PHASE 1: SETUP (combined nodes for efficiency)
+        U001[HKN-001<br/>Melakukan Autentikasi Login<br/>Input username & password]
+        U002[HKN-002, 003, 004<br/>Setup Perangkat, Kredensial & Grouping<br/>• HKN-002: Input data perangkat<br/>• HKN-003: Input kredensial SSH<br/>• HKN-004: Grouping per mitra]
+        U005[HKN-005<br/>Menguji Koneksi SSH ke Perangkat<br/>Trigger test connection]
+        U006[HKN-006<br/>Mengelola Destination Storage Backup<br/>Input Local/Git/SMB/Telegram config]
+        U007[HKN-007, 008, 009<br/>Konfigurasi Multi-Channel Telegram<br/>• HKN-007: Input bot token<br/>• HKN-008: Setup channel mitra<br/>• HKN-009: Setup channel pusat]
+        U010[HKN-010<br/>Menjadwalkan Backup Otomatis Perangkat<br/>Input jadwal cron expression]
+        
+        %% PHASE 3: MONITORING & RESTORE
+        U016[HKN-016<br/>Menampilkan Dashboard Status Backup<br/>Akses halaman dashboard]
+        U017[HKN-017<br/>Melihat History Log Backup<br/>Pilih filter tanggal/perangkat/status]
+        U018[HKN-018<br/>Menampilkan Diff Perubahan Antar Versi<br/>Pilih 2 versi backup untuk compare]
+        U019[HKN-019<br/>Melakukan Restore Backup dari Telegram<br/>Request download file backup]
+        U020[Menerima Alert Backup Gagal<br/>View error log & trigger Backup Now]
+    end
+    
+    %% ========================================
+    %% SWIMLANE: SYSTEM
+    %% ========================================
+    subgraph SYSTEM["SYSTEM"]
+        direction LR
+        
+        %% PHASE 1: SETUP PROCESSING
+        S001[Validasi kredensial<br/>& buat session]
+        D001{Kredensial<br/>Valid?}
+        S002[Validasi data perangkat<br/>hostname, IP, device type]
+        D002{Data Perangkat<br/>Valid?}
+        S003[HKN-003, 004<br/>• Enkripsi kredensial Fernet<br/>• Simpan relasi group mitra]
+        S005[Ambil kredensial & coba<br/>koneksi SSH ke perangkat]
+        D005{SSH Connection<br/>Berhasil?}
+        S006[Validasi koneksi destination<br/>& simpan konfigurasi storage]
+        D006{Koneksi<br/>Berhasil?}
+        S007[Validasi bot token<br/>dengan Telegram API]
+        D007{Bot Token<br/>Valid?}
+        S008[Validasi chat ID mitra<br/>& simpan relasi group-channel]
+        D008{Chat ID Mitra<br/>Valid?}
+        S009[Validasi chat ID pusat<br/>& aktifkan dual upload mechanism]
+        D009{Chat ID Pusat<br/>Valid?}
+        S010[Validasi cron expression<br/>& simpan job ke APScheduler]
+        D010{Cron Expression<br/>Valid?}
+        
+        %% PHASE 2: BACKUP AUTOMATION
+        S011W[Tunggu waktu backup<br/>sesuai schedule terjadwal]
+        D011{Schedule<br/>Triggered?}
+        S011[HKN-011<br/>Backup Konfigurasi via SSH<br/>Koneksi SSH & eksekusi command<br/>Simpan file ke local storage]
+        D011SSH{SSH Backup<br/>Berhasil?}
+        S012[HKN-012, 013<br/>Change Detection & Versioning<br/>• Hitung hash SHA256 & compare<br/>• Simpan versi dengan timestamp]
+        S014[HKN-014<br/>Mengunggah Backup Multi-Channel Telegram<br/>→ Channel Mitra jika dikonfigurasi<br/>→ Channel Monitoring Pusat SELALU<br/>Compression gzip & split jika >50MB]
+        D014{Upload<br/>Multi-Channel<br/>Berhasil?}
+        S015[HKN-015<br/>Mengirim Notifikasi Status Backup<br/>Kirim ke Telegram & Apprise<br/>dengan metadata lengkap]
+        
+        %% ERROR HANDLING (HKN-020)
+        S020[HKN-020<br/>Menampilkan Alert Backup Gagal<br/>Catat error log & retry count]
+        D020{Retry < 3?<br/>Exponential Backoff<br/>2s, 4s, 8s}
+        S020F[Tandai backup failed permanently<br/>Kirim alert notification dengan error detail]
+        
+        %% PHASE 3: MONITORING PROCESSING
+        S016[Query statistik dari database<br/>Hitung total/success/failed<br/>Render dashboard dengan chart]
+        S017[Query backup records sesuai filter<br/>Format list dengan timestamp,<br/>hash, status perubahan]
+        S018[Fetch kedua file backup<br/>Generate unified diff dengan difflib<br/>Render diff viewer line-by-line]
+        S019[Fetch file backup dari<br/>Telegram atau local storage<br/>Siapkan download untuk restore]
+    end
+    
+    %% ========================================
+    %% ALL FLOW CONNECTIONS
+    %% ========================================
+    
+    %% PHASE 1: Setup Flow (User ↔ System with validation decisions)
+    SetupPhase --> U001
+    U001 --> S001
+    S001 --> D001
+    D001 -->|Yes| U002
+    D001 -->|No - Input Ulang| U001
+    
+    U002 --> S002
+    S002 --> D002
+    D002 -->|Yes| S003
+    D002 -->|No - Perbaiki Data| U002
+    S003 --> U005
+    
+    U005 --> S005
+    S005 --> D005
+    D005 -->|Yes| U006
+    D005 -->|No - Retry| U005
+    
+    U006 --> S006
+    S006 --> D006
+    D006 -->|Yes| U007
+    D006 -->|No - Perbaiki Config| U006
+    
+    U007 --> S007
+    S007 --> D007
+    D007 -->|Yes| S008
+    D007 -->|No - Input Ulang| U007
+    S008 --> D008
+    D008 -->|Yes| S009
+    D008 -->|No - Input Ulang| U007
+    S009 --> D009
+    D009 -->|Yes| U010
+    D009 -->|No - Input Ulang| U007
+    
+    U010 --> S010
+    S010 --> D010
+    D010 -->|Yes| S011W
+    D010 -->|No - Input Ulang| U010
+    
+    %% PHASE 2: Automation Flow (System Only)
+    S011W --> D011
+    D011 -->|No - Wait| S011W
+    D011 -->|Yes| S011
+    S011 --> D011SSH
+    D011SSH -->|Yes| S012
+    D011SSH -->|No - Error| S020
+    S012 --> S014
+    S014 --> D014
+    D014 -->|Yes| S015
+    D014 -->|No - Error| S020
+    
+    %% Error Handling & Retry
+    S020 --> D020
+    D020 -->|Yes - Retry| S011
+    D020 -->|No - Failed| S020F
+    
+    %% PHASE 2 to PHASE 3: Notification Paths (Async)
+    S015 -.Success Notification.-> U016
+    S020F -.Error Alert.-> U020
+    U020 -.Manual Retry.-> U016
+    
+    %% PHASE 3: Monitoring Flow (User ↔ System)
+    U016 --> S016
+    S016 --> U017
+    U017 --> S017
+    S017 --> U018
+    U018 --> S018
+    S018 --> U019
+    U019 --> S019
+    S019 --> End([Selesai])
+    
+    %% ========================================
+    %% STYLING - BLACK & WHITE / GRAYSCALE
+    %% ========================================
+    
+    classDef userStyle fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000
+    classDef systemStyle fill:#e0e0e0,stroke:#000000,stroke-width:2px,color:#000
+    classDef decisionStyle fill:#d0d0d0,stroke:#000000,stroke-width:3px,color:#000
+    classDef startEndStyle fill:#ffffff,stroke:#000000,stroke-width:3px,color:#000
+    classDef phaseStyle fill:#f5f5f5,stroke:#000000,stroke-width:2px,color:#000
+    classDef errorStyle fill:#c0c0c0,stroke:#000000,stroke-width:2px,color:#000
+    
+    class U001,U002,U005,U006,U007,U010,U016,U017,U018,U019,U020 userStyle
+    class S001,S002,S003,S005,S006,S007,S008,S009,S010,S011W,S011,S012,S014,S015,S016,S017,S018,S019 systemStyle
+    class S020,S020F errorStyle
+    class D001,D002,D005,D006,D007,D008,D009,D010,D011,D011SSH,D014,D020 decisionStyle
+    class Start,End startEndStyle
+    class SetupPhase phaseStyle

@@ -1,0 +1,70 @@
+%%{init: {'layout':'swimlane', 'theme':'base', 'swimlane': {'automaticLaneOrdering':false, 'ignoreCrossLaneEdges':false, 'optimizeRanksByCrossings':false}, 'flowchart': {'wrappingWidth':460, 'nodeSpacing':40, 'rankSpacing':50, 'subGraphTitleMargin': {'top':16, 'bottom':24}}, 'themeVariables': {'fontSize':'21px', 'primaryColor':'#ffffff', 'primaryTextColor':'#000000', 'primaryBorderColor':'#000000', 'lineColor':'#000000', 'secondaryColor':'#f5f5f5', 'tertiaryColor':'#ffffff'}}}%%
+flowchart TB
+    %% Layout swimlane menempatkan dua kolom sejajar sesuai urutan deklarasi.
+    %% TB mengatur alur ke bawah di dalam kolom, bukan menumpuk kolom.
+    subgraph USER_LANE["Pengguna"]
+        N00_START((●))
+        N01_LOGIN("Memasukkan username dan password<br/>[HKN-001]")
+        N04_SELECT("Melihat dashboard; memilih fitur<br/>dan mengisi data atau filter<br/>[HKN-002]")
+        N11_VIEW_RESULT("Melihat hasil, status permintaan,<br/>atau pesan kesalahan")
+        N12_D_LOGOUT{Logout?}
+        N14_END_USER(((●)))
+    end
+
+    subgraph SYSTEM_LANE["Sistem HK-Nova"]
+        N02_D_AUTH{Kredensial valid<br/>dan akun aktif?}
+        N03_SESSION_ROLE("Membuat sesi; membaca peran dan<br/>menampilkan dashboard sesuai akses:<br/>Admin: semua fitur<br/>Operator: pemantauan dan operasi<br/>Viewer: pemantauan<br/>[HKN-001, HKN-002]")
+        N05_D_ACCESS{Izin peran dan<br/>input sesuai?}
+        N06_D_ACTION{Jenis permintaan?}
+        N07_MONITOR("Menampilkan analitik, riwayat, diagnosis,<br/>konfigurasi/unduhan, atau unified diff<br/>[HKN-008, HKN-009, HKN-011, HKN-012, HKN-015]")
+        N08_ADMIN("Mengelola kredensial terenkripsi dan pengguna/peran;<br/>mengelola/menguji destination atau membaca audit log<br/>[HKN-004, HKN-006, HKN-013, HKN-014]")
+        N09_OPS("Memproses perangkat/grup, uji SSH, jadwal,<br/>notifikasi, channel mitra/pusat, atau resolusi masalah<br/>[HKN-003, HKN-005, HKN-007, HKN-010, HKN-012, HKN-016]")
+        N10_QUEUE("Mendaftarkan backup manual atau retry<br/>[HKN-008, HKN-012]")
+        N13_LOGOUT("Menghapus cookie sesi dan mencatat logout<br/>[HKN-001]")
+
+        N15_SCHEDULE("Jadwal backup aktif tiba<br/>[HKN-007]")
+        N16_FETCH("Mengambil konfigurasi perangkat<br/>pusat/mitra melalui SSH sesuai engine<br/>[HKN-008]")
+        N17_D_FETCH{Konfigurasi<br/>berhasil diambil?}
+        N18_STORE("Menghitung SHA-256; membandingkan versi sukses<br/>sebelumnya bila ada; menyimpan sesuai pemetaan<br/>mitra/pusat; retry sementara, fallback lokal<br/>jika seluruh tujuan gagal<br/>[HKN-006, HKN-008, HKN-012, HKN-015, HKN-016]")
+        N19_RECORD("Mencatat waktu, versi bila tersedia,<br/>status sukses/parsial/gagal dan diagnosis;<br/>mengirim notifikasi sesuai konfigurasi<br/>[HKN-009, HKN-010, HKN-012, HKN-015]")
+        N20_END_BACKUP(((●)))
+    end
+
+    N00_START --> N01_LOGIN
+    N01_LOGIN --> N02_D_AUTH
+    N02_D_AUTH -->|Tidak: pesan login gagal| N01_LOGIN
+    N02_D_AUTH -->|Iya| N03_SESSION_ROLE
+    N03_SESSION_ROLE --> N04_SELECT
+    N04_SELECT --> N05_D_ACCESS
+    N05_D_ACCESS -->|Tidak: pesan kesalahan| N11_VIEW_RESULT
+    N05_D_ACCESS -->|Iya| N06_D_ACTION
+    N06_D_ACTION -->|Pemantauan: semua peran| N07_MONITOR
+    N06_D_ACTION -->|Administrasi: Admin| N08_ADMIN
+    N06_D_ACTION -->|Operasi: Admin/Operator| N09_OPS
+    N06_D_ACTION -->|Backup/retry: Admin/Operator| N10_QUEUE
+    N07_MONITOR --> N11_VIEW_RESULT
+    N08_ADMIN --> N11_VIEW_RESULT
+    N09_OPS --> N11_VIEW_RESULT
+    N10_QUEUE -->|Status permintaan| N11_VIEW_RESULT
+    N11_VIEW_RESULT --> N12_D_LOGOUT
+    N12_D_LOGOUT -->|Tidak| N04_SELECT
+    N12_D_LOGOUT -->|Iya| N13_LOGOUT
+    N13_LOGOUT --> N14_END_USER
+
+    %% Garis putus-putus memicu eksekusi terpisah, tanpa menahan sesi pengguna.
+    %% Menyimpan jadwal tidak langsung menjalankan backup.
+    N10_QUEUE -.->|Eksekusi di latar belakang| N16_FETCH
+    N15_SCHEDULE --> N16_FETCH
+    N16_FETCH --> N17_D_FETCH
+    N17_D_FETCH -->|Iya| N18_STORE
+    N17_D_FETCH -->|Tidak| N19_RECORD
+    N18_STORE --> N19_RECORD
+    N19_RECORD --> N20_END_BACKUP
+    %% Hasil eksekusi dibaca kembali melalui pemantauan/riwayat.
+
+    classDef default fill:#ffffff,stroke:#000000,stroke-width:4px,color:#000000
+    classDef decision fill:#f5f5f5,stroke:#000000,stroke-width:4px,color:#000000
+    class N02_D_AUTH,N05_D_ACCESS,N06_D_ACTION,N12_D_LOGOUT,N17_D_FETCH decision
+    style USER_LANE fill:#ffffff,stroke:#000000,stroke-width:4px,color:#000000
+    style SYSTEM_LANE fill:#f5f5f5,stroke:#000000,stroke-width:4px,color:#000000
+    linkStyle default stroke:#000000,stroke-width:4px

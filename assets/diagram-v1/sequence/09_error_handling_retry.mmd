@@ -1,0 +1,66 @@
+sequenceDiagram
+    participant Scheduler as Scheduler
+    participant BE as Backend
+    participant DB as Database
+    participant Device as Perangkat
+    participant TG as Telegram API
+    participant ChPusat as Channel Monitoring Pusat
+    actor NOC as NOC
+
+    Note over Scheduler,NOC: HKN-020: Alert Backup Gagal & Retry Mechanism
+
+    Scheduler->>BE: Trigger backup
+    activate BE
+    BE->>BE: Init SSH connection (Netmiko)
+    BE->>Device: SSH Connect
+    activate Device
+    Device-->>BE: Connection Failed
+    deactivate Device
+    
+    BE->>BE: Check retry policy
+    Note over BE: Config: max_attempts,<br/>delay_interval
+    
+    loop Retry < Max Attempts
+        BE->>BE: Wait delay interval
+        Note over BE: Retry Manager logic
+        BE->>Device: SSH Connect attempt
+        activate Device
+        
+        alt Koneksi Berhasil
+            Device-->>BE: Connected
+            deactivate Device
+            deactivate BE
+            Note over BE: Continue normal backup process
+        else Koneksi Masih Gagal
+            Device-->>BE: Failed
+            deactivate Device
+            BE->>BE: Increment retry counter
+        end
+    end
+    
+    alt Max Retry Reached
+        BE->>DB: Update backup status: FAILED
+        activate DB
+        DB-->>BE: Status updated
+        deactivate DB
+        BE->>TG: Send alert notification
+        activate TG
+        TG->>ChPusat: BACKUP FAILED<br/>Device: {name}<br/>Error: {message}<br/>Attempts: {count}
+        activate ChPusat
+        deactivate ChPusat
+        deactivate TG
+        
+        Note over NOC: NOC melihat alert di dashboard
+        NOC->>NOC: Dashboard menampilkan alert
+        
+        opt Manual Retry
+            NOC->>BE: Klik tombol "Retry Manual"
+            activate BE
+            BE->>Scheduler: Trigger immediate backup
+            activate Scheduler
+            Scheduler-->>NOC: Retry dijadwalkan
+            deactivate Scheduler
+            deactivate BE
+        end
+        deactivate BE
+    end

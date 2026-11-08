@@ -1,0 +1,59 @@
+sequenceDiagram
+    actor Pengguna as Pengguna (semua role kecuali audit log)
+    participant Antarmuka as Antarmuka Web
+    participant Server as Server (FastAPI)
+    participant DB as Database
+
+    Note over Pengguna,DB: HKN-002, HKN-011 — Dashboard dan Analitik Backup
+
+    Pengguna->>Antarmuka: Membuka dashboard atau halaman analitik
+    Antarmuka->>Server: GET /dashboard atau /api/v1/analytics/*
+    Server->>Server: Periksa session token
+    Server->>DB: Kueri ringkasan perangkat, status backup, dan metrik analitik
+    DB-->>Server: Data dashboard (total perangkat, sukses, gagal, tren)
+    Server-->>Antarmuka: Render halaman dashboard atau respons JSON analitik
+    Antarmuka-->>Pengguna: Tampilkan ringkasan status dan tren backup
+
+    Note over Pengguna,DB: HKN-009 — Melihat Riwayat Pekerjaan Backup
+
+    Pengguna->>Antarmuka: Membuka riwayat pekerjaan dan memilih filter
+    Antarmuka->>Server: GET /jobs/history
+    Server->>DB: Kueri JobRun dengan filter waktu, status, dan perangkat
+    DB-->>Server: Daftar JobRun (nama job, waktu, status)
+    Server-->>Antarmuka: Render daftar riwayat pekerjaan
+    Antarmuka-->>Pengguna: Tampilkan riwayat pelaksanaan backup
+
+    Note over Pengguna,DB: HKN-008 — Melihat Detail dan Mengunduh Satu Backup
+
+    Pengguna->>Antarmuka: Memilih satu backup untuk melihat detail atau mengunduh
+    Antarmuka->>Server: GET /backups/{backup_id} atau /backups/{backup_id}/download
+    Server->>DB: Ambil Backup dan data perangkat terkait
+    DB-->>Server: Backup record (config_text, hash, timestamp, status)
+    Server-->>Antarmuka: Render halaman detail atau kembalikan file untuk diunduh
+    Antarmuka-->>Pengguna: Tampilkan isi konfigurasi atau mulai unduh file
+
+    Note over Pengguna,DB: HKN-015 — Membandingkan Dua Versi Konfigurasi (Unified Diff)
+
+    Pengguna->>Antarmuka: Memilih dua versi backup untuk dibandingkan
+    Antarmuka->>Server: GET /backups/compare?backup_a={id}&backup_b={id}
+    Server->>DB: Ambil kedua Backup record
+    DB-->>Server: config_text versi lama dan baru
+    Server->>Server: Hasilkan unified diff
+    Server-->>Antarmuka: Render halaman perbandingan dengan diff
+    Antarmuka-->>Pengguna: Tampilkan unified diff sebagai audit trail
+
+    Note over Pengguna,DB: HKN-014 — Melihat Audit Log (khusus Admin)
+
+    Pengguna->>Antarmuka: Membuka menu audit log
+    Antarmuka->>Server: GET /audit-logs (require_admin)
+    Server->>Server: Periksa role (require_admin)
+
+    alt Role bukan admin
+        Server-->>Antarmuka: HTTP 403 Forbidden
+        Antarmuka-->>Pengguna: Tampilkan halaman akses ditolak
+    else Role admin
+        Server->>DB: Kueri AuditLog dengan filter
+        DB-->>Server: Daftar catatan audit (pelaku, tindakan, objek, waktu)
+        Server-->>Antarmuka: Render daftar audit log
+        Antarmuka-->>Pengguna: Tampilkan catatan aktivitas pengguna
+    end

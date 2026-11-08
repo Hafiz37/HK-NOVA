@@ -1,0 +1,63 @@
+sequenceDiagram
+    participant Scheduler as Scheduler
+    participant BE as Backend
+    participant DB as Database
+    participant Device as Perangkat
+    participant TG as Telegram API
+    participant ChMitra as Channel Mitra
+    participant ChPusat as Channel Pusat
+
+    Note over Scheduler,ChPusat: HKN-011→012→013→014→015: Proses Backup Otomatis (Sequential Include)
+
+    Scheduler->>BE: Trigger backup sesuai jadwal
+    activate BE
+    
+    Note over BE,Device: HKN-011: Backup via SSH
+    BE->>BE: Ambil kredensial & init SSH (Netmiko)
+    BE->>Device: SSH Connect & execute backup command
+    activate Device
+    Device-->>BE: Return file konfigurasi
+    deactivate Device
+    Note over BE: Simpan file ke storage lokal
+    
+    Note over BE,DB: HKN-012: Deteksi Perubahan
+    BE->>DB: Hitung hash & compare dengan versi sebelumnya
+    activate DB
+    DB-->>BE: Hash comparison result
+    deactivate DB
+    Note over BE: SHA256 hash detection
+    
+    alt Hash Berbeda (Ada Perubahan)
+        Note over BE,DB: HKN-013: Simpan Versi dengan Timestamp
+        BE->>DB: Insert backup record<br/>(timestamp, hash, device_id, config_text)
+        activate DB
+        DB-->>BE: Return backup_id
+        deactivate DB
+        
+        Note over BE,ChPusat: HKN-014: Upload ke Channel Telegram
+        BE->>BE: Compress file (gzip), split jika >50MB
+        BE->>TG: Upload file backup
+        activate TG
+        TG->>ChMitra: Send to channel mitra
+        activate ChMitra
+        deactivate ChMitra
+        TG->>ChPusat: Send to channel pusat
+        activate ChPusat
+        deactivate ChPusat
+        Note over TG,ChPusat: Isolasi data per mitra
+        
+        Note over BE,ChPusat: HKN-015: Kirim Notifikasi Status
+        BE->>TG: Send notification (device, timestamp, size)
+        TG->>ChMitra: Backup berhasil
+        activate ChMitra
+        deactivate ChMitra
+        TG->>ChPusat: Backup berhasil
+        activate ChPusat
+        deactivate ChPusat
+        deactivate TG
+        
+    else Hash Sama (Tidak Ada Perubahan)
+        BE->>BE: Skip upload
+        Note over BE: Log: "No configuration changes"
+    end
+    deactivate BE

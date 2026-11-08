@@ -1,0 +1,42 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'21px', 'actorBkg':'#ffffff', 'actorBorder':'#000000', 'actorTextColor':'#000000', 'actorLineColor':'#000000', 'signalColor':'#000000', 'signalTextColor':'#000000', 'labelBoxBkgColor':'#f5f5f5', 'labelBoxBorderColor':'#000000', 'labelTextColor':'#000000', 'loopTextColor':'#000000', 'noteBorderColor':'#000000', 'noteBkgColor':'#ffffff', 'noteTextColor':'#000000', 'activationBorderColor':'#000000', 'activationBkgColor':'#f5f5f5', 'sequenceNumberColor':'#000000', 'stroke-width':'4px'}}}%%
+sequenceDiagram
+    actor Operator as Operator / Admin
+    participant Antarmuka as Antarmuka Web
+    participant Scheduler as APScheduler
+    participant Server as Server (FastAPI)
+    participant Perangkat as Perangkat Jaringan
+    participant DB as Database
+
+    Note over Operator,DB: HKN-007, HKN-008 — Pemicu Backup (Jadwal atau Manual)
+
+    alt Pemicu jadwal aktif
+        Scheduler->>+Server: Memanggil _scheduled_backup_runner(schedule_id)
+        Server->>+DB: Ambil Schedule dan device_ids
+        DB-->>-Server: Data jadwal, device_ids, destination_ids
+        Server->>+DB: Simpan JobRun dengan status running
+        DB-->>-Server: job_run tersimpan
+    else Permintaan backup manual
+        Operator->>+Antarmuka: Menekan Backup Sekarang
+        Antarmuka->>+Server: POST /backups/trigger (require_operator_or_admin)
+        Server->>Server: Periksa session token dan role
+        Server->>+DB: Catat audit TRIGGER
+        DB-->>-Server: Audit tersimpan
+    end
+
+    Note over Server,Perangkat: HKN-008 — Pengambilan Konfigurasi melalui SSH
+
+    Server->>+DB: Ambil Device, Credential, dan destination_ids
+    DB-->>-Server: Data perangkat, kredensial terenkripsi, destination_ids
+    Server->>Server: Dekripsi kredensial; pilih engine sesuai jenis perangkat
+    Server->>+Perangkat: Buka koneksi SSH dan jalankan fetch_config
+    Perangkat-->>-Server: Teks konfigurasi atau hasil biner (atau Exception jika gagal)
+
+    Note over Server,DB: HKN-015 — Versioning dan Perbandingan SHA-256
+
+    Server->>Server: Hitung SHA-256 dari konfigurasi
+    Server->>+DB: Kueri backup sukses terakhir
+    DB-->>-Server: Hash sebelumnya
+    Server->>Server: Bandingkan hash; tandai config_changed
+    deactivate Server
+
+    Note over Server: Lanjut ke diagram 08_penyimpanan_destination

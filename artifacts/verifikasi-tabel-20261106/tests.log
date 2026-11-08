@@ -1,0 +1,263 @@
+...............................FFFFFFF.F................................ [ 87%]
+..........                                                               [100%]
+=================================== FAILURES ===================================
+_____________________ test_credential_crud_metadata[True] ______________________
+
+credential_client = <starlette.testclient.TestClient object at 0x7936707b64e0>
+web_db = sessionmaker(class_='Session', bind=Engine(sqlite:////tmp/hkn-verification-20261106/pytest2/test_credential_crud_metadata_0/web.db), autoflush=True, expire_on_commit=True)
+with_secrets = True
+
+    @pytest.mark.parametrize('with_secrets', [True, False])
+    def test_credential_crud_metadata(credential_client, web_db, with_secrets):
+        client = credential_client
+        data = {'name': 'initial-credential', 'username': ' network-admin ', 'group': 'branch'}
+        if with_secrets:
+            data.update(password='initial-password-secret', enable_secret='enable-password-secret',
+                        ssh_key_path='/private/key/location')
+>       assert client.post('/credentials/add', data=data).status_code == 303
+E       AssertionError: assert 403 == 303
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+E        +    where <Response [403 Forbidden]> = post('/credentials/add', data={'name': 'initial-credential', 'username': ' network-admin ', 'group': 'branch', 'password': 'initial-password-secret', ...})
+E        +      where post = <starlette.testclient.TestClient object at 0x7936707b64e0>.post
+
+tests/test_credential_audit.py:46: AssertionError
+_____________________ test_credential_crud_metadata[False] _____________________
+
+credential_client = <starlette.testclient.TestClient object at 0x7936707b7bc0>
+web_db = sessionmaker(class_='Session', bind=Engine(sqlite:////tmp/hkn-verification-20261106/pytest2/test_credential_crud_metadata_1/web.db), autoflush=True, expire_on_commit=True)
+with_secrets = False
+
+    @pytest.mark.parametrize('with_secrets', [True, False])
+    def test_credential_crud_metadata(credential_client, web_db, with_secrets):
+        client = credential_client
+        data = {'name': 'initial-credential', 'username': ' network-admin ', 'group': 'branch'}
+        if with_secrets:
+            data.update(password='initial-password-secret', enable_secret='enable-password-secret',
+                        ssh_key_path='/private/key/location')
+>       assert client.post('/credentials/add', data=data).status_code == 303
+E       AssertionError: assert 403 == 303
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+E        +    where <Response [403 Forbidden]> = post('/credentials/add', data={'name': 'initial-credential', 'username': ' network-admin ', 'group': 'branch'})
+E        +      where post = <starlette.testclient.TestClient object at 0x7936707b7bc0>.post
+
+tests/test_credential_audit.py:46: AssertionError
+___________________ test_blank_password_does_not_mark_change ___________________
+
+credential_client = <starlette.testclient.TestClient object at 0x793670819fd0>
+web_db = sessionmaker(class_='Session', bind=Engine(sqlite:////tmp/hkn-verification-20261106/pytest2/test_blank_password_does_not_m0/web.db), autoflush=True, expire_on_commit=True)
+
+    def test_blank_password_does_not_mark_change(credential_client, web_db):
+        with web_db() as db:
+            cred = Credential(name='existing', username=None, group='default')
+            cred.set_password('original-secret')
+            db.add(cred)
+            db.commit()
+            cred_id, original = cred.id, cred.password_encrypted
+>       assert credential_client.post(f'/credentials/{cred_id}/edit', data={'name': 'existing'}).status_code == 303
+E       AssertionError: assert 403 == 303
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+E        +    where <Response [403 Forbidden]> = post('/credentials/1/edit', data={'name': 'existing'})
+E        +      where post = <starlette.testclient.TestClient object at 0x793670819fd0>.post
+
+tests/test_credential_audit.py:104: AssertionError
+_____________ test_real_key_generation_audits_metadata_only[False] _____________
+
+credential_client = <starlette.testclient.TestClient object at 0x7936707d6480>
+web_db = sessionmaker(class_='Session', bind=Engine(sqlite:////tmp/hkn-verification-20261106/pytest2/test_real_key_generation_audit0/web.db), autoflush=True, expire_on_commit=True)
+existing = False
+
+    @pytest.mark.parametrize('existing', [False, True])
+    def test_real_key_generation_audits_metadata_only(credential_client, web_db, existing):
+        data = {'key_name': 'audit-key'}
+        if existing:
+            with web_db() as db:
+                cred = Credential(name='Existing Credential')
+                db.add(cred)
+                db.commit()
+                data['cred_id'] = cred.id
+        response = credential_client.post('/credentials/generate-ssh-key', data=data)
+>       assert response.status_code == 200
+E       assert 403 == 200
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+
+tests/test_credential_audit.py:122: AssertionError
+_____________ test_real_key_generation_audits_metadata_only[True] ______________
+
+credential_client = <starlette.testclient.TestClient object at 0x7936707b6f30>
+web_db = sessionmaker(class_='Session', bind=Engine(sqlite:////tmp/hkn-verification-20261106/pytest2/test_real_key_generation_audit1/web.db), autoflush=True, expire_on_commit=True)
+existing = True
+
+    @pytest.mark.parametrize('existing', [False, True])
+    def test_real_key_generation_audits_metadata_only(credential_client, web_db, existing):
+        data = {'key_name': 'audit-key'}
+        if existing:
+            with web_db() as db:
+                cred = Credential(name='Existing Credential')
+                db.add(cred)
+                db.commit()
+                data['cred_id'] = cred.id
+        response = credential_client.post('/credentials/generate-ssh-key', data=data)
+>       assert response.status_code == 200
+E       assert 403 == 200
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+
+tests/test_credential_audit.py:122: AssertionError
+______ test_invalid_key_requests_are_not_successfully_audited[data0-400] _______
+
+credential_client = <starlette.testclient.TestClient object at 0x7936706bd340>
+web_db = sessionmaker(class_='Session', bind=Engine(sqlite:////tmp/hkn-verification-20261106/pytest2/test_invalid_key_requests_are_0/web.db), autoflush=True, expire_on_commit=True)
+data = {'key_name': '../invalid'}, status = 400
+
+    @pytest.mark.parametrize('data,status', [({'key_name': '../invalid'}, 400),
+                                            ({'key_name': 'valid', 'cred_id': 99999}, 404)])
+    def test_invalid_key_requests_are_not_successfully_audited(credential_client, web_db, data, status):
+>       assert credential_client.post('/credentials/generate-ssh-key', data=data).status_code == status
+E       AssertionError: assert 403 == 400
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+E        +    where <Response [403 Forbidden]> = post('/credentials/generate-ssh-key', data={'key_name': '../invalid'})
+E        +      where post = <starlette.testclient.TestClient object at 0x7936706bd340>.post
+
+tests/test_credential_audit.py:147: AssertionError
+______ test_invalid_key_requests_are_not_successfully_audited[data1-404] _______
+
+credential_client = <starlette.testclient.TestClient object at 0x793670707050>
+web_db = sessionmaker(class_='Session', bind=Engine(sqlite:////tmp/hkn-verification-20261106/pytest2/test_invalid_key_requests_are_1/web.db), autoflush=True, expire_on_commit=True)
+data = {'key_name': 'valid', 'cred_id': 99999}, status = 404
+
+    @pytest.mark.parametrize('data,status', [({'key_name': '../invalid'}, 400),
+                                            ({'key_name': 'valid', 'cred_id': 99999}, 404)])
+    def test_invalid_key_requests_are_not_successfully_audited(credential_client, web_db, data, status):
+>       assert credential_client.post('/credentials/generate-ssh-key', data=data).status_code == status
+E       AssertionError: assert 403 == 404
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+E        +    where <Response [403 Forbidden]> = post('/credentials/generate-ssh-key', data={'key_name': 'valid', 'cred_id': 99999})
+E        +      where post = <starlette.testclient.TestClient object at 0x793670707050>.post
+
+tests/test_credential_audit.py:147: AssertionError
+________________ test_audit_failure_keeps_credential_operations ________________
+
+credential_client = <starlette.testclient.TestClient object at 0x7936706bcbf0>
+web_db = sessionmaker(class_='Session', bind=Engine(sqlite:////tmp/hkn-verification-20261106/pytest2/test_audit_failure_keeps_crede0/web.db), autoflush=True, expire_on_commit=True)
+
+    def test_audit_failure_keeps_credential_operations(credential_client, web_db):
+        engine = web_db.kw['bind']
+    
+        def fail_audit(connection, cursor, statement, parameters, context, executemany):
+            if statement.startswith('INSERT INTO audit_logs'):
+                raise RuntimeError('audit unavailable')
+    
+        event.listen(engine, 'before_cursor_execute', fail_audit)
+        try:
+>           assert credential_client.post('/credentials/add', data={'name': 'surviving'}).status_code == 303
+E           AssertionError: assert 403 == 303
+E            +  where 403 = <Response [403 Forbidden]>.status_code
+E            +    where <Response [403 Forbidden]> = post('/credentials/add', data={'name': 'surviving'})
+E            +      where post = <starlette.testclient.TestClient object at 0x7936706bcbf0>.post
+
+tests/test_credential_audit.py:169: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /home/gopal-ichiro/Documents/magang/hk-nova/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/starlette/testclient.py:53
+  /home/gopal-ichiro/Documents/magang/hk-nova/.venv/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+app/schemas/location.py:45
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/schemas/location.py:45: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class LocationRead(LocationBase):
+
+tests/test_device_audit.py::test_device_crud
+tests/test_device_audit.py::test_rejected_operations_do_not_log_success
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/devices.py:445: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    device = db.query(Device).get(device_id)
+
+tests/test_device_audit.py::test_device_crud
+tests/test_device_audit.py::test_rejected_operations_do_not_log_success
+tests/test_device_audit.py::test_unexpected_audit_failure_preserves_committed_operation
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/devices.py:516: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    device = db.query(Device).get(device_id)
+
+tests/test_device_audit.py::test_connection_outcomes[True-success-Connection OK]
+tests/test_device_audit.py::test_connection_outcomes[False-failed-Connection Failed]
+tests/test_device_audit.py::test_connection_outcomes[outcome2-failed-Connection error]
+tests/test_device_audit.py::test_connection_without_credential_or_device[False]
+tests/test_device_audit.py::test_connection_without_credential_or_device[True]
+tests/test_device_audit.py::test_engine_initialization_failure_is_audited
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/devices.py:529: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    device = db.query(Device).get(device_id)
+
+tests/test_other_resources_audit.py::test_destination_crud_and_test
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/destinations.py:181: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    dest = db.query(Destination).get(dest_id)
+
+tests/test_other_resources_audit.py::test_destination_crud_and_test
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/destinations.py:259: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    dest = db.query(Destination).get(dest_id)
+
+tests/test_other_resources_audit.py::test_destination_crud_and_test
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/destinations.py:217: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    dest = db.query(Destination).get(dest_id)
+
+tests/test_other_resources_audit.py::test_group_crud
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/groups.py:116: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    group = db.query(Group).get(group_id)
+
+tests/test_other_resources_audit.py::test_group_crud
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/groups.py:140: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    group = db.query(Group).get(group_id)
+
+tests/test_other_resources_audit.py::test_schedule_crud_and_run
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/jobs.py:174: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    schedule = db.query(Schedule).get(schedule_id)
+
+tests/test_other_resources_audit.py::test_schedule_crud_and_run
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/jobs.py:215: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    schedule = db.query(Schedule).get(schedule_id)
+
+tests/test_other_resources_audit.py::test_schedule_crud_and_run
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/jobs.py:280: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    schedule = db.query(Schedule).get(schedule_id)
+
+tests/test_other_resources_audit.py::test_schedule_crud_and_run
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/jobs.py:337: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    run = db.query(JobRun).get(run_id)
+
+tests/test_other_resources_audit.py::test_location_crud_and_devices
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/locations.py:78: PydanticDeprecatedSince20: The `from_orm` method is deprecated; set `model_config['from_attributes']=True` and use `model_validate` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    result = LocationRead.from_orm(new_location).model_dump()
+
+tests/test_other_resources_audit.py::test_location_crud_and_devices
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/locations.py:140: PydanticDeprecatedSince20: The `from_orm` method is deprecated; set `model_config['from_attributes']=True` and use `model_validate` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    result = LocationRead.from_orm(updated).model_dump()
+
+tests/test_other_resources_audit.py::test_notification_crud_and_test
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/notifications.py:81: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    ch = db.query(NotificationChannel).get(channel_id)
+
+tests/test_other_resources_audit.py::test_notification_crud_and_test
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/notifications.py:116: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    ch = db.query(NotificationChannel).get(channel_id)
+
+tests/test_other_resources_audit.py::test_notification_crud_and_test
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/notifications.py:102: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    ch = db.query(NotificationChannel).get(channel_id)
+
+tests/test_backup_audit.py::test_single_delete_metadata
+tests/test_backup_audit.py::test_rejected_and_empty_operations
+tests/test_backup_audit.py::test_audit_failure_preserves_backup_operations
+  /home/gopal-ichiro/Documents/magang/hk-nova/app/routers/backups.py:484: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    backup = db.query(Backup).get(backup_id)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_credential_audit.py::test_credential_crud_metadata[True] - ...
+FAILED tests/test_credential_audit.py::test_credential_crud_metadata[False]
+FAILED tests/test_credential_audit.py::test_blank_password_does_not_mark_change
+FAILED tests/test_credential_audit.py::test_real_key_generation_audits_metadata_only[False]
+FAILED tests/test_credential_audit.py::test_real_key_generation_audits_metadata_only[True]
+FAILED tests/test_credential_audit.py::test_invalid_key_requests_are_not_successfully_audited[data0-400]
+FAILED tests/test_credential_audit.py::test_invalid_key_requests_are_not_successfully_audited[data1-404]
+FAILED tests/test_credential_audit.py::test_audit_failure_keeps_credential_operations
+8 failed, 74 passed, 31 warnings in 101.28s (0:01:41)

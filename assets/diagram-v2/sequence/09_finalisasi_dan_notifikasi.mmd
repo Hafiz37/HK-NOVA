@@ -1,0 +1,39 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'21px', 'actorBkg':'#ffffff', 'actorBorder':'#000000', 'actorTextColor':'#000000', 'actorLineColor':'#000000', 'signalColor':'#000000', 'signalTextColor':'#000000', 'labelBoxBkgColor':'#f5f5f5', 'labelBoxBorderColor':'#000000', 'labelTextColor':'#000000', 'loopTextColor':'#000000', 'noteBorderColor':'#000000', 'noteBkgColor':'#ffffff', 'noteTextColor':'#000000', 'activationBorderColor':'#000000', 'activationBkgColor':'#f5f5f5', 'sequenceNumberColor':'#000000', 'stroke-width':'4px'}}}%%
+sequenceDiagram
+    actor Operator as Operator / Admin
+    participant Antarmuka as Antarmuka Web
+    participant Server as Server (FastAPI)
+    participant DB as Database
+
+    Note over Server,DB: HKN-008 — Simpan Backup ke Database
+
+    alt Pengambilan konfigurasi berhasil
+        Server->>+DB: Simpan Backup (hash, timestamp, config_text, status)
+        DB-->>-Server: Backup tersimpan
+    else Pengambilan konfigurasi gagal
+        Server->>+DB: Simpan Backup dengan status failed; catat BackupFailure
+        DB-->>-Server: Tersimpan
+    end
+
+    Note over Server,DB: HKN-009, HKN-010, HKN-015 — Notifikasi
+
+    opt Konfigurasi berubah (hash berbeda dari sebelumnya)
+        Server->>Server: Kirim notifikasi perubahan konfigurasi via Apprise
+    end
+
+    opt Backup gagal
+        Server->>Server: Kirim notifikasi kegagalan diagnostik
+    end
+
+    Server->>+DB: Perbarui JobRun (devices_success, devices_failed, status)
+    DB-->>-Server: JobRun diperbarui
+    Server->>Server: Kirim notifikasi job (on_success atau on_failure)
+
+    alt Pemicu jadwal
+        Note over Server: Eksekusi background selesai
+    else Permintaan manual
+        Server-->>Antarmuka: Redirect ke halaman backup
+        Antarmuka-->>Operator: Tampilkan status hasil backup
+        deactivate Server
+        deactivate Antarmuka
+    end

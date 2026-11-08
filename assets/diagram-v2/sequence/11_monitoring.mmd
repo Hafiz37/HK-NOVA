@@ -1,0 +1,52 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'21px', 'actorBkg':'#ffffff', 'actorBorder':'#000000', 'actorTextColor':'#000000', 'actorLineColor':'#000000', 'signalColor':'#000000', 'signalTextColor':'#000000', 'labelBoxBkgColor':'#f5f5f5', 'labelBoxBorderColor':'#000000', 'labelTextColor':'#000000', 'loopTextColor':'#000000', 'noteBorderColor':'#000000', 'noteBkgColor':'#ffffff', 'noteTextColor':'#000000', 'activationBorderColor':'#000000', 'activationBkgColor':'#f5f5f5', 'sequenceNumberColor':'#000000', 'stroke-width':'4px'}}}%%
+sequenceDiagram
+    actor Pengguna as Pengguna (semua role)
+    participant Antarmuka as Antarmuka Web
+    participant Server as Server (FastAPI)
+    participant DB as Database
+
+    Note over Pengguna,DB: HKN-002, HKN-011 — Dashboard dan Analitik Backup
+
+    Pengguna->>+Antarmuka: Membuka dashboard atau halaman analitik
+    Antarmuka->>+Server: GET /dashboard atau /api/v1/analytics/*
+    Server->>Server: Periksa session token
+    Server->>+DB: Kueri ringkasan perangkat, status backup, dan metrik analitik
+    DB-->>-Server: Data dashboard (total perangkat, sukses, gagal, tren)
+    Server-->>Antarmuka: Render halaman dashboard atau respons JSON analitik
+    Antarmuka-->>Pengguna: Tampilkan ringkasan status dan tren backup
+    deactivate Server
+    deactivate Antarmuka
+
+    Note over Pengguna,DB: HKN-009 — Melihat Riwayat Pekerjaan Backup
+
+    Pengguna->>+Antarmuka: Membuka riwayat pekerjaan dan memilih filter
+    Antarmuka->>+Server: GET /jobs/history
+    Server->>+DB: Kueri JobRun dengan filter waktu, status, dan perangkat
+    DB-->>-Server: Daftar JobRun (nama job, waktu, status)
+    Server-->>Antarmuka: Render daftar riwayat pekerjaan
+    Antarmuka-->>Pengguna: Tampilkan riwayat pelaksanaan backup
+    deactivate Server
+    deactivate Antarmuka
+
+    Note over Pengguna,DB: HKN-008 — Melihat Detail dan Mengunduh Satu Backup
+
+    Pengguna->>+Antarmuka: Memilih satu backup untuk melihat detail atau mengunduh
+    Antarmuka->>+Server: GET /backups/{backup_id} atau /backups/{backup_id}/download
+    Server->>+DB: Ambil Backup dan data perangkat terkait
+    DB-->>-Server: Backup record (config_text, hash, timestamp, status)
+    Server-->>Antarmuka: Render halaman detail atau kembalikan file untuk diunduh
+    Antarmuka-->>Pengguna: Tampilkan isi konfigurasi atau mulai unduh file
+    deactivate Server
+    deactivate Antarmuka
+
+    Note over Pengguna,DB: HKN-015 — Membandingkan Dua Versi Konfigurasi (Unified Diff)
+
+    Pengguna->>+Antarmuka: Memilih dua versi backup untuk dibandingkan
+    Antarmuka->>+Server: GET /backups/compare?backup_a={id}&backup_b={id}
+    Server->>+DB: Ambil kedua Backup record
+    DB-->>-Server: config_text versi lama dan baru
+    Server->>Server: Hasilkan unified diff dengan difflib.unified_diff
+    Server-->>Antarmuka: Render halaman perbandingan dengan diff
+    Antarmuka-->>Pengguna: Tampilkan unified diff sebagai audit trail perubahan
+    deactivate Server
+    deactivate Antarmuka

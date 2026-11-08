@@ -1,0 +1,72 @@
+flowchart TD
+    Start([START])
+    
+    Start --> InputLogin[/Input Username & Password<br/>HKN-001/]
+    InputLogin --> ValidasiLogin{Validasi<br/>Kredensial?}
+    ValidasiLogin -->|Tidak Valid| InputLogin
+    ValidasiLogin -->|Valid| Dashboard[Dashboard Status Backup<br/>HKN-016]
+    
+    Dashboard --> MenuSetup{Setup<br/>Sistem?}
+    
+    MenuSetup -->|Ya| SetupPerangkat[Kelola Perangkat & SSH<br/>- Tambah Perangkat HKN-002<br/>- Kelola Kredensial SSH HKN-003<br/>- Grouping per Mitra HKN-004<br/>- Test Koneksi SSH HKN-005]
+    SetupPerangkat --> CekKoneksiSetup{Koneksi<br/>SSH OK?}
+    CekKoneksiSetup -->|Gagal| ErrorSetup[/Tampilkan Error/]
+    ErrorSetup --> SetupPerangkat
+    CekKoneksiSetup -->|Berhasil| SetupStorage[Kelola Storage & Telegram<br/>- Config Destination HKN-006<br/>- Config Bot Telegram HKN-007<br/>- Channel per Mitra HKN-008<br/>- Channel Monitoring Pusat HKN-009]
+    SetupStorage --> ValidasiTelegram{Validasi<br/>Bot Token?}
+    ValidasiTelegram -->|Gagal| SetupStorage
+    ValidasiTelegram -->|Berhasil| SetupJadwal[Atur Jadwal Backup<br/>Harian/Mingguan/Custom<br/>HKN-010]
+    SetupJadwal --> Dashboard
+    
+    MenuSetup -->|Tidak| MenuBackup{Backup<br/>Otomatis?}
+    MenuBackup -->|Ya| BackupProcess[Cek Jadwal & Koneksi SSH<br/>HKN-011]
+    BackupProcess --> CekKoneksiBackup{Koneksi<br/>Berhasil?}
+    CekKoneksiBackup -->|Gagal| AlertGagal[/Alert Backup Gagal<br/>HKN-020/]
+    AlertGagal --> RetryMechanism{Retry<br/>Backup?}
+    RetryMechanism -->|Ya| BackupProcess
+    RetryMechanism -->|Tidak| NotifGagal[/Kirim Notifikasi Gagal<br/>HKN-015/]
+    NotifGagal --> Dashboard
+    
+    CekKoneksiBackup -->|Berhasil| EksekusiBackup[Eksekusi Backup & Simpan File<br/>Deteksi Perubahan HKN-012]
+    EksekusiBackup --> CekPerubahan{Ada<br/>Perubahan?}
+    CekPerubahan -->|Tidak| Dashboard
+    CekPerubahan -->|Ya| VersionUpload[Versioning & Upload Telegram<br/>- Simpan Versi + Timestamp HKN-013<br/>- Upload Channel Mitra HKN-014<br/>- Upload Channel Pusat HKN-014<br/>- Kirim Notifikasi HKN-015]
+    VersionUpload --> Dashboard
+    
+    MenuBackup -->|Tidak| MenuMonitoring{Monitoring?}
+    MenuMonitoring -->|Ya| AksiHistory{Lihat<br/>History Log?}
+    AksiHistory -->|Ya| HistoryLog[Lihat History Log<br/>& Audit Trail<br/>HKN-017]
+    HistoryLog --> Dashboard
+    
+    AksiHistory -->|Tidak| AksiCompare{Lihat<br/>Compare Diff?}
+    AksiCompare -->|Ya| CompareDiff[Tampilkan Diff<br/>Line-by-Line<br/>HKN-018]
+    CompareDiff --> Dashboard
+    
+    AksiCompare -->|Tidak| AksiRestore{Restore<br/>Backup?}
+    AksiRestore -->|Ya| RestoreBackup[Restore Backup<br/>dari Telegram<br/>HKN-019]
+    RestoreBackup --> Dashboard
+    AksiRestore -->|Tidak| Dashboard
+    
+    MenuMonitoring -->|Tidak| Keluar{Keluar<br/>Sistem?}
+    Keluar -->|Tidak| Dashboard
+    Keluar -->|Ya| End([END])
+    
+    style Start fill:#90EE90
+    style End fill:#FFB6C1
+    style Dashboard fill:#87CEEB
+    style ValidasiLogin fill:#FFD700
+    style MenuSetup fill:#FFD700
+    style MenuBackup fill:#FFD700
+    style MenuMonitoring fill:#FFD700
+    style CekKoneksiSetup fill:#FFD700
+    style ValidasiTelegram fill:#FFD700
+    style CekKoneksiBackup fill:#FFD700
+    style CekPerubahan fill:#FFD700
+    style RetryMechanism fill:#FFD700
+    style AksiHistory fill:#FFD700
+    style AksiCompare fill:#FFD700
+    style AksiRestore fill:#FFD700
+    style Keluar fill:#FFD700
+    style VersionUpload fill:#98FB98
+    style NotifGagal fill:#FFA07A
+    style AlertGagal fill:#FFA07A

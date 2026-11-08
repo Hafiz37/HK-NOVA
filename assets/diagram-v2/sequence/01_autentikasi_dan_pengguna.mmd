@@ -1,0 +1,43 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'21px', 'actorBkg':'#ffffff', 'actorBorder':'#000000', 'actorTextColor':'#000000', 'actorLineColor':'#000000', 'signalColor':'#000000', 'signalTextColor':'#000000', 'labelBoxBkgColor':'#f5f5f5', 'labelBoxBorderColor':'#000000', 'labelTextColor':'#000000', 'loopTextColor':'#000000', 'noteBorderColor':'#000000', 'noteBkgColor':'#ffffff', 'noteTextColor':'#000000', 'activationBorderColor':'#000000', 'activationBkgColor':'#f5f5f5', 'sequenceNumberColor':'#000000', 'stroke-width':'4px'}}}%%
+sequenceDiagram
+    actor Pengguna as Pengguna
+    participant Antarmuka as Antarmuka Web
+    participant Server as Server (FastAPI)
+    participant DB as Database
+
+    Note over Pengguna,DB: HKN-001 — Autentikasi Login
+
+    Pengguna->>+Antarmuka: Memasukkan username dan password
+    Antarmuka->>+Server: POST /login
+    Server->>+DB: Kueri data pengguna
+    DB-->>-Server: Data pengguna
+    Server->>Server: Verifikasi bcrypt dan periksa is_active
+
+    alt Kredensial valid dan akun aktif
+        Server->>Server: Buat session token
+        Server-->>Antarmuka: Set cookie sesi; redirect ke dashboard
+        Antarmuka-->>Pengguna: Tampilkan dashboard sesuai role
+    else Kredensial salah atau akun tidak aktif
+        Server-->>Antarmuka: Redirect ke /login
+        Antarmuka-->>Pengguna: Tampilkan pesan error
+    end
+    deactivate Server
+    deactivate Antarmuka
+
+    Note over Pengguna,DB: HKN-013 — Pengelolaan Pengguna dan Hak Akses (khusus Admin)
+
+    Pengguna->>+Antarmuka: Memilih tambah/ubah/hapus pengguna
+    Antarmuka->>+Server: POST /users (require_admin)
+    Server->>Server: Periksa session token dan role
+
+    alt Role bukan admin
+        Server-->>Antarmuka: HTTP 403 Forbidden
+        Antarmuka-->>Pengguna: Tampilkan halaman akses ditolak
+    else Role admin
+        Server->>+DB: Tambah/ubah/hapus akun dan catat audit log
+        DB-->>-Server: Konfirmasi
+        Server-->>Antarmuka: Redirect ke daftar pengguna
+        Antarmuka-->>Pengguna: Tampilkan daftar pengguna yang diperbarui
+    end
+    deactivate Server
+    deactivate Antarmuka

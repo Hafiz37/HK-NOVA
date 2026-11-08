@@ -1,0 +1,30 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'21px', 'actorBkg':'#ffffff', 'actorBorder':'#000000', 'actorTextColor':'#000000', 'actorLineColor':'#000000', 'signalColor':'#000000', 'signalTextColor':'#000000', 'labelBoxBkgColor':'#f5f5f5', 'labelBoxBorderColor':'#000000', 'labelTextColor':'#000000', 'loopTextColor':'#000000', 'noteBorderColor':'#000000', 'noteBkgColor':'#ffffff', 'noteTextColor':'#000000', 'activationBorderColor':'#000000', 'activationBkgColor':'#f5f5f5', 'sequenceNumberColor':'#000000', 'stroke-width':'4px'}}}%%
+sequenceDiagram
+    actor Pengguna as Pengguna (Admin / Operator)
+    participant Antarmuka as Antarmuka Web
+    participant Server as Server (FastAPI)
+    participant Scheduler as APScheduler
+    participant DB as Database
+
+    Note over Pengguna,DB: HKN-007 — Penjadwalan Backup Otomatis
+
+    Pengguna->>+Antarmuka: Mengatur jadwal, perangkat, destination, dan cron expression
+    Antarmuka->>+Server: POST /jobs (require_operator_or_admin)
+    Server->>Server: Periksa session token dan role
+    Server->>Server: Validasi cron expression dengan CronTrigger
+
+    alt Cron expression tidak valid
+        Server-->>Antarmuka: Error validasi
+        Antarmuka-->>Pengguna: Tampilkan pesan error
+    else Cron expression valid
+        Server->>+DB: Simpan jadwal ke tabel schedules dan catat audit log
+        DB-->>-Server: Jadwal tersimpan
+        Server->>+Scheduler: Daftarkan job pada APScheduler
+        Scheduler-->>-Server: Job terdaftar
+        Server-->>Antarmuka: Redirect ke daftar jadwal
+        Antarmuka-->>Pengguna: Tampilkan jadwal aktif
+    end
+    deactivate Server
+    deactivate Antarmuka
+
+    Note over Pengguna,Scheduler: Jadwal aktif akan memicu backup sesuai cron expression

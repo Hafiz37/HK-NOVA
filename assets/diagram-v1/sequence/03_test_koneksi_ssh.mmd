@@ -1,0 +1,32 @@
+sequenceDiagram
+    actor NOC as NOC
+    participant FE as Frontend
+    participant BE as Backend
+    participant Device as Perangkat Jaringan
+
+    Note over NOC,Device: HKN-005: Menguji Koneksi SSH ke Perangkat
+
+    NOC->>FE: Klik "Test Koneksi SSH"
+    activate FE
+    FE->>BE: POST /api/devices/{id}/test-connection
+    activate BE
+    BE->>BE: Ambil kredensial dari database
+    Note over BE: SSH Handler (Netmiko)
+    BE->>Device: SSH Connect (IP:22)
+    activate Device
+    
+    alt Koneksi Berhasil
+        Device-->>BE: SSH Connection Success
+        deactivate Device
+        BE-->>FE: Return success message
+        deactivate BE
+        FE-->>NOC: Koneksi berhasil
+        deactivate FE
+    else Koneksi Gagal
+        Device-->>BE: Connection Timeout/Refused
+        deactivate Device
+        BE-->>FE: Return error message
+        deactivate BE
+        FE-->>NOC: Koneksi gagal<br/>(timeout/auth failed/network error)
+        deactivate FE
+    end

@@ -1,0 +1,27 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'21px', 'actorBkg':'#ffffff', 'actorBorder':'#000000', 'actorTextColor':'#000000', 'actorLineColor':'#000000', 'signalColor':'#000000', 'signalTextColor':'#000000', 'labelBoxBkgColor':'#f5f5f5', 'labelBoxBorderColor':'#000000', 'labelTextColor':'#000000', 'loopTextColor':'#000000', 'noteBorderColor':'#000000', 'noteBkgColor':'#ffffff', 'noteTextColor':'#000000', 'activationBorderColor':'#000000', 'activationBkgColor':'#f5f5f5', 'sequenceNumberColor':'#000000', 'stroke-width':'4px'}}}%%
+sequenceDiagram
+    actor Admin as Admin
+    participant Antarmuka as Antarmuka Web
+    participant Server as Server (FastAPI)
+    participant Enkripsi as Enkripsi (Fernet)
+    participant DB as Database
+
+    Note over Admin,DB: HKN-004 — Pengelolaan Kredensial Terenkripsi (khusus Admin)
+
+    Admin->>+Antarmuka: Memilih tambah/ubah/hapus kredensial SSH
+    Antarmuka->>+Server: POST /credentials (require_admin)
+    Server->>Server: Periksa role (require_admin)
+
+    alt Role bukan admin
+        Server-->>Antarmuka: HTTP 403 Forbidden
+        Antarmuka-->>Admin: Tampilkan halaman akses ditolak
+    else Role admin
+        Server->>+Enkripsi: Enkripsi data sensitif (password, private key)
+        Enkripsi-->>-Server: Ciphertext
+        Server->>+DB: Simpan kredensial terenkripsi dan catat audit log
+        DB-->>-Server: Konfirmasi
+        Server-->>Antarmuka: Redirect ke daftar kredensial
+        Antarmuka-->>Admin: Tampilkan daftar kredensial
+    end
+    deactivate Server
+    deactivate Antarmuka

@@ -1,0 +1,62 @@
+sequenceDiagram
+    actor NOC as NOC
+    participant FE as Frontend
+    participant BE as Backend
+    participant TG as Telegram API
+    participant DB as Database
+
+    Note over NOC,DB: HKN-006, HKN-007, HKN-008, HKN-009: Konfigurasi Storage & Telegram
+
+    rect rgb(230, 245, 255)
+        Note right of NOC: HKN-006: Mengelola Destination Storage
+        NOC->>FE: Tambah destination storage<br/>(Local/Git/SMB/Telegram)
+        activate FE
+        FE->>BE: POST /api/storage/destinations
+        activate BE
+        BE->>BE: Validasi konfigurasi storage
+        BE->>DB: Save storage config
+        activate DB
+        DB-->>BE: Konfirmasi tersimpan
+        deactivate DB
+        FE-->>NOC: Tampilkan list destinations
+        deactivate BE
+        deactivate FE
+    end
+
+    rect rgb(255, 245, 230)
+        Note right of NOC: HKN-007: Mengelola Konfigurasi Bot Telegram
+        NOC->>FE: Input bot token Telegram
+        activate FE
+        FE->>BE: POST /api/telegram/bot-config
+        activate BE
+        BE->>TG: Validate bot token (getMe)
+        activate TG
+        TG-->>BE: Return bot info
+        deactivate TG
+        BE->>DB: Save bot token (encrypted)
+        activate DB
+        deactivate DB
+        Note over BE: Bot token valid & tersimpan
+        FE-->>NOC: Bot Telegram terkonfigurasi
+        deactivate BE
+        deactivate FE
+    end
+
+    rect rgb(240, 255, 240)
+        Note right of NOC: HKN-008 & HKN-009: Setup Channel Telegram
+        NOC->>FE: Input chat_id channel<br/>(mitra / monitoring pusat)
+        activate FE
+        FE->>BE: POST /api/telegram/channels/{type}
+        activate BE
+        BE->>TG: Test send message ke channel
+        activate TG
+        TG-->>BE: Message sent successfully
+        deactivate TG
+        BE->>DB: Save channel_id
+        activate DB
+        deactivate DB
+        Note over BE,DB: HKN-008: Channel per mitra (isolasi data)<br/>HKN-009: Channel pusat (monitoring semua backup)
+        FE-->>NOC: Channel Telegram aktif
+        deactivate BE
+        deactivate FE
+    end

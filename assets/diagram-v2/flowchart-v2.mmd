@@ -1,0 +1,38 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'32px', 'primaryColor':'#ffffff', 'primaryTextColor':'#000000', 'primaryBorderColor':'#000000', 'lineColor':'#000000', 'secondaryColor':'#f5f5f5', 'tertiaryColor':'#ffffff', 'stroke-width':'4px'}}}%%
+flowchart TD
+    START([Mulai: akses pengguna atau pemicu backup terotorisasi]) --> EVENT{Memproses akses pengguna?}
+    EVENT -->|Iya| LOGIN[/Masukkan username dan password<br/>HKN-001/]
+    EVENT -->|Tidak| TRIGGER
+    LOGIN --> AUTH{Autentikasi valid?}
+    AUTH -->|Tidak| LOGIN
+    AUTH -->|Iya| MONITOR["Lihat dashboard, analitik, riwayat, dan diagnosis;<br/>lihat/unduh backup dan bandingkan unified diff<br/>Semua role, termasuk mitra (viewer)<br/>HKN-002, HKN-008, HKN-009, HKN-011, HKN-012, HKN-015"]
+    MONITOR --> ADMINQ{Memilih administrasi<br/>dan berperan Manager NOC admin?}
+    ADMINQ -->|Iya| ADMIN["Tambah/ubah/hapus kredensial SSH terenkripsi;<br/>kelola dan uji destination Local/Git/SMB/Telegram;<br/>kelola akun dan role; lihat audit log<br/>HKN-004, HKN-006, HKN-013, HKN-014"]
+    ADMINQ -->|Tidak| OPSQ{Memilih operasi<br/>dan berperan Admin / Operator?}
+    OPSQ -->|Iya| OPS["Kelola perangkat pusat/mitra, grup, dan uji SSH;<br/>atur jadwal, notifikasi, serta channel mitra/pusat;<br/>pastikan tujuan hanya mitra terkait dan pusat;<br/>minta backup/retry manual atau tandai masalah selesai<br/>Manager NOC (admin) / operator noc (operator)<br/>HKN-003, HKN-005, HKN-007, HKN-008, HKN-010, HKN-012, HKN-016"]
+    OPSQ -->|Tidak| LOGOUT{Ingin logout?}
+    ADMIN --> LOGOUT
+    OPS --> LOGOUT
+    LOGOUT -->|Tidak| MONITOR
+    LOGOUT -->|Iya| ENDSESSION([Hapus session; sesi berakhir])
+
+    TRIGGER["Jadwal aktif tiba atau permintaan<br/>backup/retry manual diterima dari Admin / Operator<br/>Gunakan perangkat dan tujuan sesuai jadwal/override/grup;<br/>pengiriman Telegram mengikuti pemetaan tersebut;<br/>simpan jadwal tidak langsung memicu backup<br/>HKN-007, HKN-008, HKN-012"]
+    TRIGGER --> BACKUP["Ambil konfigurasi sesuai engine perangkat<br/>Fokus rumusan masalah: konfigurasi teks melalui SSH<br/>HKN-008"]
+    BACKUP --> FETCHED{Konfigurasi berhasil diambil?}
+    FETCHED -->|Tidak| RESULT
+    FETCHED -->|Iya| VERSION["Hitung SHA-256; bandingkan dengan backup sukses sebelumnya<br/>jika tersedia; catat status perubahan dan metadata versi<br/>HKN-015"]
+    VERSION --> STORE["Simpan ke tujuan aktif sesuai konfigurasi;<br/>retry error sementara dengan batas dan jeda;<br/>untuk konfigurasi teks, coba fallback lokal<br/>jika tidak ada tujuan yang berhasil<br/>HKN-006, HKN-008, HKN-012, HKN-016"]
+    STORE --> RESULT["Catat hasil, hash/timestamp bila tersedia, dan error;<br/>bedakan gagal, sukses, serta sukses parsial/fallback;<br/>kirim notifikasi sesuai pemicu dan konfigurasi<br/>HKN-009, HKN-010, HKN-012, HKN-015"]
+    RESULT --> CHECK{Ada kegagalan backup<br/>atau sebagian tujuan?}
+    CHECK -->|Iya| DIAG["Simpan diagnosis untuk ditinjau pengguna;<br/>pertahankan hasil backup yang berhasil tersimpan<br/>HKN-012"]
+    CHECK -->|Tidak| DONE(["Eksekusi selesai tanpa menunggu pengguna;<br/>hasil tersedia pada dashboard dan riwayat"])
+    DIAG --> DONE
+
+    OPS -.->|Permintaan backup atau retry manual yang diotorisasi| TRIGGER
+
+    classDef endpoint fill:#ffffff,stroke:#000000,stroke-width:4px,color:#000000
+    classDef process fill:#ffffff,stroke:#000000,stroke-width:4px,color:#000000
+    classDef decision fill:#f5f5f5,stroke:#000000,stroke-width:4px,color:#000000
+    class START,ENDSESSION,DONE endpoint
+    class LOGIN,ADMIN,OPS,MONITOR,TRIGGER,BACKUP,VERSION,STORE,RESULT,DIAG process
+    class EVENT,AUTH,ADMINQ,OPSQ,LOGOUT,FETCHED,CHECK decision

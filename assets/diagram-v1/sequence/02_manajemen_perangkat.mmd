@@ -1,0 +1,52 @@
+sequenceDiagram
+    actor NOC as NOC
+    participant FE as Frontend
+    participant BE as Backend
+    participant DB as Database
+
+    Note over NOC,DB: HKN-002, HKN-003, HKN-004: Manajemen Perangkat Jaringan
+
+    rect rgb(230, 245, 255)
+        Note right of NOC: HKN-002: Menambah Data Perangkat
+        NOC->>FE: Input data perangkat<br/>(IP, jenis, mitra)
+        activate FE
+        FE->>BE: POST /api/devices
+        activate BE
+        BE->>DB: Insert data perangkat
+        activate DB
+        DB-->>BE: Return device_id
+        deactivate DB
+        FE-->>NOC: Tampilkan perangkat baru
+        deactivate BE
+        deactivate FE
+    end
+
+    rect rgb(255, 245, 230)
+        Note right of NOC: HKN-003: Mengelola Kredensial SSH
+        NOC->>FE: Input/Edit kredensial SSH<br/>(username, password)
+        activate FE
+        FE->>BE: POST /api/devices/{id}/credentials
+        activate BE
+        BE->>BE: Enkripsi kredensial
+        BE->>DB: Save encrypted credentials
+        activate DB
+        deactivate DB
+        FE-->>NOC: Kredensial berhasil disimpan
+        deactivate BE
+        deactivate FE
+    end
+
+    rect rgb(240, 255, 240)
+        Note right of NOC: HKN-004: Mengelompokkan Perangkat per Mitra
+        NOC->>FE: Pilih perangkat & assign mitra
+        activate FE
+        FE->>BE: PUT /api/devices/{id}/partner
+        activate BE
+        BE->>DB: Update relasi perangkat-mitra
+        activate DB
+        DB-->>BE: Konfirmasi update
+        deactivate DB
+        FE-->>NOC: Tampilkan grup per mitra
+        deactivate BE
+        deactivate FE
+    end

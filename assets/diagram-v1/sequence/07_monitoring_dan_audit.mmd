@@ -1,0 +1,40 @@
+sequenceDiagram
+    actor NOC as NOC
+    participant FE as Frontend
+    participant BE as Backend
+    participant DB as Database
+
+    Note over NOC,DB: HKN-016 & HKN-017: Monitoring dan Audit Trail
+
+    rect rgb(230, 245, 255)
+        Note right of NOC: HKN-016: Dashboard Status Backup
+        NOC->>FE: Akses halaman dashboard
+        activate FE
+        FE->>BE: GET /api/dashboard/backup-status
+        activate BE
+        BE->>DB: Query ringkasan status backup<br/>(sukses/gagal/pending per perangkat)
+        activate DB
+        DB-->>BE: Return aggregated data
+        deactivate DB
+        BE->>BE: Hitung statistik per mitra<br/>& waktu backup terakhir
+        FE-->>NOC: Tampilkan dashboard:<br/>Sukses | Gagal | Pending
+        deactivate BE
+        deactivate FE
+    end
+
+    rect rgb(240, 255, 240)
+        Note right of NOC: HKN-017: History Log & Audit Trail
+        NOC->>FE: Akses history log backup
+        activate FE
+        FE->>FE: Input filter<br/>(tanggal/perangkat/mitra)
+        FE->>BE: GET /api/logs/backup?filters={...}
+        activate BE
+        BE->>DB: Query log backup dengan filter
+        activate DB
+        Note over DB: SELECT logs:<br/>timestamp, device, status,<br/>changes, version_id
+        DB-->>BE: Return filtered logs
+        deactivate DB
+        FE-->>NOC: Tampilkan riwayat aktivitas:<br/>- Timestamp<br/>- Perangkat<br/>- Status<br/>- Perubahan konfigurasi
+        deactivate BE
+        deactivate FE
+    end

@@ -1,0 +1,28 @@
+sequenceDiagram
+    actor NOC as NOC
+    participant FE as Frontend
+    participant BE as Backend
+    participant Scheduler as Scheduler
+    participant DB as Database
+
+    Note over NOC,DB: HKN-010: Menjadwalkan Backup Otomatis Perangkat
+
+    NOC->>FE: Set jadwal backup<br/>(harian/mingguan/custom cron)
+    activate FE
+    FE->>BE: POST /api/schedules
+    activate BE
+    Note over BE: Validasi format cron<br/>dan pilih perangkat
+    
+    BE->>DB: Save schedule config
+    activate DB
+    DB-->>BE: Return schedule_id
+    deactivate DB
+    
+    BE->>Scheduler: Register cron job
+    activate Scheduler
+    Note over Scheduler: Setup cron task<br/>per perangkat
+    
+    FE-->>NOC: Backup terjadwal aktif<br/>(next run: timestamp)
+    deactivate Scheduler
+    deactivate BE
+    deactivate FE

@@ -1,0 +1,69 @@
+flowchart TD
+    %% Diagram ringkas kebutuhan HK-NOVA, mengacu pada tabel_fungsional.md.
+    %% Satu file; rincian di bawah adalah definisi subproses, bukan diagram terpisah.
+    %% Kapsul = awal/akhir; jajar genjang = input/output; garis ganda = subproses;
+    %% persegi panjang = proses; belah ketupat = keputusan Iya/Tidak.
+    %% Panah putus-putus = permintaan, bukan urutan eksekusi wajib.
+
+    %% LOGIN (HKN-001): input username/password, validasi; tampilkan error jika salah.
+    %% DASH (HKN-016): semua perangkat, berhasil/gagal/pending, statistik per mitra,
+    %% serta waktu backup terakhir. Dashboard dan riwayat diperbarui setiap eksekusi.
+    %% CREDENTIALS (HKN-003): tambah/ubah/hapus username-password SSH,
+    %% enkripsi dan simpan data baru/perubahan.
+    %% DESTINATION (HKN-006, HKN-007): tambah/ubah/hapus Local/Git/SMB/Telegram;
+    %% validasi koneksi dan simpan; input, validasi, dan simpan bot token Telegram.
+    %% GROUP (HKN-004, HKN-008, HKN-009): kelompok mitra, validasi chat ID mitra,
+    %% simpan pemetaan terisolasi; chat ID pusat menerima file/notifikasi semua perangkat.
+    %% DEVICE (HKN-002, HKN-004, HKN-005): input IP, jenis, kredensial, mitra;
+    %% simpan perangkat dan relasi ke database; uji SSH, tampilkan hasil/error,
+    %% perbaiki dan uji ulang sampai siap dijadwalkan.
+    %% SCHEDULE (HKN-010): harian/mingguan/custom per perangkat; validasi, simpan,
+    %% jalankan sesuai waktu. Penyiapan hanya dilakukan untuk data yang perlu dikelola.
+    %% MONITOR (HKN-017, HKN-018, HKN-019): riwayat timestamp/perangkat/status/perubahan,
+    %% filter tanggal/perangkat/mitra; pilih dua versi untuk diff baris demi baris;
+    %% daftar/pencarian backup Telegram dengan filter tanggal/perangkat, unduh untuk restore manual.
+    %% BACKUP (HKN-011–HKN-014): untuk setiap target, SSH dan command backup,
+    %% simpan file lokal; hitung hash, bandingkan, simpan versi awal/perubahan
+    %% dengan timestamp/hash/metadata; gzip otomatis, pecah jika >50 MB,
+    %% unggah hanya ke channel mitra terkait dan channel pusat.
+    %% Tanpa perubahan: tetap unggah dan catat eksekusi, tidak membuat versi perubahan baru.
+    %% Subproses mengembalikan hasil semua target; berhasil jika seluruh langkah wajib berhasil.
+    %% SUCCESS/FAILED (HKN-015–HKN-017, HKN-020): catat hasil tiap perangkat,
+    %% perbarui dashboard/audit trail; notifikasi ke Telegram mitra/pusat
+    %% berisi perangkat, timestamp, dan error jika ada. Hasil sukses parsial tetap dicatat.
+    %% FAILED juga menampilkan alert detail error dan menyediakan tombol retry manual.
+    %% RETRY/WAIT (HKN-020): hanya ulang target gagal, dibatasi jumlah percobaan/jeda policy.
+    %% Hasil lokal/versi yang sudah tersimpan tidak dihapus ketika unggahan gagal.
+    %% TRIGGER: scheduler mandiri atau permintaan manual NOC yang sudah login.
+    %% Akhir sesi NOC tidak menghentikan scheduler; selesai eksekusi bukan akhir layanan.
+
+    subgraph NOC [Penyiapan dan penggunaan]
+        START([Mulai]) --> LOGIN[/Login<br/>HKN-001/]
+        LOGIN --> VALID{Login valid?}
+        VALID -->|Tidak| LOGIN
+        VALID -->|Iya| DASH[/Dashboard<br/>HKN-016/]
+        DASH --> CREDENTIALS[[Kelola kredensial SSH<br/>HKN-003]]
+        CREDENTIALS --> DESTINATION[[Kelola destination dan bot Telegram<br/>HKN-006, HKN-007]]
+        DESTINATION --> GROUP[[Kelompok mitra dan channel mitra/pusat<br/>HKN-004, HKN-008, HKN-009]]
+        GROUP --> DEVICE[[Tambah perangkat dan uji SSH<br/>HKN-002, HKN-005]]
+        DEVICE --> SCHEDULE[[Atur jadwal backup<br/>HKN-010]]
+        SCHEDULE --> MONITOR[[Dashboard, history, diff, unduh untuk restore<br/>HKN-016 sampai HKN-019]]
+        MONITOR --> EXIT{Logout?}
+        EXIT -->|Tidak| MONITOR
+        EXIT -->|Iya| LOGOUT[Hapus sesi]
+        LOGOUT --> END([Selesai sesi NOC])
+    end
+
+    subgraph SYSTEM [Eksekusi backup]
+        TRIGGER([Jadwal tiba atau permintaan manual]) --> BACKUP[[SSH → file lokal → hash dan versi<br/>Gzip dan upload Telegram mitra/pusat<br/>HKN-011 sampai HKN-014]]
+        BACKUP --> OK{Backup berhasil?}
+        OK -->|Iya| SUCCESS[[Catat hasil dan kirim notifikasi berhasil<br/>HKN-013, HKN-015, HKN-016, HKN-017]]
+        OK -->|Tidak| FAILED[[Catat error, tampilkan alert dan tombol retry<br/>Kirim notifikasi gagal<br/>HKN-015, HKN-020]]
+        FAILED --> RETRY{Retry otomatis diizinkan?}
+        RETRY -->|Iya| WAIT[Tunggu jeda; ulang hanya target gagal]
+        WAIT --> BACKUP
+        RETRY -->|Tidak| DONE([Eksekusi selesai])
+        SUCCESS --> DONE
+    end
+
+    MONITOR -.->|Backup atau retry manual| TRIGGER

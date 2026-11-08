@@ -1,0 +1,34 @@
+[
+  {
+    "date": "2026-10-01",
+    "http": 200,
+    "actual": {
+      "data": [
+        {
+          "destination": "fixture-local",
+          "type": "local",
+          "total_size_bytes": 100,
+          "total_size_mb": 0.0,
+          "backup_count": 1
+        }
+      ]
+    },
+    "expected_size_bytes": 100
+  },
+  {
+    "date": "2099-01-01",
+    "http": 200,
+    "actual": {
+      "data": [
+        {
+          "destination": "fixture-local",
+          "type": "local",
+          "total_size_bytes": 100,
+          "total_size_mb": 0.0,
+          "backup_count": 1
+        }
+      ]
+    },
+    "expected_size_bytes": 0
+  }
+]

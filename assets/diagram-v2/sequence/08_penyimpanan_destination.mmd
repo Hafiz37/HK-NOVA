@@ -1,0 +1,35 @@
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'21px', 'actorBkg':'#ffffff', 'actorBorder':'#000000', 'actorTextColor':'#000000', 'actorLineColor':'#000000', 'signalColor':'#000000', 'signalTextColor':'#000000', 'labelBoxBkgColor':'#f5f5f5', 'labelBoxBorderColor':'#000000', 'labelTextColor':'#000000', 'loopTextColor':'#000000', 'noteBorderColor':'#000000', 'noteBkgColor':'#ffffff', 'noteTextColor':'#000000', 'activationBorderColor':'#000000', 'activationBkgColor':'#f5f5f5', 'sequenceNumberColor':'#000000', 'stroke-width':'4px'}}}%%
+sequenceDiagram
+    participant Server as Server (FastAPI)
+    participant Destination as Destination (Local/Git/SMB/Telegram)
+    participant DB as Database
+
+    Note over Server,Destination: HKN-008, HKN-016 — Penyimpanan ke Destination
+
+    loop Setiap destination aktif
+        Server->>+Destination: Simpan konfigurasi
+
+        alt Penyimpanan berhasil
+            Destination-->>-Server: Path atau message_id
+        else Error (timeout, auth, permission, dll)
+            Destination-->>Server: Exception
+            Note over Server: Lihat diagram 08_penanganan_kegagalan untuk retry logic
+            alt Retry berhasil
+                Note over Server: Lanjut ke destination berikutnya
+            else Retry gagal
+                Server->>+DB: Catat BackupFailure
+                DB-->>-Server: Failure tersimpan
+            end
+        end
+    end
+
+    opt Semua destination gagal dan backup berupa teks
+        Server->>Server: Jalankan fallback lokal ke Local Storage
+        alt Fallback lokal berhasil
+            Note over Server: Backup ditandai success dengan catatan fallback
+        else Fallback lokal juga gagal
+            Note over Server: Backup ditandai failed sepenuhnya
+        end
+    end
+
+    Note over Server: Lanjut ke diagram 09_finalisasi_dan_notifikasi
